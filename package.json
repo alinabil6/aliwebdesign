@@ -1,0 +1,29 @@
+{
+  "name": "aliwebdesign",
+  "version": "1.0.0",
+  "description": "",
+  "main": "backend/index.js",
+  "scripts": {
+    "dev": "node backend/index.js",
+    "build": "echo 'Build complete'",
+    "start": "node backend/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "better-sqlite3": "^13.0.3",
+    "compression": "^1.8.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "lucide": "^1.41.0",
+    "multer": "^2.3.0",
+    "p-limit": "^7.3.2",
+    "playwright": "^1.63.0",
+    "sharp": "^0.35.5",
+    "uuid": "^14.0.2"
+  }
+}

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Magic Fabrica Studio</title>
+  <meta name="description" content="High-throughput autonomous POD design studio engine for AI design generation, niche variations, and style transformation." />
+  <meta property="og:title" content="Magic Fabrica Studio" />
+  <meta property="og:description" content="High-throughput autonomous POD design studio engine for AI design generation, niche variations, and style transformation." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500&display=swap"
+    rel="stylesheet" />
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand-bar" id="brandBar" title="Magic Fabrica Studio">
+      <img src="favicon.png" alt="Magic Fabrica Studio" class="sidebar-brand-icon" />
+    </div>
+
+    <nav class="nav" aria-label="Main">
+      <button class="nav-btn active" data-view="home" data-label="Home">
+        <span class="nav-icon"><i data-lucide="home"></i></span>
+        <span class="nav-text">Home</span>
+      </button>
+
+      <div class="nav-section-label">Platform</div>
+
+      <button class="nav-btn" data-view="t2i" data-label="AI Design Generator">
+        <span class="nav-icon"><i data-lucide="sparkles"></i></span>
+        <span class="nav-text">AI Design Generator</span>
+      </button>
+
+      <button class="nav-btn" data-view="variations" data-label="Generate Variations">
+        <span class="nav-icon"><i data-lucide="sliders"></i></span>
+        <span class="nav-text">Generate Variations</span>
+      </button>
+
+      <button class="nav-btn" data-view="d2d" data-label="Design to Design">
+        <span class="nav-icon"><i data-lucide="layers"></i></span>
+        <span class="nav-text">Design to Design</span>
+      </button>
+
+      <button class="nav-btn" data-view="pixel-to-pixel" data-label="Pixel to Pixel">
+        <span class="nav-icon"><i data-lucide="wand-2"></i></span>
+        <span class="nav-text">Pixel to Pixel</span>
+      </button>
+
+      <button class="nav-btn" data-view="prepare" data-label="Prepare Designs">
+        <span class="nav-icon"><i data-lucide="crop"></i></span>
+        <span class="nav-text">Prepare Designs</span>
+      </button>
+
+      <button class="nav-btn" data-view="magicListing" data-label="Magic Listing">
+        <span class="nav-icon"><i data-lucide="tag"></i></span>
+        <span class="nav-text">Magic Listing</span>
+      </button>
+
+      <button class="nav-btn" data-view="artstyle" data-label="Art Style + Niche">
+        <span class="nav-icon"><i data-lucide="palette"></i></span>
+        <span class="nav-text">Art Style + Niche</span>
+      </button>
+
+      <button class="nav-btn" data-view="designs" data-label="My Designs">
+        <span class="nav-icon"><i data-lucide="layout-grid"></i></span>
+        <span class="nav-text">My Designs</span>
+      </button>
+
+
+    </nav>
+
+    <div style="margin-top: auto; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.06);">
+      <button class="nav-btn" data-view="accounts" data-label="Gemini Accounts">
+        <span class="nav-icon"><i data-lucide="users"></i></span>
+        <span class="nav-text">Gemini Accounts</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="top-bar">
+      <img src="LOGO.png" alt="Magic Fabrica Studio" class="hero-brand-logo" />
+      <span class="top-status">
+        <button class="style-catalog-btn" id="styleCatalogBtn" title="Browse the Magic Style catalog">
+          <i data-lucide="sparkles"></i> Style Catalog
+        </button>
+        <button class="nav-about-btn" id="navAboutBtn" title="About Magic Fabrica Studio">
+          <i data-lucide="info"></i> About
+        </button>
+        <span class="top-dot checking" id="topStatusDot"></span>
+        <span id="topStatusText">Checking accounts…</span>
+        <button class="icon-btn theme-toggle" id="themeToggle" title="Toggle theme">
+          <i data-lucide="moon"></i>
+        </button>
+      </span>
+    </header>
+    <div id="view"></div>
+
+
+    <div id="view-pixel-to-pixel" class="view-panel hidden"></div>
+    <div id="view-prepare" class="view-panel hidden"></div>
+  </main>
+
+  <!-- Edit Modal -->
+  <div class="modal-backdrop panel hidden" id="editModal">
+    <div class="modal modal-wide">
+      <button class="modal-close" id="editModalClose" title="Close"><i data-lucide="x"></i></button>
+      <h2 class="modal-title">Edit design</h2>
+      <p class="modal-sub">Tell Gemini how to change this design. A new version is created.</p>
+      <div class="modal-preview"><img id="editModalImg" alt="design preview" /></div>
+      <form id="editForm">
+        <label class="field">
+          <span class="field-label">Edit instruction</span>
+          <textarea name="edit_instruction" placeholder="e.g. remove text, change background..." required></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" id="editCancel">Cancel</button>
+          <button type="submit" class="btn primary"><i data-lucide="sparkles"></i> Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Move to Folder Modal -->
+  <div class="modal-backdrop panel hidden" id="moveModal">
+    <div class="modal">
+      <button class="modal-close" id="moveModalClose" title="Close"><i data-lucide="x"></i></button>
+      <h2 class="modal-title">Move to folder</h2>
+      <div class="pick-list" id="movePickList" role="listbox"></div>
+      <div class="pick-new">
+        <button type="button" class="pick-new-toggle" id="moveNewToggle"><i data-lucide="plus"></i> New folder</button>
+        <div class="pick-new-form hidden" id="moveNewForm">
+          <input id="moveNewInput" placeholder="Folder name..." />
+          <button type="button" class="btn primary" id="moveSubmitNew"><i data-lucide="folder-input"></i>
+            Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Expand Modal -->
+  <div class="modal-backdrop panel hidden" id="expandModal">
+    <div class="modal modal-expand">
+      <button class="modal-close" id="expandModalClose" title="Close"><i data-lucide="x"></i></button>
+      <div class="expand-body">
+        <div class="expand-mount"><img id="expandModalImg" alt="design" /></div>
+        <div class="expand-info">
+          <header class="expand-header">
+            <h2 class="expand-title" id="expandTitle"></h2>
+            <p class="expand-date" id="expandMeta"></p>
+          </header>
+
+          <div class="meta-card">
+            <div class="meta-card-head">
+              <span class="meta-caption">Prompt</span>
+              <button type="button" class="copy-btn" id="expandCopyPrompt" aria-label="Copy prompt"
+                title="Copy prompt"><i data-lucide="copy"></i></button>
+            </div>
+            <p class="expand-prompt" id="expandPrompt"></p>
+          </div>
+
+          <div class="meta-card">
+            <div class="meta-card-head">
+              <span class="meta-caption">Details</span>
+            </div>
+            <div class="meta-grid" id="expandMetaGrid"></div>
+          </div>
+
+          <div class="expand-actions">
+            <button class="btn secondary" id="expandEdit"><i data-lucide="pencil"></i> Edit</button>
+            <a class="btn primary" id="expandDownload" download><i data-lucide="download"></i> Save</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Library Import Picker (Prepare Designs) -->
+  <div class="modal-backdrop panel hidden" id="prepLibraryModal">
+    <div class="modal modal-expand">
+      <button class="modal-close" id="prepLibraryClose" title="Close"><i data-lucide="x"></i></button>
+      <div class="prep-lib-head">
+        <h2 class="modal-title">From My Designs</h2>
+        <p class="modal-sub" id="prepLibSub">Select designs to add to the prepare queue.</p>
+      </div>
+      <div class="prep-lib-toolbar">
+        <span class="prep-lib-count" id="prepLibCount">0 selected</span>
+        <button type="button" class="btn secondary btn-sm" id="prepLibSelectAll">Select all</button>
+        <button type="button" class="btn secondary btn-sm" id="prepLibDeselectAll">Deselect all</button>
+      </div>
+      <div class="prep-lib-grid" id="prepLibGrid"></div>
+      <div class="prep-lib-actions">
+        <button type="button" class="btn secondary" id="prepLibCancel">Cancel</button>
+        <button type="button" class="btn primary" id="prepLibConfirm" disabled>
+          <i data-lucide="plus"></i> Add selected
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- About Us Modal -->
+  <div class="about-modal-backdrop" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle">
+    <div class="about-modal-content">
+      <header class="about-modal-header">
+        <h2 class="about-modal-title gradient-text" id="aboutModalTitle">Magic Fabrica Studio</h2>
+        <button class="about-modal-close" id="aboutModalClose" title="Close" aria-label="Close about dialog">✕</button>
+      </header>
+      <p class="about-modal-sub">Autonomous Creative & POD Engine — a high-throughput, autonomous print-on-demand studio
+        engine — built to
+        turn ideas into market-ready merch at scale.</p>
+      <div class="about-feature-list">
+        <div class="about-feature">
+          <span class="about-feature-icon"><i data-lucide="server"></i></span>
+          <div>
+            <h3>Multi-Node Architecture</h3>
+            <p>Pooled Gemini account engine for non-stop batch generation.</p>
+          </div>
+        </div>
+        <div class="about-feature">
+          <span class="about-feature-icon"><i data-lucide="sliders"></i></span>
+          <div>
+            <h3>Niche Variations</h3>
+            <p>Transform 1 base design into 100 market-ready variations.</p>
+          </div>
+        </div>
+        <div class="about-feature">
+          <span class="about-feature-icon"><i data-lucide="layers"></i></span>
+          <div>
+            <h3>Design to Design</h3>
+            <p>Automated redraw engine converting sketches into clean vector art.</p>
+          </div>
+        </div>
+        <div class="about-feature">
+          <span class="about-feature-icon"><i data-lucide="type"></i></span>
+          <div>
+            <h3>Text to Image</h3>
+            <p>Targeted POD prompts built for commercial merchandising.</p>
+          </div>
+        </div>
+        <div class="about-feature">
+          <span class="about-feature-icon"><i data-lucide="sparkles"></i></span>
+          <div>
+            <h3>Pixel to Pixel</h3>
+            <p>Multi-canvas redraw pipeline with strict composition preservation and zero prompt drift.</p>
+          </div>
+        </div>
+        <div class="about-feature">
+          <span class="about-feature-icon"><i data-lucide="crop"></i></span>
+          <div>
+            <h3>Prepare Designs</h3>
+            <p>Autonomous post-processing pipeline to trim backgrounds, upscale resolution, and export print-ready
+              assets.</p>
+          </div>
+        </div>
+        <div class="about-feature">
+          <span class="about-feature-icon"><i data-lucide="wand-2"></i></span>
+          <div>
+            <h3>Magic Style Engine</h3>
+            <p>Curated +60 style taxonomy with automated AI visual matching.</p>
+          </div>
+        </div>
+        <div class="about-feature-card">
+          <div class="about-feature-icon">
+            <!-- Palette icon matching the sidebar Art Style + Niche tab -->
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle>
+              <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle>
+              <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle>
+              <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle>
+              <path
+                d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z">
+              </path>
+            </svg>
+          </div>
+          <div class="about-feature-text">
+            <h4>Art Style + Niche</h4>
+            <p>Cross-pollinate targeted product niches with tailored artistic styles for instant collection expansion.
+            </p>
+          </div>
+        </div>
+        <div class="about-feature-card">
+          <div class="about-feature-icon">
+            <!-- Same price-tag SVG as the sidebar Magic Listing button -->
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+            </svg>
+          </div>
+          <div class="about-feature-text">
+            <h4>Magic Listing</h4>
+            <p>Autonomous SEO metadata, title, and bullet generation for multi-platform POD publishing.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Style Catalog Modal -->
+  <div class="style-catalog-backdrop" id="styleCatalogModal" role="dialog" aria-modal="true"
+    aria-labelledby="styleCatalogTitle">
+    <div class="style-catalog-content">
+      <header class="style-catalog-header">
+        <h2 class="style-catalog-title" id="styleCatalogTitle">✨ Magic Style Catalog</h2>
+        <button class="style-catalog-close" id="styleCatalogClose" title="Close"
+          aria-label="Close style catalog">✕</button>
+      </header>
+      <input type="text" class="style-catalog-search" id="styleCatalogSearch" placeholder="Search styles..." />
+      <div class="style-catalog-grid" id="styleCatalogGrid"></div>
+    </div>
+  </div>
+
+  <script src="/vendor/lucide/umd/lucide.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+
+</html>
