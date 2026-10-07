@@ -82,7 +82,14 @@
     </div>
   </aside>
 
-  <main class="main">
+  <main class="main" id="main-content">
+    <!-- Shared Phantom Arc Aura Background Host (visible across all inner views, excluded on Home) -->
+    <div id="auraBgHost" class="aura-container aura-bg-host hidden" aria-hidden="true">
+      <div class="aura-layer aura-layer-1" aria-hidden="true"></div>
+      <div class="aura-layer aura-layer-2" aria-hidden="true"></div>
+      <div class="aura-layer aura-layer-3" aria-hidden="true"></div>
+    </div>
+
     <header class="top-bar">
       <img src="LOGO.png" alt="Magic Fabrica Studio" class="hero-brand-logo" />
       <span class="top-status">
@@ -100,10 +107,6 @@
       </span>
     </header>
     <div id="view"></div>
-
-
-    <div id="view-pixel-to-pixel" class="view-panel hidden"></div>
-    <div id="view-prepare" class="view-panel hidden"></div>
   </main>
 
   <!-- Edit Modal -->
@@ -305,9 +308,12 @@
   </div>
 
   <!-- Style Catalog Modal -->
-  <div class="style-catalog-backdrop" id="styleCatalogModal" role="dialog" aria-modal="true"
+  <div class="style-catalog-backdrop aura-container" id="styleCatalogModal" role="dialog" aria-modal="true"
     aria-labelledby="styleCatalogTitle">
-    <div class="style-catalog-content">
+    <div class="aura-layer aura-layer-1" aria-hidden="true"></div>
+    <div class="aura-layer aura-layer-2" aria-hidden="true"></div>
+    <div class="aura-layer aura-layer-3" aria-hidden="true"></div>
+    <div class="style-catalog-content aura-content">
       <header class="style-catalog-header">
         <h2 class="style-catalog-title" id="styleCatalogTitle">✨ Magic Style Catalog</h2>
         <button class="style-catalog-close" id="styleCatalogClose" title="Close"

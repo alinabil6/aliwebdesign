@@ -959,7 +959,7 @@ function viewMount(name) {
   if (!el) {
     el = document.createElement("div");
     el.id = `section-${name}`;
-    el.className = "app-section";
+    el.className = name === "home" ? "app-section" : "app-section aura-content view-section";
     $("#view").appendChild(el);
   }
   return el;
@@ -1775,8 +1775,14 @@ function renderPrepareDesigns() {
 }
 
 
+let currentView = "home";
+window.currentView = currentView;
+
 function showView(name) {
   if (!views[name]) name = "home";
+  currentView = name;
+  window.currentView = name;
+
   if (viewTeardown) {
     viewTeardown();
     viewTeardown = null;
@@ -1784,6 +1790,13 @@ function showView(name) {
   $$(".nav-btn").forEach((b) =>
     b.classList.toggle("active", b.dataset.view === name)
   );
+
+  // Toggle Phantom Arc Aura background host:
+  // EXCLUDE HOME PAGE: hidden when active view is home, visible across all inner sections
+  const auraHost = document.getElementById("auraBgHost");
+  if (auraHost) {
+    auraHost.classList.toggle("hidden", currentView === "home");
+  }
 
   // Hide every mounted section, then reveal the target — pure CSS toggle,
   // no innerHTML wiping, no DOM destruction.
@@ -1794,8 +1807,13 @@ function showView(name) {
   if (!target) {
     target = document.createElement("div");
     target.id = `section-${name}`;
-    target.className = "app-section";
+    target.className = name === "home" ? "app-section" : "app-section aura-content view-section";
     $("#view").appendChild(target);
+  }
+  if (name !== "home") {
+    target.classList.add("aura-content", "view-section");
+  } else {
+    target.classList.remove("aura-content", "view-section");
   }
 
   // If the section has never been populated, execute its render function.
@@ -5666,10 +5684,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const themeToggle = $("#themeToggle");
   if (themeToggle) {
-    // data-theme="light" on <html> flips the light-token overrides in styles.css.
+    // data-theme="light" on <html> and body.light-mode flips the light-token overrides in styles.css.
     // The icon mirrors the active theme; choice persists across reloads.
     const applyTheme = (theme) => {
       document.documentElement.setAttribute("data-theme", theme);
+      document.body.classList.toggle("light-mode", theme === "light");
       themeToggle.innerHTML = `<i data-lucide="${theme === "light" ? "sun" : "moon"}"></i>`;
       renderIcons();
       try {
@@ -5686,7 +5705,11 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       savedTheme = localStorage.getItem("aliwebdesign-theme");
     } catch { /* storage unavailable */ }
-    if (savedTheme === "light" || savedTheme === "dark") applyTheme(savedTheme);
+    if (savedTheme === "light" || savedTheme === "dark") {
+      applyTheme(savedTheme);
+    } else {
+      document.body.classList.remove("light-mode");
+    }
   }
 
   initLibraryModals();

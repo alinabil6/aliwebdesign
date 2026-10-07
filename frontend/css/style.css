@@ -2,9 +2,23 @@
 
 :root {
   --color-border: transparent;
+
+  /* --- PHANTOM ARC AURA THEME TOKENS --- */
+  --aura-base-bg: #100e0b;
+  --aura-blend-1: screen;
+  --aura-blend-2: screen;
+  --aura-blend-3: lighten;
+  --aura-layer3-color: #c8a8a6;
+  --aura-layer1-opacity: 1;
+  --aura-layer2-opacity: 0.9;
+  --aura-layer3-opacity: 0.8;
+  --aura-layer1-bg: radial-gradient(ellipse 120% 145% at 50% -50%, rgba(0,0,0,0) 60%, rgb(12,24,210) 78%, rgba(0,0,0,0) 85%);
+  --aura-layer2-bg: radial-gradient(ellipse 120% 145% at 50% -50%, rgba(0,0,0,0) 55%, rgba(12,24,210,0.4) 80%, rgba(0,0,0,0) 100%);
+  --aura-layer3-bg: radial-gradient(ellipse 120% 145% at 50% -50%, rgba(0,0,0,0) 83.5%, var(--aura-layer3-color) 84.5%, rgba(0,0,0,0) 85.5%);
+
   /* Colors */
-  --color-void: #06090F;
-  --color-panel: rgba(13, 19, 32, 0.72);
+  --color-void: var(--aura-base-bg);
+  --color-panel: rgba(20, 24, 33, 0.75);
   --color-panel-border: rgba(255, 255, 255, 0.08);
   --color-ion: #38BDF8;
   --color-signal: #2563EB;
@@ -64,7 +78,7 @@
   --card-padding: 16px;
 
   /* Effects */
-  --blur-panel: blur(16px);
+  --blur-panel: blur(12px);
 
   /* Layout tokens added in v2.1 */
   --sidebar-width-expanded: 240px;
@@ -73,29 +87,45 @@
 }
 
 /* ── Light theme ──
-   Dark is the default (no attribute). The toggle sets data-theme="light" on
-   <html>; these token overrides re-skin the same glass system. --color-ion
-   darkens to sky-700 in light mode so cyan TEXT accents keep contrast — the
-   signal gradient is hex-locked in its token, so the gradient itself is
-   unchanged. All override selectors out-specify their base rules, so
-   position-independent. */
+   Modern bright white backdrop with luminous cyan/blue aura glows derived from
+   the platform icon palette (#38BDF8 / #2563EB), soft airy blend, and crisp solid glass cards. */
 
-:root[data-theme="light"] {
+:root[data-theme="light"],
+[data-theme="light"],
+body.light-mode {
   color-scheme: light;
-  --color-void: #F1F5F9;
-  --color-panel: rgba(255, 255, 255, 0.72);
-  --color-panel-border: rgba(15, 23, 42, 0.10);
-  --color-ion: #0369A1;
+  --aura-base-bg: #FFFFFF;
+  --aura-blend-1: normal;
+  --aura-blend-2: normal;
+  --aura-blend-3: normal;
+  --aura-layer1-opacity: 0.85;
+  --aura-layer2-opacity: 0.70;
+  --aura-layer3-opacity: 0.60;
+  --aura-layer1-bg: radial-gradient(ellipse 120% 135% at 50% -40%, rgba(255,255,255,0) 42%, rgba(56,189,248,0.22) 70%, rgba(37,99,235,0.12) 84%, rgba(255,255,255,0) 96%);
+  --aura-layer2-bg: radial-gradient(ellipse 110% 125% at 50% -30%, rgba(255,255,255,0) 48%, rgba(37,99,235,0.10) 74%, rgba(99,102,241,0.06) 88%, rgba(255,255,255,0) 100%);
+  --aura-layer3-bg: radial-gradient(ellipse 125% 140% at 50% -50%, rgba(255,255,255,0) 76%, rgba(56,189,248,0.25) 82%, rgba(37,99,235,0.12) 86%, rgba(255,255,255,0) 90%);
+  --color-void: var(--aura-base-bg);
+  --color-panel: rgba(255, 255, 255, 0.94);
+  --color-panel-border: rgba(226, 232, 240, 0.90);
+  --border-glass: rgba(226, 232, 240, 0.90);
+  --bg-surface: rgba(255, 255, 255, 0.94);
+  --color-ion: #0284C7;
+  --color-signal: #2563EB;
   --color-ink: #0F172A;
-  --color-ink-60: rgba(15, 23, 42, 0.62);
-  --color-ink-20: rgba(15, 23, 42, 0.14);
+  --color-ink-60: #64748B;
+  --color-ink-20: #CBD5E1;
 }
 
 /* Hardcoded dark fills that tokens don't cover */
 :root[data-theme="light"] input,
 :root[data-theme="light"] textarea,
-:root[data-theme="light"] select {
-  background: rgba(255, 255, 255, 0.75);
+:root[data-theme="light"] select,
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+  color: #0F172A;
 }
 
 :root[data-theme="light"] .note,
@@ -252,18 +282,26 @@ body {
   margin: 0;
 }
 
-body {
+body,
+.app-layout {
   min-height: 100vh;
   width: 100vw;
   display: flex;
   align-items: stretch;
   overflow-x: hidden;
-  background-color: var(--color-void);
+  background-color: var(--aura-base-bg);
+  transition: background-color 0.3s ease;
   color: var(--color-ink);
   font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="light"] body,
+[data-theme="light"] body,
+body.light-mode {
+  background-color: #FFFFFF !important;
 }
 
 h1,
@@ -460,6 +498,144 @@ select:focus {
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
+  overflow: visible !important;
+}
+
+.view-section {
+  position: relative;
+  z-index: 1;
+  overflow: visible !important;
+  min-height: 100%;
+}
+
+/* --- PHANTOM ARC AURA BACKGROUND LAYERS --- */
+
+/* The wrapper: transparent container holding layers and foreground content */
+.aura-container {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background-color: transparent !important;
+}
+
+/* Shared layer base */
+.aura-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* Layer 1 */
+.aura-layer-1 {
+  background: var(--aura-layer1-bg);
+  mix-blend-mode: var(--aura-blend-1);
+  filter: blur(50px);
+  opacity: var(--aura-layer1-opacity, 1);
+}
+
+/* Layer 2 */
+.aura-layer-2 {
+  background: var(--aura-layer2-bg);
+  mix-blend-mode: var(--aura-blend-2);
+  filter: blur(175px);
+  opacity: var(--aura-layer2-opacity, 0.9);
+}
+
+/* Layer 3 */
+.aura-layer-3 {
+  background: var(--aura-layer3-bg);
+  mix-blend-mode: var(--aura-blend-3);
+  filter: blur(50px);
+  opacity: var(--aura-layer3-opacity, 0.8);
+}
+
+@media (min-width: 1024px) {
+  .aura-layer-1, .aura-layer-3 {
+    filter: blur(72px);
+  }
+  .aura-layer-2 {
+    filter: blur(252px);
+  }
+}
+
+/* Content wrapper must sit above blend layers */
+.aura-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Shared background host mounted behind main content */
+.aura-bg-host {
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-width);
+  right: 0;
+  bottom: 0;
+  height: 100vh;
+  min-height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  background-color: transparent !important;
+}
+
+@media (max-width: 768px) {
+  .aura-bg-host {
+    left: 0;
+  }
+}
+
+/* Ensure aura host respects .hidden utility */
+.aura-bg-host.hidden {
+  display: none !important;
+}
+
+/* Card, panel and input surface contrast preservation */
+.panel,
+.card,
+.t2i-panel,
+.t2i-output-panel,
+.ml-panel,
+.nv-panel,
+.nv-output-panel,
+.d2d-panel,
+.d2d-output-panel,
+.as-panel,
+.as-output-panel,
+.meta-card,
+.prepare-config-card {
+  background: var(--bg-surface);
+  backdrop-filter: var(--blur-panel);
+  -webkit-backdrop-filter: var(--blur-panel);
+}
+
+[data-theme="light"] .panel,
+[data-theme="light"] .card,
+[data-theme="light"] .t2i-panel,
+[data-theme="light"] .t2i-output-panel,
+[data-theme="light"] .ml-panel,
+[data-theme="light"] .nv-panel,
+[data-theme="light"] .nv-output-panel,
+[data-theme="light"] .d2d-panel,
+[data-theme="light"] .d2d-output-panel,
+[data-theme="light"] .as-panel,
+[data-theme="light"] .as-output-panel,
+[data-theme="light"] .meta-card,
+[data-theme="light"] .prepare-config-card,
+[data-theme="light"] .prepare-master-container,
+[data-theme="light"] .account-card,
+[data-theme="light"] .fleet-cell,
+[data-theme="light"] .stat-card,
+[data-theme="light"] .modal {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid rgba(226, 232, 240, 0.90) !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 1px 4px -1px rgba(15, 23, 42, 0.03) !important;
+  backdrop-filter: var(--blur-panel);
+  -webkit-backdrop-filter: var(--blur-panel);
 }
 
 /* Ensure the main view wrapper accommodates full height and scrolls vertically */
@@ -470,6 +646,7 @@ select:focus {
   overflow-y: auto !important;
   overflow-x: hidden;
   position: relative;
+  z-index: 1;
 }
 
 /* Ensure the .hidden utility takes strict precedence */
