@@ -4343,7 +4343,8 @@ body:has(.home-view:not([style*="display: none"])),
 /* No solid fill — the card is a pane of glass over the video, and the hover
    tint is the only thing that ever colors it. */
 .home-pillar-card {
-  background: rgba(255, 255, 255, 0.03);
+  position: relative !important;
+  background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -4351,13 +4352,16 @@ body:has(.home-view:not([style*="display: none"])),
   padding: 20px 18px;
   text-align: left;
   cursor: pointer;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, background 0.2s ease !important;
+  will-change: transform;
 }
 
 .home-pillar-card:hover {
-  background: rgba(56, 189, 248, 0.08);
-  border-color: rgba(56, 189, 248, 0.45);
-  transform: translateY(-4px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 16px rgba(56, 189, 248, 0.18);
+  background: rgba(56, 189, 248, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
+  transform: translateY(-6px) scale(1.02) !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(56, 189, 248, 0.28) !important;
+  z-index: 10 !important;
 }
 
 /* Fill-mode override for the cards only. .luxury-enter uses `both`, so the
@@ -5594,8 +5598,10 @@ body.light .placement-box-btn {
 .home-deck-viewport {
   overflow: hidden !important;
   flex: 1 !important;
-  max-width: 1120px !important;
-  border-radius: 16px !important;
+  max-width: 1140px !important;
+  border-radius: 20px !important;
+  padding: 14px 8px !important;
+  margin: -14px -8px !important;
 }
 
 .home-deck-track {
@@ -5615,6 +5621,7 @@ body.light .placement-box-btn {
   width: 50% !important;
   flex: 0 0 50% !important;
   box-sizing: border-box !important;
+  padding: 4px 6px !important;
 }
 
 /* Right-side More/Back button */
@@ -5755,8 +5762,10 @@ body.light .placement-box-btn {
 .home-deck-viewport {
   overflow: hidden !important;
   flex: 1 !important;
-  max-width: 1120px !important;
-  border-radius: 16px !important;
+  max-width: 1140px !important;
+  border-radius: 20px !important;
+  padding: 14px 8px !important;
+  margin: -14px -8px !important;
 }
 
 .home-deck-track {
@@ -5776,6 +5785,7 @@ body.light .placement-box-btn {
   width: 50% !important;
   flex: 0 0 50% !important;
   box-sizing: border-box !important;
+  padding: 4px 6px !important;
 }
 
 .home-deck-side-btn {
