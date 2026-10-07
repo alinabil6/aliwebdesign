@@ -290,7 +290,6 @@ body,
   align-items: stretch;
   overflow-x: hidden;
   background-color: var(--aura-base-bg);
-  transition: background-color 0.3s ease;
   color: var(--color-ink);
   font-family: var(--font-body);
   font-size: var(--text-body);
