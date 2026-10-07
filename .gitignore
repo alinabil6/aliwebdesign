@@ -1,0 +1,41 @@
+# ── Dependencies ─────────────────────────────
+node_modules/
+bun.lock
+bun.lockb
+.ssh_keys/
+
+# ── Runtime state ────────────────────────────
+profiles/               # hidden browser profiles — sessions/credentials live here
+library/                # generated + source artwork
+tmp/
+temp/
+*.db
+*.db-wal                # SQLite WAL journal
+*.db-shm                # SQLite shared-memory journal
+
+# ── Logs ─────────────────────────────────────
+*.log
+
+# ── Secrets ──────────────────────────────────
+.env
+.env.*
+
+# ── Media/artifacts ──────────────────────────
+*.png
+!frontend/favicon.png
+*.mp4
+*.webm
+*.tmp
+
+debug-*.png
+account-*.png
+uploads/
+
+*.db-wal
+*.db-shm
+backend/*.db-wal
+backend/*.db-shm
+profiles/
+**/profiles/
+
+*.log

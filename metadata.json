@@ -1,0 +1,8 @@
+{
+  "name": "Magic Fabrica Studio",
+  "description": "High-throughput autonomous POD design studio engine for AI design generation, niche variations, and style transformation.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

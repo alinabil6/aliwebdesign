@@ -1,0 +1,177 @@
+import { Router } from "express";
+import multer from "multer";
+import { v4 as uuidv4 } from "uuid";
+import { storeInLibrary } from "../lib/files.js";
+import { insertDesign } from "../lib/db.js";
+import { hasReadyAccount } from "../lib/accounts.js";
+import { runFleetBatch } from "../lib/queue.js";
+import { buildPrompt } from "../prompts/textToImage.js";
+import { resolveStyle } from "../lib/styleResolver.js";
+
+const router = Router();
+// multipart form fields only — no file uploads on this endpoint.
+const form = multer().none();
+
+// POST /api/generate/text-to-image
+// multipart: prompt (text), count (1–100), manualStyle (optional)
+router.post("/text-to-image", form, async (req, res) => {
+  try {
+    const prompt = String(req.body.prompt || "").trim();
+    if (!prompt) {
+      return res.status(400).json({ error: "prompt is required" });
+    }
+    const count = Math.min(100, Math.max(1, parseInt(req.body.count, 10) || 1));
+    const style = resolveStyle(req);
+    const styleId = style.style_id;
+    const bg_color = req.body.bg_color || req.body.background_color || "";
+    const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
+
+    if (!hasReadyAccount()) {
+      return res.status(503).json({ error: "No Gemini account is ready — open the Accounts tab and sign in" });
+    }
+
+    // One task per variation; runFleetBatch fans them out across the ENTIRE
+    // ready fleet in parallel — each account runs its own profile browser
+    // concurrently (e.g. count=3 with 5 accounts → 3 accounts run at once).
+    const tasks = Array.from({ length: count }, (_, v) => ({
+      prompt: buildPrompt({
+        prompt,
+        variant: v,
+        style_directive: style.style_directive,
+        style_name: style.style_name,
+        bg_color,
+        aspectRatio,
+      }),
+      imagePaths: [],
+    }));
+
+    // Streaming (NDJSON) vs classic JSON response. The client requests
+    // streaming via the Accept header or ?stream=true; each finished design
+    // is flushed down the open connection the moment its buffer is saved.
+    const wantsStream =
+      req.headers.accept?.includes("application/x-ndjson") || req.query.stream === "true";
+
+    // Abort on client disconnect (Stop button severs the HTTP connection) —
+    // the fleet batch races its generations against this signal so nothing
+    // keeps running (and no disk/DB writes happen) after the user cancels.
+    const routeAbort = new AbortController();
+    res.on("close", () => {
+      if (!res.writableEnded) {
+        routeAbort.abort();
+      }
+    });
+
+    if (wantsStream) {
+      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+      res.setHeader("Transfer-Encoding", "chunked");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+
+      // Keep-alive heartbeat every 15s to prevent socket drops during long 100-design batches
+      const heartbeatInterval = setInterval(() => {
+        if (!res.writableEnded) {
+          try {
+            res.write(JSON.stringify({ event: "heartbeat" }) + "\n");
+          } catch (_) {}
+        }
+      }, 15000);
+
+      let streamedCount = 0;
+      try {
+        await runFleetBatch(
+          tasks,
+          async ({ buffer, taskIndex, task, account }) => {
+            if (routeAbort.signal.aborted) return null;
+            const out = storeInLibrary(buffer, `${uuidv4()}.png`);
+            const design = insertDesign({
+              id: uuidv4(),
+              feature: "text-to-image",
+              output_image_path: out.rel,
+              prompt_used: task.prompt,
+              user_input: styleId ? `${prompt} [style:${styleId}]` : prompt,
+            });
+            const decorated = {
+              ...design,
+              account_id: account?.id || null,
+              account_email: account?.email || null,
+            };
+            streamedCount++;
+            // STREAM CHUNK IMMEDIATELY TO CLIENT
+            res.write(JSON.stringify({ event: "design", slotIndex: taskIndex, design: decorated }) + "\n");
+            return decorated;
+          },
+          {
+            signal: routeAbort.signal,
+            onItemError: async ({ taskIndex, error }) => {
+              if (wantsStream && !res.writableEnded) {
+                try {
+                  res.write(JSON.stringify({ event: "slot_failed", slotIndex: taskIndex, error: error.message || "Generation failed" }) + String.fromCharCode(10));
+                } catch (_) {}
+              }
+            }
+          }
+        );
+
+        if (streamedCount === 0) {
+          console.warn(
+            `[TextToImage] No slot returned an image buffer. Gemini may have generated a text-only refusal or the generation timed out.`
+          );
+          res.write(
+            JSON.stringify({
+              event: "error",
+              error: "No image generated by Gemini for this design (possible safety refusal or timeout).",
+            }) + "\n"
+          );
+        }
+        res.write(JSON.stringify({ event: "done", count: streamedCount }) + "\n");
+      } finally {
+        clearInterval(heartbeatInterval);
+      }
+      res.end();
+    } else {
+      const savedDesigns = new Array(tasks.length);
+      await runFleetBatch(
+        tasks,
+        async ({ buffer, taskIndex, task, account }) => {
+          if (routeAbort.signal.aborted) return null;
+          const out = storeInLibrary(buffer, `${uuidv4()}.png`);
+          const design = insertDesign({
+            id: uuidv4(),
+            feature: "text-to-image",
+            output_image_path: out.rel,
+            prompt_used: task.prompt,
+            user_input: styleId ? `${prompt} [style:${styleId}]` : prompt,
+          });
+          const decorated = {
+            ...design,
+            account_id: account?.id || null,
+            account_email: account?.email || null,
+          };
+          savedDesigns[taskIndex] = decorated;
+          return decorated;
+        },
+        { signal: routeAbort.signal }
+      );
+
+      const designs = savedDesigns.filter(Boolean);
+      if (designs.length === 0) {
+        throw new Error("No image generated by Gemini for this design (possible safety refusal or timeout).");
+      }
+      res.json({ success: true, designs });
+    }
+  } catch (err) {
+    console.error("text-to-image failed:", err);
+    if (res.headersSent) {
+      // Headers already flushed (streaming) — emit an error event instead.
+      try {
+        res.write(JSON.stringify({ event: "error", error: err.message || "Generation failed" }) + "\n");
+        res.end();
+      } catch (_) { /* connection already closed */ }
+    } else {
+      res.status(500).json({ error: "Generation failed" });
+    }
+  }
+});
+
+export default router;
