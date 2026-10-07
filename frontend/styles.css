@@ -5582,107 +5582,6 @@ body.light .placement-box-btn {
   margin: 6px 0 !important;
 }
 
-.home-deck-outer {
-  position: relative !important;
-  z-index: 2 !important;
-  width: 100% !important;
-  max-width: 1220px !important;
-  margin: 0 auto !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 16px !important;
-  flex: 0 0 auto !important;
-}
-
-.home-deck-viewport {
-  overflow: hidden !important;
-  flex: 1 !important;
-  max-width: 1140px !important;
-  border-radius: 20px !important;
-  padding: 14px 8px !important;
-  margin: -14px -8px !important;
-}
-
-.home-deck-track {
-  display: flex !important;
-  width: 200% !important;
-  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}
-
-.home-deck-track.is-page-2 {
-  transform: translateX(-50%) !important;
-}
-
-.home-deck-page {
-  display: grid !important;
-  grid-template-columns: repeat(4, 1fr) !important;
-  gap: 16px !important;
-  width: 50% !important;
-  flex: 0 0 50% !important;
-  box-sizing: border-box !important;
-  padding: 4px 6px !important;
-}
-
-/* Right-side More/Back button */
-.home-deck-side-btn {
-  flex: 0 0 auto !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 6px !important;
-  padding: 10px 18px !important;
-  border-radius: 9999px !important;
-  background: rgba(30, 41, 59, 0.9) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  border: 1.5px solid #3b82f6 !important;
-  color: #60a5fa !important;
-  font-size: 0.82rem !important;
-  font-weight: 600 !important;
-  cursor: pointer !important;
-  line-height: 1.4 !important;
-  white-space: nowrap !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(59, 130, 246, 0.25) !important;
-}
-
-.home-deck-side-btn:hover {
-  background: #2563eb !important;
-  border-color: #60a5fa !important;
-  color: #ffffff !important;
-  transform: scale(1.05) !important;
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45) !important;
-}
-
-.home-deck-side-btn.is-back {
-  background: rgba(37, 99, 235, 0.2) !important;
-  border-color: #60a5fa !important;
-  color: #93c5fd !important;
-}
-
-.home-deck-side-btn.is-back:hover {
-  background: #2563eb !important;
-  color: #ffffff !important;
-}
-
-@media (max-width: 1024px) {
-  .home-deck-page {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
-}
-
-@media (max-width: 640px) {
-  .home-deck-page {
-    grid-template-columns: 1fr !important;
-  }
-}
-
-/* ── End Home Deck ── */
-
-
-
-
-
 /* ── Home Centered Hero & Deck Fix ── */
 .home-view {
   display: flex !important;
@@ -5749,12 +5648,12 @@ body.light .placement-box-btn {
   position: relative !important;
   z-index: 2 !important;
   width: 100% !important;
-  max-width: 1240px !important;
+  max-width: 1260px !important;
   margin: 0 auto !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 16px !important;
+  gap: 14px !important;
   flex: 0 0 auto !important;
   margin-bottom: 6px !important;
 }
@@ -5762,7 +5661,7 @@ body.light .placement-box-btn {
 .home-deck-viewport {
   overflow: hidden !important;
   flex: 1 !important;
-  max-width: 1140px !important;
+  max-width: 1100px !important;
   border-radius: 20px !important;
   padding: 14px 8px !important;
   margin: -14px -8px !important;
@@ -5788,15 +5687,18 @@ body.light .placement-box-btn {
   padding: 4px 6px !important;
 }
 
-.home-deck-side-btn {
-  flex: 0 0 auto !important;
+/* Symmetrical Left & Right Navigation Buttons */
+.home-deck-nav-btn {
+  flex: 0 0 88px !important;
+  width: 88px !important;
+  height: 42px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 6px !important;
-  padding: 10px 18px !important;
+  padding: 0 14px !important;
   border-radius: 9999px !important;
-  background: rgba(30, 41, 59, 0.92) !important;
+  background: rgba(30, 41, 59, 0.9) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   border: 1.5px solid #3b82f6 !important;
@@ -5804,12 +5706,14 @@ body.light .placement-box-btn {
   font-size: 0.82rem !important;
   font-weight: 600 !important;
   cursor: pointer !important;
-  line-height: 1.4 !important;
+  line-height: 1 !important;
   white-space: nowrap !important;
+  user-select: none !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(59, 130, 246, 0.25) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
-.home-deck-side-btn:hover {
+.home-deck-nav-btn:not(.is-disabled):hover {
   background: #2563eb !important;
   border-color: #60a5fa !important;
   color: #ffffff !important;
@@ -5817,15 +5721,18 @@ body.light .placement-box-btn {
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45) !important;
 }
 
-.home-deck-side-btn.is-back {
-  background: rgba(37, 99, 235, 0.2) !important;
-  border-color: #60a5fa !important;
-  color: #93c5fd !important;
+.home-deck-nav-btn.is-disabled {
+  opacity: 0.3 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: rgba(255, 255, 255, 0.45) !important;
+  background: rgba(15, 23, 42, 0.45) !important;
+  cursor: default !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
 }
 
-.home-deck-side-btn.is-back:hover {
-  background: #2563eb !important;
-  color: #ffffff !important;
+.home-deck-nav-arrow {
+  flex-shrink: 0 !important;
 }
 
 @media (max-width: 1024px) {

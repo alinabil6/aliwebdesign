@@ -1871,8 +1871,15 @@ function renderHome() {
         </div>
       </div>
 
-      <!-- Bottom Card Deck with Right-Side Control -->
+      <!-- Bottom Card Deck with Symmetrical Left & Right Navigation -->
       <div class="home-deck-outer">
+        <button type="button" class="home-deck-nav-btn prev is-disabled" id="homeDeckPrevBtn" aria-label="Previous tools" title="Previous tools">
+          <svg class="home-deck-nav-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path>
+          </svg>
+          <span class="home-deck-nav-label">Back</span>
+        </button>
+
         <div class="home-deck-viewport">
           <div class="home-deck-track" id="homeCardsTrack">
             <!-- Page 1: Primary Tools -->
@@ -1925,9 +1932,9 @@ function renderHome() {
           </div>
         </div>
 
-        <button type="button" class="home-deck-side-btn" id="homeDeckSideBtn" aria-label="Show more tools" title="Slide to view more tools">
-          <span class="home-deck-side-label">More</span>
-          <svg class="home-deck-side-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <button type="button" class="home-deck-nav-btn next" id="homeDeckNextBtn" aria-label="More tools" title="Slide to view more tools">
+          <span class="home-deck-nav-label">More</span>
+          <svg class="home-deck-nav-arrow" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path>
           </svg>
         </button>
@@ -1943,29 +1950,35 @@ function renderHome() {
     card.addEventListener("click", () => showView(card.dataset.go));
   });
 
-  // 2-Page Deck Slider (Right Button)
+  // Balanced 2-Page Deck Slider Controls (Left & Right)
   const track = $("#homeCardsTrack");
-  const sideBtn = $("#homeDeckSideBtn");
-  if (track && sideBtn) {
-    const label = sideBtn.querySelector(".home-deck-side-label");
-    const arrow = sideBtn.querySelector(".home-deck-side-arrow");
-    let isPage2 = false;
+  const prevBtn = $("#homeDeckPrevBtn");
+  const nextBtn = $("#homeDeckNextBtn");
 
-    sideBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      isPage2 = !isPage2;
-      track.classList.toggle("is-page-2", isPage2);
-      if (label) label.textContent = isPage2 ? "Back" : "More";
-      if (arrow) {
-        arrow.innerHTML = isPage2
-          ? '<path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path>'
-          : '<path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path>';
-      }
-      sideBtn.setAttribute("aria-label", isPage2 ? "Back to main tools" : "Show more tools");
-      sideBtn.classList.toggle("is-back", isPage2);
-    });
-  }
+  const setPage = (isPage2) => {
+    if (!track) return;
+    track.classList.toggle("is-page-2", isPage2);
+    if (prevBtn) {
+      prevBtn.classList.toggle("is-disabled", !isPage2);
+      prevBtn.setAttribute("aria-disabled", String(!isPage2));
+    }
+    if (nextBtn) {
+      nextBtn.classList.toggle("is-disabled", isPage2);
+      nextBtn.setAttribute("aria-disabled", String(isPage2));
+    }
+  };
+
+  prevBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setPage(false);
+  });
+
+  nextBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setPage(true);
+  });
 
   renderIcons();
 }
