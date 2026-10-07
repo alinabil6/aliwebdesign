@@ -421,7 +421,6 @@ select:focus {
   color: var(--color-ink-60);
   font-size: 14px;
   padding: 0;
-  transition: background 160ms ease, color 160ms ease;
 }
 
 .nav-text {
@@ -801,7 +800,7 @@ select:focus {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.2s ease, transform 0.2s ease;
+  transition: transform 0.2s ease;
 }
 
 /* ── Style Catalog header pill ────────────────────────────── */
@@ -817,7 +816,6 @@ select:focus {
   font-weight: 500;
   font-size: 12.5px;
   cursor: pointer;
-  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
@@ -854,7 +852,6 @@ select:focus {
   justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transition: all 0.25s ease;
 }
 
 .about-modal-backdrop.active {
@@ -931,7 +928,6 @@ select:focus {
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 8px;
-  transition: color 0.2s ease;
 }
 
 .about-modal-close:hover {
@@ -1099,7 +1095,6 @@ select:focus {
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 8px;
-  transition: color 0.2s ease;
 }
 
 .style-catalog-close:hover {
@@ -1132,7 +1127,6 @@ select:focus {
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.04);
-  transition: border-color 0.2s ease, background 0.2s ease;
 }
 
 .style-catalog-card:hover {
@@ -1172,7 +1166,6 @@ select:focus {
   border: 1px solid rgba(56, 189, 248, 0.35);
   background: rgba(56, 189, 248, 0.12);
   color: #38bdf8;
-  transition: all 0.2s ease;
 }
 
 .style-catalog-copy-btn:hover {
@@ -1251,7 +1244,6 @@ select:focus {
   padding: 10px 32px 10px 14px;
   font-size: 14px;
   font-family: inherit;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .manual-style-input:focus {
@@ -1277,7 +1269,6 @@ select:focus {
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
   padding: 0;
 }
 
@@ -1344,7 +1335,6 @@ select:focus {
   border-radius: var(--radius-buttons);
   font-size: 14px;
   border: 1px solid transparent;
-  transition: all 0.2s ease;
 }
 
 .btn.primary {
@@ -1724,7 +1714,6 @@ select:focus {
   border-radius: 12px;
   overflow: hidden;
   padding: 1.5rem;
-  transition: all 0.3s ease-in-out;
 }
 
 .card-placeholder::before {
@@ -1800,7 +1789,7 @@ select:focus {
 }
 
 .card-fade-in {
-  animation: fadeInCard 0.35s ease-out forwards;
+  animation: none;
 }
 
 @keyframes fadeInCard {
@@ -1909,7 +1898,6 @@ select:focus {
   background: rgba(37, 99, 235, 0.12);
   border: 1px solid #3b82f6;
   color: #60a5fa;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .refdata-clear-btn:hover {
@@ -1937,7 +1925,6 @@ select:focus {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  transition: border-color 120ms ease, background 120ms ease;
 }
 
 .multi-dropzone:hover,
@@ -1957,7 +1944,6 @@ select:focus {
   background: rgba(56, 189, 248, 0.14) !important;
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35), 0 0 24px rgba(56, 189, 248, 0.25), inset 0 0 16px rgba(56, 189, 248, 0.1) !important;
   transform: scale(1.01);
-  transition: all 0.15s ease-in-out;
 }
 
 /* Clipboard paste (Ctrl+V) — kbd chips inside dropzone hints + glow pulse. */
@@ -2435,7 +2421,7 @@ kbd {
   border: 1px solid rgba(56, 189, 248, 0.3);
   border-radius: 14px;
   backdrop-filter: blur(12px);
-  animation: fadeIn 0.2s ease;
+  animation: none;
 }
 
 .batch-info {
@@ -2511,7 +2497,6 @@ kbd {
   place-items: center;
   padding: 0;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
 .pill-btn:hover {
@@ -2575,7 +2560,6 @@ kbd {
   place-items: center;
   color: transparent;
   z-index: 6;
-  transition: all 0.15s ease;
 }
 
 .select-indicator svg {
@@ -2673,7 +2657,6 @@ kbd {
   place-items: center;
   cursor: pointer;
   z-index: 10;
-  transition: all 0.15s ease;
 }
 
 .modal-close:hover {
@@ -2903,7 +2886,6 @@ kbd {
   border: 1px solid var(--color-panel-border);
   background: rgba(255, 255, 255, 0.04);
   color: var(--color-ink-60);
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .copy-btn svg {
@@ -3325,7 +3307,6 @@ kbd {
   border-radius: var(--radius-cards);
   background: rgba(10, 15, 26, 0.5);
   padding: 10px;
-  transition: border-color 120ms ease, background 120ms ease;
   width: 100%;
   box-sizing: border-box;
   /* Fill the card's vertical dead space so the reference panel matches the
@@ -3402,7 +3383,6 @@ kbd {
   background: rgba(239, 68, 68, 0.18);
   color: var(--color-error);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
   flex-shrink: 0;
 }
 
@@ -3583,7 +3563,6 @@ kbd {
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
@@ -4105,7 +4084,6 @@ body:has(.home-view:not([style*="display: none"])),
   border-radius: 6px;
   font-size: 11px;
   cursor: pointer;
-  transition: all 0.2s;
 }
 
 .kw-pill:hover {
@@ -4161,7 +4139,7 @@ body:has(.home-view:not([style*="display: none"])),
 }
 
 .luxury-enter {
-  animation: luxuryReveal 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: none;
 }
 
 /* The delay longhands out-specify .luxury-enter's shorthand (which would
@@ -4373,7 +4351,6 @@ body:has(.home-view:not([style*="display: none"])),
   padding: 20px 18px;
   text-align: left;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .home-pillar-card:hover {
@@ -4449,7 +4426,6 @@ body:has(.home-view:not([style*="display: none"])),
   color: #7DD3FC;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .home-cards-arrow:hover {
@@ -4477,7 +4453,6 @@ body:has(.home-view:not([style*="display: none"])),
   cursor: pointer;
   border: 1px solid rgba(56, 189, 248, 0.35);
   background: rgba(37, 99, 235, 0.12);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .home-cards-dot.active {
@@ -4615,7 +4590,6 @@ body:has(.home-view:not([style*="display: none"])),
   background: linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(37, 99, 235, 0.18) 100%);
   color: var(--accent-cyan, #38BDF8);
   box-shadow: 0 4px 14px rgba(56, 189, 248, 0.08);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .magic-style-btn:hover {
@@ -4741,7 +4715,6 @@ body:has(.home-view:not([style*="display: none"])),
   padding: 2.2rem 1.5rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s ease;
   margin: 1rem 0;
 }
 
@@ -4795,7 +4768,7 @@ body:has(.home-view:not([style*="display: none"])),
   cursor: pointer;
   padding: 0;
   font-size: 10px;
-  transition: transform 0.15s, background 0.15s;
+  transition: transform 0.15s;
 }
 
 .prepare-thumb-del:hover {
@@ -4832,7 +4805,6 @@ body:has(.home-view:not([style*="display: none"])),
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  transition: all 0.2s ease;
   min-width: 0;
   box-sizing: border-box;
 }
@@ -4885,7 +4857,6 @@ body:has(.home-view:not([style*="display: none"])),
   font-weight: 500;
   padding: 0.5rem 0.25rem;
   cursor: pointer;
-  transition: all 0.15s ease;
   text-align: center;
 }
 
@@ -4979,7 +4950,6 @@ body:has(.home-view:not([style*="display: none"])),
   gap: 0.5rem;
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35);
-  transition: all 0.2s ease;
 }
 
 .prepare-submit-pill:hover:not(:disabled) {
@@ -5008,7 +4978,6 @@ body:has(.home-view:not([style*="display: none"])),
   font-size: 0.84rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
 .placement-box-btn.active {
@@ -5148,7 +5117,6 @@ body.light .placement-box-btn.active,
   padding: 2.2rem 1.5rem;
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s ease;
   margin: 1rem 0;
 }
 
@@ -5436,7 +5404,6 @@ body.light .placement-box-btn {
   border: 1.5px solid rgba(255, 255, 255, 0.08) !important;
   overflow: hidden !important;
   cursor: pointer !important;
-  transition: all 0.18s ease !important;
 }
 
 .prep-lib-item:hover {
@@ -5670,7 +5637,6 @@ body.light .placement-box-btn {
   line-height: 1.4 !important;
   white-space: nowrap !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(59, 130, 246, 0.25) !important;
-  transition: all 0.22s ease !important;
 }
 
 .home-deck-side-btn:hover {
@@ -5831,7 +5797,6 @@ body.light .placement-box-btn {
   line-height: 1.4 !important;
   white-space: nowrap !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(59, 130, 246, 0.25) !important;
-  transition: all 0.22s ease !important;
 }
 
 .home-deck-side-btn:hover {
@@ -5919,7 +5884,6 @@ section.ml-panel div:has(> button[class*="delete"]) button {
 
 /* Terminal States for Generation Progress */
 .progress-line svg {
-  transition: color 0.2s ease;
 }
 .progress-line.is-complete svg,
 .progress-line.is-stopped svg {
@@ -5956,7 +5920,6 @@ section.ml-panel div:has(> button[class*="delete"]) button {
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--color-ink, #f8fafc);
   cursor: pointer;
-  transition: all 0.15s ease;
   user-select: none;
 }
 :root[data-theme="light"] .shape-btn {
