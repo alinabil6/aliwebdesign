@@ -5,6 +5,7 @@ const execAsync = promisify(exec);
 import fs from "fs";
 import os from "os";
 import path from "path";
+import Database from "better-sqlite3";
 
 const LOCAL_APPDATA = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
 
@@ -199,75 +200,146 @@ function externalAuthArgs(profileDir, url) {
   ];
 }
 
-function safeFileContains(filePath, needles) {
+function querySQLiteSafe(srcDbPath, queryFn) {
+  if (!fs.existsSync(srcDbPath)) return null;
+  const tempSub = fs.mkdtempSync(path.join(os.tmpdir(), "mf-probe-"));
+  const dst = path.join(tempSub, path.basename(srcDbPath));
   try {
-    if (!fs.existsSync(filePath)) return false;
-    const buf = fs.readFileSync(filePath);
-    return needles.some((n) => buf.includes(n));
-  } catch (_) {
-    try {
-      const tmpPath = filePath + `.${Date.now()}.tmp`;
-      fs.copyFileSync(filePath, tmpPath);
-      const buf = fs.readFileSync(tmpPath);
-      try { fs.unlinkSync(tmpPath); } catch (_) {}
-      return needles.some((n) => buf.includes(n));
-    } catch (_) {
-      return false;
+    fs.copyFileSync(srcDbPath, dst);
+    if (fs.existsSync(srcDbPath + "-wal")) {
+      fs.copyFileSync(srcDbPath + "-wal", dst + "-wal");
     }
+    if (fs.existsSync(srcDbPath + "-shm")) {
+      fs.copyFileSync(srcDbPath + "-shm", dst + "-shm");
+    }
+    const reader = new Database(dst, { readonly: true, fileMustExist: true });
+    try {
+      return queryFn(reader);
+    } finally {
+      reader.close();
+    }
+  } catch (_) {
+    return null;
+  } finally {
+    try { fs.rmSync(tempSub, { recursive: true, force: true }); } catch (_) {}
   }
 }
 
 export function isGeminiAuthenticatedOnDisk(profileDir) {
-  const geminiNeedles = [
-    Buffer.from("gemini.google.com"),
-    Buffer.from("__Secure-1PSID"),
-    Buffer.from("__Secure-3PSID"),
+  const defaultDir = path.join(profileDir, "Default");
+  if (!fs.existsSync(defaultDir)) return false;
+
+  // 1) Primary Navigation Verification (History SQLite database + WAL)
+  const historyPath = path.join(defaultDir, "History");
+  let latestUrl = "";
+  let latestTitle = "";
+  let hasGeminiUrl = false;
+
+  if (fs.existsSync(historyPath)) {
+    const historyRows = querySQLiteSafe(historyPath, (db) => {
+      try {
+        return db.prepare("SELECT url, title, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 10").all();
+      } catch (_) {
+        return null;
+      }
+    });
+
+    if (historyRows && historyRows.length > 0) {
+      const latest = historyRows[0];
+      latestUrl = String(latest?.url || "").toLowerCase();
+      latestTitle = String(latest?.title || "").toLowerCase();
+
+      // Check if user is actively on any Google sign-in / verification / captcha / password / 2FA screen
+      if (
+        latestUrl.includes("accounts.google.com") ||
+        latestUrl.includes("/signin") ||
+        latestUrl.includes("/challenge") ||
+        latestTitle.includes("sign in") ||
+        latestTitle.includes("verify it's you") ||
+        latestTitle.includes("verify it’s you") ||
+        latestTitle.includes("confirm you're not a robot") ||
+        latestTitle.includes("confirm you’re not a robot") ||
+        latestTitle.includes("2-step") ||
+        latestTitle.includes("google accounts")
+      ) {
+        // Under NO circumstances close the window while the user is still on accounts.google.com
+        return false;
+      }
+
+      // Check if the latest visited page is actually Gemini
+      if (
+        (latestUrl.startsWith("https://gemini.google.com") || latestUrl.startsWith("http://gemini.google.com")) &&
+        !latestUrl.includes("accounts.google.com")
+      ) {
+        hasGeminiUrl = true;
+      }
+    }
+  }
+
+  // 2) Cookies Verification (Cookies SQLite database + WAL)
+  let hasGeminiCookies = false;
+  let hasAuthCookies = false;
+
+  const cookiePaths = [
+    path.join(defaultDir, "Network", "Cookies"),
+    path.join(defaultDir, "Cookies"),
   ];
 
-  // 1) Check Default/Sessions
-  try {
-    const sessDir = path.join(profileDir, "Default", "Sessions");
-    if (fs.existsSync(sessDir)) {
-      const entries = fs.readdirSync(sessDir);
-      for (const e of entries) {
-        if (safeFileContains(path.join(sessDir, e), [Buffer.from("gemini.google.com")])) {
-          return true;
+  for (const cPath of cookiePaths) {
+    if (fs.existsSync(cPath)) {
+      const cData = querySQLiteSafe(cPath, (db) => {
+        try {
+          const geminiCount = db.prepare("SELECT count(*) as c FROM cookies WHERE host_key LIKE '%gemini.google.com%'").get();
+          const authCount = db.prepare("SELECT count(*) as c FROM cookies WHERE host_key = '.google.com' AND name IN ('__Secure-1PSID', '__Secure-3PSID', '__Secure-1PSIDTS', '__Secure-3PSIDTS', 'SAPISID')").get();
+          return { gemini: geminiCount?.c || 0, auth: authCount?.c || 0 };
+        } catch (_) {
+          return null;
         }
+      });
+      if (cData) {
+        if (cData.gemini > 0) hasGeminiCookies = true;
+        if (cData.auth > 0) hasAuthCookies = true;
       }
+      if (hasGeminiCookies && hasAuthCookies) break;
     }
-  } catch (_) {}
+  }
 
-  // 2) Check Default/History
-  try {
-    const defDir = path.join(profileDir, "Default");
-    for (const h of ["History", "History-wal", "History-journal"]) {
-      if (safeFileContains(path.join(defDir, h), [Buffer.from("gemini.google.com")])) {
-        return true;
-      }
-    }
-  } catch (_) {}
+  // If Gemini navigation is confirmed AND auth or Gemini cookies exist -> successfully logged into Gemini!
+  if (hasGeminiUrl && (hasGeminiCookies || hasAuthCookies)) {
+    return true;
+  }
 
-  // 3) Check Default/Network/Cookies
-  try {
-    const netDir = path.join(profileDir, "Default", "Network");
-    for (const c of ["Cookies", "Cookies-wal", "Cookies-journal"]) {
-      if (safeFileContains(path.join(netDir, c), geminiNeedles)) {
-        return true;
-      }
-    }
-    const defCookies = path.join(profileDir, "Default", "Cookies");
-    if (safeFileContains(defCookies, geminiNeedles)) {
-      return true;
-    }
-  } catch (_) {}
+  // If Gemini cookies exist AND Google auth cookies exist AND the latest URL is not on accounts.google.com
+  if (hasGeminiCookies && hasAuthCookies && (!latestUrl || !latestUrl.includes("accounts.google.com"))) {
+    return true;
+  }
 
-  // 4) Check Default/Preferences
+  // 3) Session files check fallback (for when SQLite hasn't flushed yet)
   try {
-    const prefPath = path.join(profileDir, "Default", "Preferences");
-    if (fs.existsSync(prefPath)) {
-      const content = fs.readFileSync(prefPath, "utf8");
-      if (content.includes("account_info") && (content.includes("@gmail.com") || content.includes("@google.com"))) {
-        return true;
+    const sessDir = path.join(defaultDir, "Sessions");
+    if (fs.existsSync(sessDir)) {
+      const files = fs.readdirSync(sessDir);
+      for (const f of files) {
+        try {
+          const buf = fs.readFileSync(path.join(sessDir, f));
+          const str = buf.toString("latin1");
+          // If the session file contains active sign-in markers:
+          if (str.includes("challenge/recaptcha") || str.includes("signin/challenge") || str.includes("v3/signin")) {
+            const geminiIdx = str.lastIndexOf("https://gemini.google.com/app");
+            const accountsIdx = Math.max(
+              str.lastIndexOf("challenge/recaptcha"),
+              str.lastIndexOf("signin/challenge"),
+              str.lastIndexOf("v3/signin")
+            );
+            if (geminiIdx < accountsIdx) {
+              // Sign-in challenge is newer than Gemini! Still signing in.
+              return false;
+            }
+          }
+          if (str.includes("https://gemini.google.com/app") && (hasGeminiCookies || hasAuthCookies)) {
+            return true;
+          }
+        } catch (_) {}
       }
     }
   } catch (_) {}
@@ -381,8 +453,8 @@ export async function launchExternalAuthSession(account, url, opts = {}) {
         clearInterval(pollTimer);
         pollTimer = null;
 
-        // Give the browser 1.5s to finish writing cookies and auth tokens to disk
-        await new Promise((r) => setTimeout(r, 1500));
+        // Give the browser 2.5s to finish writing cookies and auth tokens to disk
+        await new Promise((r) => setTimeout(r, 2500));
         if (settled) return;
         settled = true;
         clearTimeout(timer);

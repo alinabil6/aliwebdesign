@@ -32,6 +32,7 @@ import {
   canLaunchBrowser,
   launchExternalAuthSession,
   extractEmailFromProfile,
+  killOrphanProcesses,
 } from "./browser.js";
 import * as web from "./geminiweb.js";
 import { rankReadyByHeadroom } from "./usage.js";
@@ -232,13 +233,19 @@ export async function addAccount(browser) {
     }
 
     // Give process cleanup / file unlock a moment
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 1500));
+    await killOrphanProcesses(profileDir).catch(() => {});
 
     // 1) Read email from profile disk files
     const profileEmail = extractEmailFromProfile(profileDir);
 
-    // 2) Verify session state and extract live email via headless check
-    const status = await checkAccount(id);
+    // 2) Verify session state and extract live email via headless check (with retry)
+    let status = await checkAccount(id);
+    if (!status || status.status !== READY) {
+      await new Promise((r) => setTimeout(r, 2000));
+      await killOrphanProcesses(profileDir).catch(() => {});
+      status = await checkAccount(id);
+    }
     if (!status || status.status !== READY) {
       await rmSyncRetry(profileDir).catch(() => {});
       deleteAccountRow(id);
@@ -284,10 +291,16 @@ export async function loginAccount(id) {
     }
 
     // Give process cleanup / file unlock a moment
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 1500));
+    await killOrphanProcesses(row.profileDirAbs || row.profile_dir).catch(() => {});
 
     const profileEmail = extractEmailFromProfile(row.profileDirAbs || row.profile_dir);
-    const status = await checkAccount(id);
+    let status = await checkAccount(id);
+    if (!status || status.status !== READY) {
+      await new Promise((r) => setTimeout(r, 2000));
+      await killOrphanProcesses(row.profileDirAbs || row.profile_dir).catch(() => {});
+      status = await checkAccount(id);
+    }
     if (!status || status.status !== READY) {
       return { success: false, status: status?.status || "cancelled", error: status?.error || "Google sign-in was not completed" };
     }
