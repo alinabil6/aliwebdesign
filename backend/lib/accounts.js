@@ -302,6 +302,17 @@ export async function addAccount(browser) {
             }
             await successPage.waitForTimeout(500);
           }
+          if (!detectedEmail) {
+            try {
+              const cookies = await entry.context.cookies();
+              for (const c of cookies) {
+                if (c.value && c.value.includes("@")) {
+                  const m = decodeURIComponent(c.value).match(GMAIL_RE);
+                  if (m) { detectedEmail = m[0]; break; }
+                }
+              }
+            } catch (_) {}
+          }
         }
       } finally {
         await closeProfile(id).catch(() => {});
@@ -423,6 +434,17 @@ export async function loginAccount(id) {
               break;
             }
             await successPage.waitForTimeout(500);
+          }
+          if (!detectedEmail) {
+            try {
+              const cookies = await entry.context.cookies();
+              for (const c of cookies) {
+                if (c.value && c.value.includes("@")) {
+                  const m = decodeURIComponent(c.value).match(GMAIL_RE);
+                  if (m) { detectedEmail = m[0]; break; }
+                }
+              }
+            } catch (_) {}
           }
         }
       } finally {
