@@ -4,17 +4,17 @@
   --color-border: transparent;
 
   /* --- PHANTOM ARC AURA THEME TOKENS (Extracted from Brand Logo & App Palette) --- */
-  --aura-base-bg: #0B0F19;
+  --aura-base-bg: #070B14;
   --aura-blend-1: screen;
   --aura-blend-2: screen;
   --aura-blend-3: screen;
   --aura-layer3-color: #38BDF8;
-  --aura-layer1-opacity: 0.95;
-  --aura-layer2-opacity: 0.85;
-  --aura-layer3-opacity: 0.75;
-  --aura-layer1-bg: radial-gradient(ellipse 120% 140% at 50% -25%, rgba(0,0,0,0) 45%, rgba(56, 189, 248, 0.28) 70%, rgba(37, 99, 235, 0.42) 84%, rgba(0,0,0,0) 95%);
-  --aura-layer2-bg: radial-gradient(ellipse 110% 130% at 50% -20%, rgba(0,0,0,0) 50%, rgba(37, 99, 235, 0.25) 74%, rgba(56, 189, 248, 0.14) 88%, rgba(0,0,0,0) 100%);
-  --aura-layer3-bg: radial-gradient(ellipse 130% 140% at 50% -35%, rgba(0,0,0,0) 68%, rgba(56, 189, 248, 0.35) 82%, rgba(37, 99, 235, 0.18) 88%, rgba(0,0,0,0) 94%);
+  --aura-layer1-opacity: 0.35;
+  --aura-layer2-opacity: 0.25;
+  --aura-layer3-opacity: 0.20;
+  --aura-layer1-bg: radial-gradient(ellipse 120% 140% at 50% -25%, rgba(0,0,0,0) 48%, rgba(56, 189, 248, 0.14) 74%, rgba(37, 99, 235, 0.20) 86%, rgba(0,0,0,0) 96%);
+  --aura-layer2-bg: radial-gradient(ellipse 110% 130% at 50% -20%, rgba(0,0,0,0) 52%, rgba(37, 99, 235, 0.15) 76%, rgba(56, 189, 248, 0.08) 90%, rgba(0,0,0,0) 100%);
+  --aura-layer3-bg: radial-gradient(ellipse 130% 140% at 50% -35%, rgba(0,0,0,0) 72%, rgba(56, 189, 248, 0.18) 84%, rgba(37, 99, 235, 0.09) 90%, rgba(0,0,0,0) 95%);
 
   /* Colors */
   --color-void: var(--aura-base-bg);
