@@ -30,6 +30,8 @@ import {
   isProfileOpen,
   browserExecutable,
   canLaunchBrowser,
+  launchExternalAuthSession,
+  extractEmailFromProfile,
 } from "./browser.js";
 import * as web from "./geminiweb.js";
 import { rankReadyByHeadroom } from "./usage.js";
@@ -191,6 +193,8 @@ async function extractSignedInEmail(page) {
  * and the row is persisted 'ready' with the detected email. Returns
  * { success, email, status, id, account }.
  */
+const AUTH_URL = "https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app";
+
 export async function addAccount(browser) {
   if (!canLaunchBrowser(browser)) {
     const id = uuidv4();
@@ -219,113 +223,32 @@ export async function addAccount(browser) {
   });
   const row = withAbs(account);
 
-  let authenticated = false;
-  let successPage = null;
-  let detectedEmail = null;
-
   try {
-    await withProfile(row, async (page, entry) => {
-      try {
-        await page
-          .goto("https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app", {
-            waitUntil: "domcontentloaded",
-            timeout: 30000,
-          })
-          .catch(() => {});
-
-        const startTime = Date.now();
-        while (Date.now() - startTime < 180000 && !authenticated) {
-          const pages = entry.context.pages();
-          const openPages = pages.filter((p) => !p.isClosed());
-          if (openPages.length === 0) {
-            break;
-          }
-
-          for (const p of openPages) {
-            let url = "";
-            try { url = p.url() || ""; } catch (_) {}
-
-            // Detect if the user typed or inserted their email during Google sign-in
-            if (!detectedEmail && url.includes("accounts.google.com")) {
-              try {
-                const inserted = await p.evaluate(() => {
-                  const input = document.querySelector('input[type="email"], #identifierId, input[name="identifier"]');
-                  if (input && input.value && input.value.includes("@")) return input.value.trim();
-                  const profile = document.querySelector('#profileIdentifier, [data-profile-identifier], [data-email]');
-                  if (profile) {
-                    const text = profile.innerText || profile.getAttribute('data-email') || profile.getAttribute('data-profile-identifier') || '';
-                    const m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i);
-                    if (m) return m[0];
-                  }
-                  return null;
-                }).catch(() => null);
-                if (inserted) {
-                  const m = String(inserted).match(GMAIL_RE);
-                  if (m) detectedEmail = m[0];
-                }
-              } catch (_) {}
-            }
-
-            // Check if Gemini has loaded
-            const isGeminiUrl = (url.includes("gemini.google.com") || url.includes("google.com/app")) && !url.includes("accounts.google.com");
-            if (isGeminiUrl) {
-              authenticated = true;
-              successPage = p;
-              break;
-            }
-
-            // Fallback: check if Gemini DOM components are mounted
-            if (!url.includes("accounts.google.com") && url.includes("google.com")) {
-              try {
-                const isGeminiDom = await p.evaluate(() => {
-                  return Boolean(document.querySelector('rich-textarea, .ql-editor, [role="textbox"], [data-test-id*="chat"], button[aria-label*="Google Account" i], button[aria-label*="@"]'));
-                }).catch(() => false);
-                if (isGeminiDom) {
-                  authenticated = true;
-                  successPage = p;
-                  break;
-                }
-              } catch (_) {}
-            }
-          }
-          if (!authenticated) await new Promise((r) => setTimeout(r, 1000));
-        }
-
-        if (authenticated && successPage) {
-          // Poll for avatar / page email for up to 6 seconds to give the shadow DOM time to mount
-          const emailDeadline = Date.now() + 6000;
-          while (Date.now() < emailDeadline) {
-            const emailFound = await extractSignedInEmail(successPage).catch(() => null);
-            if (emailFound) {
-              detectedEmail = emailFound;
-              break;
-            }
-            await successPage.waitForTimeout(500);
-          }
-          if (!detectedEmail) {
-            try {
-              const cookies = await entry.context.cookies();
-              for (const c of cookies) {
-                if (c.value && c.value.includes("@")) {
-                  const m = decodeURIComponent(c.value).match(GMAIL_RE);
-                  if (m) { detectedEmail = m[0]; break; }
-                }
-              }
-            } catch (_) {}
-          }
-        }
-      } finally {
-        await closeProfile(id).catch(() => {});
-      }
-    }, { visible: true });
-
-    if (!authenticated) {
+    const authWindow = await launchExternalAuthSession(row, AUTH_URL);
+    if (!authWindow.closed) {
       await rmSyncRetry(profileDir).catch(() => {});
       deleteAccountRow(id);
-      return { success: false, status: "cancelled" };
+      return { success: false, status: "cancelled", error: "Sign-in window was not closed before timeout" };
     }
 
-    const email = detectedEmail || "Google account";
+    // Give process cleanup / file unlock a moment
+    await new Promise((r) => setTimeout(r, 1200));
+
+    // 1) Read email from profile disk files
+    const profileEmail = extractEmailFromProfile(profileDir);
+
+    // 2) Verify session state and extract live email via headless check
+    const status = await checkAccount(id);
+    if (!status || status.status !== READY) {
+      await rmSyncRetry(profileDir).catch(() => {});
+      deleteAccountRow(id);
+      return { success: false, status: status?.status || "cancelled", error: status?.error || "Google sign-in was not completed" };
+    }
+
+    const email = (status.email && status.email !== "Google account" && status.email.includes("@"))
+      ? status.email
+      : (profileEmail || "Google account");
+
     const updated = updateAccountStatus(id, { status: READY, email });
     return { success: true, email, status: READY, id, account: withAbs(updated) };
   } catch (err) {
@@ -354,109 +277,25 @@ export async function loginAccount(id) {
   // Close any existing session to ensure a clean visible launch
   await closeProfile(id).catch(() => {});
 
-  let authenticated = false;
-  let successPage = null;
-  let detectedEmail = null;
-
   try {
-    await withProfile(row, async (page, entry) => {
-      try {
-        await page.goto("https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app", {
-          waitUntil: "domcontentloaded",
-          timeout: 30000,
-        }).catch(() => {});
-
-        const startTime = Date.now();
-        while (Date.now() - startTime < 180000 && !authenticated) {
-          const pages = entry.context.pages();
-          const openPages = pages.filter((p) => !p.isClosed());
-          if (openPages.length === 0) {
-            break;
-          }
-
-          for (const p of openPages) {
-            let url = "";
-            try { url = p.url() || ""; } catch (_) {}
-
-            // Detect if the user typed or inserted their email during Google sign-in
-            if (!detectedEmail && url.includes("accounts.google.com")) {
-              try {
-                const inserted = await p.evaluate(() => {
-                  const input = document.querySelector('input[type="email"], #identifierId, input[name="identifier"]');
-                  if (input && input.value && input.value.includes("@")) return input.value.trim();
-                  const profile = document.querySelector('#profileIdentifier, [data-profile-identifier], [data-email]');
-                  if (profile) {
-                    const text = profile.innerText || profile.getAttribute('data-email') || profile.getAttribute('data-profile-identifier') || '';
-                    const m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i);
-                    if (m) return m[0];
-                  }
-                  return null;
-                }).catch(() => null);
-                if (inserted) {
-                  const m = String(inserted).match(GMAIL_RE);
-                  if (m) detectedEmail = m[0];
-                }
-              } catch (_) {}
-            }
-
-            // Check if Gemini has loaded
-            const isGeminiUrl = (url.includes("gemini.google.com") || url.includes("google.com/app")) && !url.includes("accounts.google.com");
-            if (isGeminiUrl) {
-              authenticated = true;
-              successPage = p;
-              break;
-            }
-
-            // Fallback: check if Gemini DOM components are mounted
-            if (!url.includes("accounts.google.com") && url.includes("google.com")) {
-              try {
-                const isGeminiDom = await p.evaluate(() => {
-                  return Boolean(document.querySelector('rich-textarea, .ql-editor, [role="textbox"], [data-test-id*="chat"], button[aria-label*="Google Account" i], button[aria-label*="@"]'));
-                }).catch(() => false);
-                if (isGeminiDom) {
-                  authenticated = true;
-                  successPage = p;
-                  break;
-                }
-              } catch (_) {}
-            }
-          }
-          if (!authenticated) await new Promise((r) => setTimeout(r, 1000));
-        }
-
-        if (authenticated && successPage) {
-          // Poll for avatar / page email for up to 6 seconds to give shadow DOM time to mount
-          const emailDeadline = Date.now() + 6000;
-          while (Date.now() < emailDeadline) {
-            const emailFound = await extractSignedInEmail(successPage).catch(() => null);
-            if (emailFound) {
-              detectedEmail = emailFound;
-              break;
-            }
-            await successPage.waitForTimeout(500);
-          }
-          if (!detectedEmail) {
-            try {
-              const cookies = await entry.context.cookies();
-              for (const c of cookies) {
-                if (c.value && c.value.includes("@")) {
-                  const m = decodeURIComponent(c.value).match(GMAIL_RE);
-                  if (m) { detectedEmail = m[0]; break; }
-                }
-              }
-            } catch (_) {}
-          }
-        }
-      } finally {
-        await closeProfile(id).catch(() => {});
-      }
-    }, { visible: true });
-
-    if (!authenticated) {
-      return { success: false, status: "cancelled" };
+    const authWindow = await launchExternalAuthSession(row, AUTH_URL);
+    if (!authWindow.closed) {
+      return { success: false, status: "cancelled", error: "Sign-in window was not closed before timeout" };
     }
 
-    const email = detectedEmail || row.email || "Google account";
+    // Give process cleanup / file unlock a moment
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const profileEmail = extractEmailFromProfile(row.profileDirAbs || row.profile_dir);
+    const status = await checkAccount(id);
+    if (!status || status.status !== READY) {
+      return { success: false, status: status?.status || "cancelled", error: status?.error || "Google sign-in was not completed" };
+    }
+
+    const email = (status.email && status.email !== "Google account" && status.email.includes("@"))
+      ? status.email
+      : (profileEmail || row.email || "Google account");
+
     const updated = updateAccountStatus(id, { status: READY, email });
     return { success: true, email, status: READY, id, account: withAbs(updated) };
   } catch (err) {
@@ -510,11 +349,16 @@ export async function checkAccount(id) {
   // Live check enforced
   updateAccountStatus(id, { status: "checking" });
   try {
+    const profileEmail = extractEmailFromProfile(row.profileDirAbs || row.profile_dir);
     const s = await withProbePage(row, async (page) => {
-      const res = await web.checkSession(page, { fallbackEmail: row.email });
-      if (res.signedIn && (!row.email || row.email === "Google account" || !row.email.includes("@"))) {
+      const res = await web.checkSession(page, { fallbackEmail: row.email || profileEmail });
+      if (res.signedIn) {
         const found = await extractSignedInEmail(page).catch(() => null);
-        if (found) res.email = found;
+        if (found) {
+          res.email = found;
+        } else if (profileEmail) {
+          res.email = profileEmail;
+        }
       }
       return res;
     });
