@@ -705,8 +705,10 @@ body:has(#section-home:not(.hidden)) #auraBgHost,
   margin: 0;
 }
 
+#brandLogo,
 .hero-brand-logo {
-  height: 44px;
+  height: 32px;
+  max-height: 36px;
   width: auto;
   max-width: 320px;
   object-fit: contain;
