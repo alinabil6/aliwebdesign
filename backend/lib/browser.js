@@ -65,6 +65,20 @@ function makeLock() {
 }
 
 const DEBUG_MODE = process.env.DEBUG === "true" || process.env.NODE_ENV === "development";
+const VISIBLE_AUTH_ARGS = [
+  "--new-window",
+  "--start-maximized",
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-session-crashed-bubble",
+  "--hide-crash-restore-bubble",
+];
+
+const VISIBLE_AUTH_IGNORE_DEFAULT_ARGS = [
+  "--enable-automation",
+  "--no-sandbox",
+];
+
 function getLaunchArgs(opts = {}) {
   const isVisible = Boolean(opts?.visible);
   return [
@@ -118,31 +132,21 @@ export async function launchProfile(account, opts = {}) {
   const isVisible = Boolean(opts?.visible);
   if (isVisible) {
     isInteractiveAuthActive = true;
-    try {
-      return await chromium.launchPersistentContext(profileDir, {
-        channel: "chrome",
-        headless: false,
-        viewport: null,
-        args: [
-          "--start-maximized",
-          "--no-first-run",
-          "--no-default-browser-check",
-        ],
-      });
-    } catch (err) {
-      let executablePath;
-      try { executablePath = browserExecutable(account.browser); } catch (_) {}
-      return await chromium.launchPersistentContext(profileDir, {
-        ...(executablePath ? { executablePath } : {}),
-        headless: false,
-        viewport: null,
-        args: [
-          "--start-maximized",
-          "--no-first-run",
-          "--no-default-browser-check",
-        ],
-      });
+    const browserName = account.browser || "chrome";
+    const launchOpts = {
+      headless: false,
+      viewport: null,
+      ignoreDefaultArgs: VISIBLE_AUTH_IGNORE_DEFAULT_ARGS,
+      args: VISIBLE_AUTH_ARGS,
+    };
+
+    if (browserName === "chrome" || browserName === "google") {
+      launchOpts.channel = "chrome";
+    } else {
+      launchOpts.executablePath = browserExecutable(browserName);
     }
+
+    return await chromium.launchPersistentContext(profileDir, launchOpts);
   }
 
   // Headless generation launch
