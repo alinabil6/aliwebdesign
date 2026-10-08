@@ -91,7 +91,7 @@
     </div>
 
     <header class="top-bar">
-      <img src="LOGO.png" alt="Magic Fabrica Studio" class="hero-brand-logo" />
+      <img src="LOGO.png" alt="Magic Fabrica Studio" class="hero-brand-logo" id="brandLogo" />
       <span class="top-status">
         <button class="style-catalog-btn" id="styleCatalogBtn" title="Browse the Magic Style catalog">
           <i data-lucide="sparkles"></i> Style Catalog
@@ -308,12 +308,9 @@
   </div>
 
   <!-- Style Catalog Modal -->
-  <div class="style-catalog-backdrop aura-container" id="styleCatalogModal" role="dialog" aria-modal="true"
+  <div class="style-catalog-backdrop" id="styleCatalogModal" role="dialog" aria-modal="true"
     aria-labelledby="styleCatalogTitle">
-    <div class="aura-layer aura-layer-1" aria-hidden="true"></div>
-    <div class="aura-layer aura-layer-2" aria-hidden="true"></div>
-    <div class="aura-layer aura-layer-3" aria-hidden="true"></div>
-    <div class="style-catalog-content aura-content">
+    <div class="style-catalog-content">
       <header class="style-catalog-header">
         <h2 class="style-catalog-title" id="styleCatalogTitle">✨ Magic Style Catalog</h2>
         <button class="style-catalog-close" id="styleCatalogClose" title="Close"

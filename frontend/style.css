@@ -3,18 +3,18 @@
 :root {
   --color-border: transparent;
 
-  /* --- PHANTOM ARC AURA THEME TOKENS --- */
-  --aura-base-bg: #100e0b;
+  /* --- PHANTOM ARC AURA THEME TOKENS (Extracted from Brand Logo & App Palette) --- */
+  --aura-base-bg: #0B0F19;
   --aura-blend-1: screen;
   --aura-blend-2: screen;
-  --aura-blend-3: lighten;
-  --aura-layer3-color: #c8a8a6;
-  --aura-layer1-opacity: 1;
-  --aura-layer2-opacity: 0.9;
-  --aura-layer3-opacity: 0.8;
-  --aura-layer1-bg: radial-gradient(ellipse 120% 145% at 50% -50%, rgba(0,0,0,0) 60%, rgb(12,24,210) 78%, rgba(0,0,0,0) 85%);
-  --aura-layer2-bg: radial-gradient(ellipse 120% 145% at 50% -50%, rgba(0,0,0,0) 55%, rgba(12,24,210,0.4) 80%, rgba(0,0,0,0) 100%);
-  --aura-layer3-bg: radial-gradient(ellipse 120% 145% at 50% -50%, rgba(0,0,0,0) 83.5%, var(--aura-layer3-color) 84.5%, rgba(0,0,0,0) 85.5%);
+  --aura-blend-3: screen;
+  --aura-layer3-color: #38BDF8;
+  --aura-layer1-opacity: 0.95;
+  --aura-layer2-opacity: 0.85;
+  --aura-layer3-opacity: 0.75;
+  --aura-layer1-bg: radial-gradient(ellipse 120% 140% at 50% -25%, rgba(0,0,0,0) 45%, rgba(56, 189, 248, 0.28) 70%, rgba(37, 99, 235, 0.42) 84%, rgba(0,0,0,0) 95%);
+  --aura-layer2-bg: radial-gradient(ellipse 110% 130% at 50% -20%, rgba(0,0,0,0) 50%, rgba(37, 99, 235, 0.25) 74%, rgba(56, 189, 248, 0.14) 88%, rgba(0,0,0,0) 100%);
+  --aura-layer3-bg: radial-gradient(ellipse 130% 140% at 50% -35%, rgba(0,0,0,0) 68%, rgba(56, 189, 248, 0.35) 82%, rgba(37, 99, 235, 0.18) 88%, rgba(0,0,0,0) 94%);
 
   /* Colors */
   --color-void: var(--aura-base-bg);
@@ -101,9 +101,10 @@ body.light-mode {
   --aura-layer1-opacity: 0.85;
   --aura-layer2-opacity: 0.70;
   --aura-layer3-opacity: 0.60;
-  --aura-layer1-bg: radial-gradient(ellipse 120% 135% at 50% -40%, rgba(255,255,255,0) 42%, rgba(56,189,248,0.22) 70%, rgba(37,99,235,0.12) 84%, rgba(255,255,255,0) 96%);
-  --aura-layer2-bg: radial-gradient(ellipse 110% 125% at 50% -30%, rgba(255,255,255,0) 48%, rgba(37,99,235,0.10) 74%, rgba(99,102,241,0.06) 88%, rgba(255,255,255,0) 100%);
-  --aura-layer3-bg: radial-gradient(ellipse 125% 140% at 50% -50%, rgba(255,255,255,0) 76%, rgba(56,189,248,0.25) 82%, rgba(37,99,235,0.12) 86%, rgba(255,255,255,0) 90%);
+  --aura-layer3-color: #38BDF8;
+  --aura-layer1-bg: radial-gradient(ellipse 120% 135% at 50% -25%, rgba(255,255,255,0) 42%, rgba(56,189,248,0.24) 70%, rgba(37,99,235,0.14) 84%, rgba(255,255,255,0) 96%);
+  --aura-layer2-bg: radial-gradient(ellipse 110% 125% at 50% -20%, rgba(255,255,255,0) 48%, rgba(37,99,235,0.12) 74%, rgba(56,189,248,0.08) 88%, rgba(255,255,255,0) 100%);
+  --aura-layer3-bg: radial-gradient(ellipse 125% 140% at 50% -35%, rgba(255,255,255,0) 74%, rgba(56,189,248,0.26) 82%, rgba(37,99,235,0.12) 86%, rgba(255,255,255,0) 90%);
   --color-void: var(--aura-base-bg);
   --color-panel: rgba(255, 255, 255, 0.94);
   --color-panel-border: rgba(226, 232, 240, 0.90);
@@ -476,7 +477,7 @@ select:focus {
      views carry their own top offset below the sticky bar. */
   padding-top: 0 !important;
   margin-top: 0 !important;
-  padding: 0 40px 28px;
+  padding: 0 !important;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -569,12 +570,12 @@ select:focus {
 /* Shared background host mounted behind main content */
 .aura-bg-host {
   position: fixed;
-  top: 0;
+  top: 56px;
   left: var(--sidebar-width);
   right: 0;
   bottom: 0;
-  height: 100vh;
-  min-height: 100vh;
+  height: calc(100vh - 56px);
+  min-height: calc(100vh - 56px);
   pointer-events: none;
   z-index: 0;
   overflow: hidden;
@@ -587,8 +588,10 @@ select:focus {
   }
 }
 
-/* Ensure aura host respects .hidden utility */
-.aura-bg-host.hidden {
+/* Ensure aura host respects .hidden utility and is never visible on the Home stage */
+.aura-bg-host.hidden,
+body:has(#section-home:not(.hidden)) #auraBgHost,
+.main:has(#section-home:not(.hidden)) #auraBgHost {
   display: none !important;
 }
 
@@ -679,6 +682,7 @@ select:focus {
   max-height: 56px;
   width: 100%;
   padding: 0 28px;
+  box-sizing: border-box;
   /* Solid, dependable surface — physically separated from the content body
      by a clear bottom divider in both themes. No gradient bleed-through. */
   background: #0B0F19;
@@ -864,6 +868,9 @@ select:focus {
   max-width: 680px;
   max-height: 82vh;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 189, 248, 0.45) rgba(0, 0, 0, 0.32);
   background: rgba(13, 19, 32, 0.95);
   border: 1px solid rgba(56, 189, 248, 0.3);
   border-radius: 20px;
@@ -880,20 +887,25 @@ select:focus {
 }
 
 .about-modal-content::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .about-modal-content::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.32);
+  border-radius: 999px;
+  margin: 16px 4px 16px 0;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
 .about-modal-content::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.45);
   border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  box-shadow: inset 0 0 4px rgba(56, 189, 248, 0.3);
 }
 
 .about-modal-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.75);
 }
 
 .about-modal-header {
@@ -1017,6 +1029,21 @@ select:focus {
   color: #0f172a !important;
   border: 1px solid #e2e8f0 !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  scrollbar-color: rgba(37, 99, 235, 0.4) rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .about-modal-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .about-modal-content::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.4);
+  border: 1px solid rgba(37, 99, 235, 0.15);
+}
+
+[data-theme="light"] .about-modal-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(37, 99, 235, 0.65);
 }
 
 [data-theme="light"] .about-feature,
@@ -4030,8 +4057,8 @@ kbd {
 
 /* Lock scrolling while the home view is mounted — the parent containers drop
    their padding and overflow so nothing can scroll or show gutters. */
-body:has(.home-view:not([style*="display: none"])),
-.main:has(.home-view:not([style*="display: none"])) {
+body:has(#section-home:not(.hidden)),
+.main:has(#section-home:not(.hidden)) {
   overflow: hidden !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
