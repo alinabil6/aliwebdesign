@@ -5037,7 +5037,7 @@ async function renderAccounts() {
             <span class="add-glyph" aria-hidden="true">${GOOGLE_GLYPH}</span>
             <span class="status-text">Add an account</span>
           </div>
-          <p class="note">Opens a fresh browser window — sign in once and it closes automatically.</p>
+          <p class="note">Opens a real browser window — sign in once, then close that window so the app can verify it.</p>
           <div class="view-actions" style="margin-top:12px">
             <button class="btn secondary" data-add="chrome">${CHROME_GLYPH} Chrome</button>
             <button class="btn secondary" data-add="brave"><i data-lucide="shield"></i> Brave</button>
@@ -5101,7 +5101,7 @@ async function renderAccounts() {
 
 async function startAddAccount(browser) {
   try {
-    alert(`Opening ${browser} window. Sign into your Google account and wait for the window to close.`);
+    alert(`Opening a real ${browser} window. Sign into your Google account, wait until Gemini loads, then close that browser window so the app can verify the saved session.`);
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ browser }) });
     await renderAccounts();
     refreshTopBar();

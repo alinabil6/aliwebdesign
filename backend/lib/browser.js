@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 const execAsync = promisify(exec);
 import fs from "fs";
@@ -45,6 +45,20 @@ export function browserExecutable(name) {
     if (fs.existsSync(p)) return p;
   }
   throw new Error(`Could not find ${name === "brave" ? "Brave" : "Google Chrome"} on this machine.`);
+}
+
+function externalAuthArgs(profileDir, url) {
+  return [
+    `--user-data-dir=${profileDir}`,
+    "--profile-directory=Default",
+    "--new-window",
+    "--start-maximized",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-session-crashed-bubble",
+    "--hide-crash-restore-bubble",
+    url,
+  ];
 }
 
 const sessions = new Map();
@@ -171,6 +185,50 @@ export async function launchProfile(account, opts = {}) {
   }
 
   return await chromium.launchPersistentContext(profileDir, launchOpts);
+}
+
+export async function launchExternalAuthSession(account, url, opts = {}) {
+  const rawDir = account.profileDirAbs || account.profile_dir || path.join("profiles", account.id || "default");
+  const profileDir = path.isAbsolute(rawDir) ? rawDir : path.resolve(process.cwd(), rawDir);
+  fs.mkdirSync(profileDir, { recursive: true });
+
+  await killOrphanProcesses(profileDir);
+
+  const executablePath = browserExecutable(account.browser || "chrome");
+  const timeoutMs = opts.timeoutMs ?? 300000;
+
+  isInteractiveAuthActive = true;
+  return await new Promise((resolve, reject) => {
+    const child = spawn(executablePath, externalAuthArgs(profileDir, url), {
+      detached: false,
+      stdio: "ignore",
+      windowsHide: false,
+    });
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      isInteractiveAuthActive = false;
+      resolve({ closed: false, timedOut: true });
+    }, timeoutMs);
+
+    child.once("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      isInteractiveAuthActive = false;
+      reject(err);
+    });
+
+    child.once("exit", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      isInteractiveAuthActive = false;
+      resolve({ closed: true, code, signal });
+    });
+  });
 }
 
 async function ensureEntry(account, opts = {}) {

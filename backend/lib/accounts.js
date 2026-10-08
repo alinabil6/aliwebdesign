@@ -2,14 +2,11 @@
 // Accounts — the profile registry + session orchestration.
 //
 // Each row in browser_accounts owns a hidden browser profile directory.
-// addAccount() launches a fresh, visible browser window straight at Gemini
-// (gemini.google.com, which bounces to Google sign-in when logged out) and
-// BLOCKS while an active 1 s polling loop watches every page in the context
-// for the post-login redirect. The moment the signed-in Gemini URL is seen,
-// the session is flushed to disk, the launch window closes itself (releasing
-// the Windows file locks LOCK/Preferences), and the row flips 'ready' with the
-// detected email. Generation re-opens the profile on demand, round-robining
-// across ready accounts.
+// addAccount() launches a fresh, visible REAL browser process straight at
+// Google/Gemini using the isolated profile dir. The user signs in there, closes
+// that browser window, and then the backend verifies the saved session with a
+// non-interactive probe. Generation re-opens the profile on demand,
+// round-robining across ready accounts.
 // ────────────────────────────────────────────────
 import fs from "fs";
 import path from "path";
@@ -28,7 +25,7 @@ import {
   withProbePage,
   closeProfile,
   isProfileOpen,
-  browserExecutable,
+  launchExternalAuthSession,
   canLaunchBrowser,
 } from "./browser.js";
 import * as web from "./geminiweb.js";
@@ -49,6 +46,7 @@ export function withAbs(row) {
 const READY = "ready";
 const NOT_SIGNED_IN =
   "Not signed in to Gemini — open gemini.google.com in that profile and sign in.";
+const AUTH_URL = "https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app";
 
 /** Is at least one account signed in and usable for generation? */
 export function hasReadyAccount() {
@@ -157,13 +155,9 @@ async function extractSignedInEmail(page) {
 }
 
 /**
- * Add an account: create a hidden profile dir, open a sign-in window straight
- * at Gemini (signed-out Google bounces it to the login page), and poll
- * every page in the context every 1 s for the post-login redirect (max 120 s).
- * The instant the signed-in landing URL appears, the session is flushed to
- * disk, the window is GUARANTEED closed (releasing Windows profile-dir locks),
- * and the row is persisted 'ready' with the detected email. Returns
- * { success, email, status, id, account }.
+ * Add an account: create a hidden profile dir, open the requested real browser
+ * executable for Google/Gemini login, wait for the user to close it, then probe
+ * the saved session. Returns { success, email, status, id, account }.
  */
 export async function addAccount(browser) {
   if (!canLaunchBrowser(browser)) {
@@ -193,57 +187,23 @@ export async function addAccount(browser) {
   });
   const row = withAbs(account);
 
-  let authenticated = false;
-  let successPage = null;
-  let detectedEmail = null;
-
   try {
-    await withProfile(row, async (page, entry) => {
-      try {
-        await page
-          .goto("https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app", {
-            waitUntil: "domcontentloaded",
-            timeout: 30000,
-          })
-          .catch(() => {});
-
-        const startTime = Date.now();
-        while (Date.now() - startTime < 180000 && !authenticated) {
-          const pages = entry.context.pages();
-          const openPages = pages.filter((p) => !p.isClosed());
-          if (openPages.length === 0) {
-            break;
-          }
-
-          for (const p of openPages) {
-            let url = "";
-            try { url = p.url() || ""; } catch (_) {}
-            if (url.includes("gemini.google.com/app") && !url.includes("accounts.google.com")) {
-              authenticated = true;
-              successPage = p;
-              break;
-            }
-          }
-          if (!authenticated) await new Promise((r) => setTimeout(r, 1000));
-        }
-
-        if (authenticated && successPage) {
-          await successPage.waitForTimeout(3000);
-          detectedEmail = await extractSignedInEmail(successPage).catch(() => null);
-        }
-      } finally {
-        await closeProfile(id).catch(() => {});
-      }
-    }, { visible: true });
-
-    if (!authenticated) {
+    const authWindow = await launchExternalAuthSession(row, AUTH_URL);
+    if (!authWindow.closed) {
       await rmSyncRetry(profileDir).catch(() => {});
       deleteAccountRow(id);
-      return { success: false, status: "cancelled" };
+      return { success: false, status: "cancelled", error: "Sign-in window was not closed before timeout" };
     }
 
-    const email = detectedEmail || "Google account";
-    const updated = updateAccountStatus(id, { status: READY, email });
+    const status = await checkAccount(id);
+    if (!status || status.status !== READY) {
+      await rmSyncRetry(profileDir).catch(() => {});
+      deleteAccountRow(id);
+      return { success: false, status: status?.status || "cancelled", error: status?.error || "Google sign-in was not completed" };
+    }
+
+    const email = status.email || "Google account";
+    const updated = getAccountById(id);
     return { success: true, email, status: READY, id, account: withAbs(updated) };
   } catch (err) {
     await closeProfile(id).catch(() => {});
@@ -271,53 +231,19 @@ export async function loginAccount(id) {
   // Close any existing session to ensure a clean visible launch
   await closeProfile(id).catch(() => {});
 
-  let authenticated = false;
-  let successPage = null;
-  let detectedEmail = null;
-
   try {
-    await withProfile(row, async (page, entry) => {
-      try {
-        await page.goto("https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app", {
-          waitUntil: "domcontentloaded",
-          timeout: 30000,
-        }).catch(() => {});
-
-        const startTime = Date.now();
-        while (Date.now() - startTime < 180000 && !authenticated) {
-          const pages = entry.context.pages();
-          const openPages = pages.filter((p) => !p.isClosed());
-          if (openPages.length === 0) {
-            break;
-          }
-
-          for (const p of openPages) {
-            let url = "";
-            try { url = p.url() || ""; } catch (_) {}
-            if (url.includes("gemini.google.com/app") && !url.includes("accounts.google.com")) {
-              authenticated = true;
-              successPage = p;
-              break;
-            }
-          }
-          if (!authenticated) await new Promise((r) => setTimeout(r, 1000));
-        }
-
-        if (authenticated && successPage) {
-          await successPage.waitForTimeout(3000);
-          detectedEmail = await extractSignedInEmail(successPage).catch(() => null);
-        }
-      } finally {
-        await closeProfile(id).catch(() => {});
-      }
-    }, { visible: true });
-
-    if (!authenticated) {
-      return { success: false, status: "cancelled" };
+    const authWindow = await launchExternalAuthSession(row, AUTH_URL);
+    if (!authWindow.closed) {
+      return { success: false, status: "cancelled", error: "Sign-in window was not closed before timeout" };
     }
 
-    const email = detectedEmail || row.email || "Google account";
-    const updated = updateAccountStatus(id, { status: READY, email });
+    const status = await checkAccount(id);
+    if (!status || status.status !== READY) {
+      return { success: false, status: status?.status || "cancelled", error: status?.error || "Google sign-in was not completed" };
+    }
+
+    const email = status.email || row.email || "Google account";
+    const updated = getAccountById(id);
     return { success: true, email, status: READY, id, account: withAbs(updated) };
   } catch (err) {
     await closeProfile(id).catch(() => {});
