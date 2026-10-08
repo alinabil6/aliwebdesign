@@ -2,11 +2,14 @@
 // Accounts — the profile registry + session orchestration.
 //
 // Each row in browser_accounts owns a hidden browser profile directory.
-// addAccount() launches a fresh, visible REAL browser process straight at
-// Google/Gemini using the isolated profile dir. The user signs in there, closes
-// that browser window, and then the backend verifies the saved session with a
-// non-interactive probe. Generation re-opens the profile on demand,
-// round-robining across ready accounts.
+// addAccount() launches a fresh, visible browser window straight at Gemini
+// (gemini.google.com, which bounces to Google sign-in when logged out) and
+// BLOCKS while an active 1 s polling loop watches every page in the context
+// for the post-login redirect. The moment the signed-in Gemini URL is seen,
+// the session is flushed to disk, the launch window closes itself (releasing
+// the Windows file locks LOCK/Preferences), and the row flips 'ready' with the
+// detected email. Generation re-opens the profile on demand, round-robining
+// across ready accounts.
 // ────────────────────────────────────────────────
 import fs from "fs";
 import path from "path";
@@ -25,7 +28,7 @@ import {
   withProbePage,
   closeProfile,
   isProfileOpen,
-  launchExternalAuthSession,
+  browserExecutable,
   canLaunchBrowser,
 } from "./browser.js";
 import * as web from "./geminiweb.js";
@@ -46,7 +49,6 @@ export function withAbs(row) {
 const READY = "ready";
 const NOT_SIGNED_IN =
   "Not signed in to Gemini — open gemini.google.com in that profile and sign in.";
-const AUTH_URL = "https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app";
 
 /** Is at least one account signed in and usable for generation? */
 export function hasReadyAccount() {
@@ -101,13 +103,26 @@ async function rmSyncRetry(dir, attempts = 5, delayMs = 300) {
  * Falls back to the WIZ page-state bundle and any visible email text. Returns
  * the address or null — callers fall back to "Google account".
  */
-const GMAIL_RE = /[a-zA-Z0-9._%+-]+@gmail\.com/i;
+const GMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
 
-// The signed-in account chip carries the email in exactly these three shapes.
+// The signed-in account chip carries the email in these shapes.
 const EMAIL_CHIP_SELECTORS = [
   'button[aria-label*="@"]',
   'img[alt*="@"]',
   'a[aria-label*="@"]',
+  '[aria-label*="@"]',
+  '[title*="@"]',
+  'button[aria-label*="Google Account" i]',
+  'a[aria-label*="Google Account" i]',
+  '[aria-label*="Google Account" i]',
+  'button[aria-label*="Compte Google" i]',
+  'a[aria-label*="Compte Google" i]',
+  '[aria-label*="Compte Google" i]',
+  'a[href*="SignOutOptions"]',
+  'a[href*="accounts.google.com"]',
+  '.gb_A',
+  '[data-identifier]',
+  '[data-email]',
 ];
 
 async function extractSignedInEmail(page) {
@@ -121,8 +136,12 @@ async function extractSignedInEmail(page) {
         const el = loc.nth(i);
         const aria = (await el.getAttribute("aria-label").catch(() => null)) || "";
         const alt = (await el.getAttribute("alt").catch(() => null)) || "";
+        const title = (await el.getAttribute("title").catch(() => null)) || "";
+        const dataId = (await el.getAttribute("data-identifier").catch(() => null)) || "";
+        const dataEmail = (await el.getAttribute("data-email").catch(() => null)) || "";
+        const href = (await el.getAttribute("href").catch(() => null)) || "";
         const text = (await el.innerText().catch(() => "")) || "";
-        const m = `${aria} ${alt} ${text}`.match(GMAIL_RE);
+        const m = `${aria} ${alt} ${title} ${dataId} ${dataEmail} ${href} ${text}`.match(GMAIL_RE);
         if (m) return m[0];
       }
     } catch {
@@ -130,23 +149,32 @@ async function extractSignedInEmail(page) {
     }
   }
 
-  // 2) Light-DOM fallbacks: the WIZ page-state bundle, then body text.
+  // 2) Light-DOM fallbacks: the WIZ page-state bundle, header text, then body text.
   try {
     return await page.evaluate((reSrc) => {
-      const gmail = new RegExp(reSrc, "i");
+      const re = new RegExp(reSrc, "i");
       try {
         const wiz = window.WIZ_global_data;
         const raw =
           typeof wiz === "string" ? wiz : typeof wiz === "object" && wiz ? JSON.stringify(wiz) : "";
         if (raw) {
-          const m = raw.match(gmail);
+          const m = raw.match(re);
           if (m) return m[0];
         }
       } catch {
         /* not present */
       }
-      // Last resort: any visible text that mentions an @gmail.com address.
-      const m = (document.body?.innerText || "").match(gmail);
+      try {
+        const header = document.querySelector("header, [role='banner'], nav, .gb_d");
+        if (header) {
+          const m = (header.innerText || "").match(re);
+          if (m) return m[0];
+        }
+      } catch {
+        /* ignore */
+      }
+      // Last resort: any visible text that mentions an email address.
+      const m = (document.body?.innerText || "").match(re);
       return m ? m[0] : null;
     }, GMAIL_RE.source);
   } catch {
@@ -155,9 +183,13 @@ async function extractSignedInEmail(page) {
 }
 
 /**
- * Add an account: create a hidden profile dir, open the requested real browser
- * executable for Google/Gemini login, wait for the user to close it, then probe
- * the saved session. Returns { success, email, status, id, account }.
+ * Add an account: create a hidden profile dir, open a sign-in window straight
+ * at Gemini (signed-out Google bounces it to the login page), and poll
+ * every page in the context every 1 s for the post-login redirect (max 120 s).
+ * The instant the signed-in landing URL appears, the session is flushed to
+ * disk, the window is GUARANTEED closed (releasing Windows profile-dir locks),
+ * and the row is persisted 'ready' with the detected email. Returns
+ * { success, email, status, id, account }.
  */
 export async function addAccount(browser) {
   if (!canLaunchBrowser(browser)) {
@@ -187,23 +219,103 @@ export async function addAccount(browser) {
   });
   const row = withAbs(account);
 
+  let authenticated = false;
+  let successPage = null;
+  let detectedEmail = null;
+
   try {
-    const authWindow = await launchExternalAuthSession(row, AUTH_URL);
-    if (!authWindow.closed) {
+    await withProfile(row, async (page, entry) => {
+      try {
+        await page
+          .goto("https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app", {
+            waitUntil: "domcontentloaded",
+            timeout: 30000,
+          })
+          .catch(() => {});
+
+        const startTime = Date.now();
+        while (Date.now() - startTime < 180000 && !authenticated) {
+          const pages = entry.context.pages();
+          const openPages = pages.filter((p) => !p.isClosed());
+          if (openPages.length === 0) {
+            break;
+          }
+
+          for (const p of openPages) {
+            let url = "";
+            try { url = p.url() || ""; } catch (_) {}
+
+            // Detect if the user typed or inserted their email during Google sign-in
+            if (!detectedEmail && url.includes("accounts.google.com")) {
+              try {
+                const inserted = await p.evaluate(() => {
+                  const input = document.querySelector('input[type="email"], #identifierId, input[name="identifier"]');
+                  if (input && input.value && input.value.includes("@")) return input.value.trim();
+                  const profile = document.querySelector('#profileIdentifier, [data-profile-identifier], [data-email]');
+                  if (profile) {
+                    const text = profile.innerText || profile.getAttribute('data-email') || profile.getAttribute('data-profile-identifier') || '';
+                    const m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i);
+                    if (m) return m[0];
+                  }
+                  return null;
+                }).catch(() => null);
+                if (inserted) {
+                  const m = String(inserted).match(GMAIL_RE);
+                  if (m) detectedEmail = m[0];
+                }
+              } catch (_) {}
+            }
+
+            // Check if Gemini has loaded
+            const isGeminiUrl = (url.includes("gemini.google.com") || url.includes("google.com/app")) && !url.includes("accounts.google.com");
+            if (isGeminiUrl) {
+              authenticated = true;
+              successPage = p;
+              break;
+            }
+
+            // Fallback: check if Gemini DOM components are mounted
+            if (!url.includes("accounts.google.com") && url.includes("google.com")) {
+              try {
+                const isGeminiDom = await p.evaluate(() => {
+                  return Boolean(document.querySelector('rich-textarea, .ql-editor, [role="textbox"], [data-test-id*="chat"], button[aria-label*="Google Account" i], button[aria-label*="@"]'));
+                }).catch(() => false);
+                if (isGeminiDom) {
+                  authenticated = true;
+                  successPage = p;
+                  break;
+                }
+              } catch (_) {}
+            }
+          }
+          if (!authenticated) await new Promise((r) => setTimeout(r, 1000));
+        }
+
+        if (authenticated && successPage) {
+          // Poll for avatar / page email for up to 6 seconds to give the shadow DOM time to mount
+          const emailDeadline = Date.now() + 6000;
+          while (Date.now() < emailDeadline) {
+            const emailFound = await extractSignedInEmail(successPage).catch(() => null);
+            if (emailFound) {
+              detectedEmail = emailFound;
+              break;
+            }
+            await successPage.waitForTimeout(500);
+          }
+        }
+      } finally {
+        await closeProfile(id).catch(() => {});
+      }
+    }, { visible: true });
+
+    if (!authenticated) {
       await rmSyncRetry(profileDir).catch(() => {});
       deleteAccountRow(id);
-      return { success: false, status: "cancelled", error: "Sign-in window was not closed before timeout" };
+      return { success: false, status: "cancelled" };
     }
 
-    const status = await checkAccount(id);
-    if (!status || status.status !== READY) {
-      await rmSyncRetry(profileDir).catch(() => {});
-      deleteAccountRow(id);
-      return { success: false, status: status?.status || "cancelled", error: status?.error || "Google sign-in was not completed" };
-    }
-
-    const email = status.email || "Google account";
-    const updated = getAccountById(id);
+    const email = detectedEmail || "Google account";
+    const updated = updateAccountStatus(id, { status: READY, email });
     return { success: true, email, status: READY, id, account: withAbs(updated) };
   } catch (err) {
     await closeProfile(id).catch(() => {});
@@ -231,19 +343,99 @@ export async function loginAccount(id) {
   // Close any existing session to ensure a clean visible launch
   await closeProfile(id).catch(() => {});
 
+  let authenticated = false;
+  let successPage = null;
+  let detectedEmail = null;
+
   try {
-    const authWindow = await launchExternalAuthSession(row, AUTH_URL);
-    if (!authWindow.closed) {
-      return { success: false, status: "cancelled", error: "Sign-in window was not closed before timeout" };
+    await withProfile(row, async (page, entry) => {
+      try {
+        await page.goto("https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app", {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        }).catch(() => {});
+
+        const startTime = Date.now();
+        while (Date.now() - startTime < 180000 && !authenticated) {
+          const pages = entry.context.pages();
+          const openPages = pages.filter((p) => !p.isClosed());
+          if (openPages.length === 0) {
+            break;
+          }
+
+          for (const p of openPages) {
+            let url = "";
+            try { url = p.url() || ""; } catch (_) {}
+
+            // Detect if the user typed or inserted their email during Google sign-in
+            if (!detectedEmail && url.includes("accounts.google.com")) {
+              try {
+                const inserted = await p.evaluate(() => {
+                  const input = document.querySelector('input[type="email"], #identifierId, input[name="identifier"]');
+                  if (input && input.value && input.value.includes("@")) return input.value.trim();
+                  const profile = document.querySelector('#profileIdentifier, [data-profile-identifier], [data-email]');
+                  if (profile) {
+                    const text = profile.innerText || profile.getAttribute('data-email') || profile.getAttribute('data-profile-identifier') || '';
+                    const m = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i);
+                    if (m) return m[0];
+                  }
+                  return null;
+                }).catch(() => null);
+                if (inserted) {
+                  const m = String(inserted).match(GMAIL_RE);
+                  if (m) detectedEmail = m[0];
+                }
+              } catch (_) {}
+            }
+
+            // Check if Gemini has loaded
+            const isGeminiUrl = (url.includes("gemini.google.com") || url.includes("google.com/app")) && !url.includes("accounts.google.com");
+            if (isGeminiUrl) {
+              authenticated = true;
+              successPage = p;
+              break;
+            }
+
+            // Fallback: check if Gemini DOM components are mounted
+            if (!url.includes("accounts.google.com") && url.includes("google.com")) {
+              try {
+                const isGeminiDom = await p.evaluate(() => {
+                  return Boolean(document.querySelector('rich-textarea, .ql-editor, [role="textbox"], [data-test-id*="chat"], button[aria-label*="Google Account" i], button[aria-label*="@"]'));
+                }).catch(() => false);
+                if (isGeminiDom) {
+                  authenticated = true;
+                  successPage = p;
+                  break;
+                }
+              } catch (_) {}
+            }
+          }
+          if (!authenticated) await new Promise((r) => setTimeout(r, 1000));
+        }
+
+        if (authenticated && successPage) {
+          // Poll for avatar / page email for up to 6 seconds to give shadow DOM time to mount
+          const emailDeadline = Date.now() + 6000;
+          while (Date.now() < emailDeadline) {
+            const emailFound = await extractSignedInEmail(successPage).catch(() => null);
+            if (emailFound) {
+              detectedEmail = emailFound;
+              break;
+            }
+            await successPage.waitForTimeout(500);
+          }
+        }
+      } finally {
+        await closeProfile(id).catch(() => {});
+      }
+    }, { visible: true });
+
+    if (!authenticated) {
+      return { success: false, status: "cancelled" };
     }
 
-    const status = await checkAccount(id);
-    if (!status || status.status !== READY) {
-      return { success: false, status: status?.status || "cancelled", error: status?.error || "Google sign-in was not completed" };
-    }
-
-    const email = status.email || row.email || "Google account";
-    const updated = getAccountById(id);
+    const email = detectedEmail || row.email || "Google account";
+    const updated = updateAccountStatus(id, { status: READY, email });
     return { success: true, email, status: READY, id, account: withAbs(updated) };
   } catch (err) {
     await closeProfile(id).catch(() => {});
@@ -257,11 +449,14 @@ async function persistCheck(id, s, row) {
     // a null/miss keeps the previously stored address (the SQL UPDATE uses
     // COALESCE) and can never downgrade the session verdict, which is decided
     // from URL/editor visibility alone.
-    updateAccountStatus(id, { status: READY, email: s.email ?? row.email });
+    const resolvedEmail = (s.email && s.email !== "Google account")
+      ? s.email
+      : (row.email && row.email !== "Google account" ? row.email : (s.email || row.email || "Google account"));
+    updateAccountStatus(id, { status: READY, email: resolvedEmail });
     // Sign-in confirmed: close the launch window so Windows releases the
     // profile's file locks. Generation re-opens the profile on demand.
     await closeProfile(id).catch(() => { });
-    return { id, email: s.email ?? row.email, status: "ready" };
+    return { id, email: resolvedEmail, status: "ready" };
   }
   const reason = s.error || NOT_SIGNED_IN;
   updateAccountStatus(id, { status: "signed_out", last_error: reason });
@@ -293,9 +488,14 @@ export async function checkAccount(id) {
   // Live check enforced
   updateAccountStatus(id, { status: "checking" });
   try {
-    const s = await withProbePage(row, (page) =>
-      web.checkSession(page, { fallbackEmail: row.email })
-    );
+    const s = await withProbePage(row, async (page) => {
+      const res = await web.checkSession(page, { fallbackEmail: row.email });
+      if (res.signedIn && (!row.email || row.email === "Google account" || !row.email.includes("@"))) {
+        const found = await extractSignedInEmail(page).catch(() => null);
+        if (found) res.email = found;
+      }
+      return res;
+    });
     return await persistCheck(id, s, row);
   } catch (err) {
     return failAccount(id, err);
@@ -315,9 +515,14 @@ export async function quickCheckAccount(id) {
     return { id, status: row.status, email: row.email, cached: true };
   }
   try {
-    const s = await withProfile(row, (page) =>
-      web.checkSession(page, { navigate: false, fallbackEmail: row.email })
-    );
+    const s = await withProfile(row, async (page) => {
+      const res = await web.checkSession(page, { navigate: false, fallbackEmail: row.email });
+      if (res.signedIn && (!row.email || row.email === "Google account" || !row.email.includes("@"))) {
+        const found = await extractSignedInEmail(page).catch(() => null);
+        if (found) res.email = found;
+      }
+      return res;
+    });
     if (s.pending) {
       // Still mid sign-in on the profile's own window — don't flap the status.
       return { id, status: row.status, email: row.email, pending: true };
