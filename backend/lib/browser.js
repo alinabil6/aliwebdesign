@@ -206,13 +206,13 @@ function querySQLiteSafe(srcDbPath, queryFn) {
   const dst = path.join(tempSub, path.basename(srcDbPath));
   try {
     fs.copyFileSync(srcDbPath, dst);
+    // On Windows, SQLite memory-mapped shared memory file (-shm) is exclusively locked
+    // by running Chrome processes. Copying -shm fails with EBUSY / EPERM.
+    // Standard SQLite WAL reads do NOT require -shm; SQLite will re-create or inspect WAL directly.
     if (fs.existsSync(srcDbPath + "-wal")) {
-      fs.copyFileSync(srcDbPath + "-wal", dst + "-wal");
+      try { fs.copyFileSync(srcDbPath + "-wal", dst + "-wal"); } catch (_) {}
     }
-    if (fs.existsSync(srcDbPath + "-shm")) {
-      fs.copyFileSync(srcDbPath + "-shm", dst + "-shm");
-    }
-    const reader = new Database(dst, { readonly: true, fileMustExist: true });
+    const reader = new Database(dst, { readonly: true, fileMustExist: true, timeout: 2000 });
     try {
       return queryFn(reader);
     } finally {
@@ -229,31 +229,62 @@ export function isGeminiAuthenticatedOnDisk(profileDir) {
   const defaultDir = path.join(profileDir, "Default");
   if (!fs.existsSync(defaultDir)) return false;
 
-  // 1) Primary Navigation Verification (History SQLite database + WAL)
-  const historyPath = path.join(defaultDir, "History");
-  let latestUrl = "";
-  let latestTitle = "";
-  let hasGeminiUrl = false;
+  // Track state across signals
+  let isActivelySigningIn = false;
+  let hasNavigatedToGemini = false;
+  let hasGoogleAccount = false;
+  let hasGeminiCookies = false;
+  let hasAuthCookies = false;
 
+  // 1) Preferences Check: Verify whether Google Account is recognized in profile
+  try {
+    const prefPath = path.join(defaultDir, "Preferences");
+    if (fs.existsSync(prefPath)) {
+      const content = fs.readFileSync(prefPath, "utf8");
+      try {
+        const json = JSON.parse(content);
+        if (json.account_info && Array.isArray(json.account_info) && json.account_info.length > 0) {
+          hasGoogleAccount = true;
+        } else if (json.signin?.email || json.google?.services?.signin?.email) {
+          hasGoogleAccount = true;
+        }
+      } catch (_) {}
+      if (!hasGoogleAccount && /[a-zA-Z0-9._%+-]+@gmail\.com/i.test(content)) {
+        hasGoogleAccount = true;
+      }
+    }
+  } catch (_) {}
+
+  // 2) Navigation & History SQLite Verification
+  const historyPath = path.join(defaultDir, "History");
   if (fs.existsSync(historyPath)) {
     const historyRows = querySQLiteSafe(historyPath, (db) => {
       try {
-        return db.prepare("SELECT url, title, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 10").all();
+        return db.prepare("SELECT url, title, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 15").all();
       } catch (_) {
         return null;
       }
     });
 
     if (historyRows && historyRows.length > 0) {
-      const latest = historyRows[0];
-      latestUrl = String(latest?.url || "").toLowerCase();
-      latestTitle = String(latest?.title || "").toLowerCase();
+      for (const row of historyRows) {
+        const url = String(row?.url || "").toLowerCase();
+        if (url.includes("gemini.google.com")) {
+          hasNavigatedToGemini = true;
+          break;
+        }
+      }
 
-      // Check if user is actively on any Google sign-in / verification / captcha / password / 2FA screen
+      const latest = historyRows[0];
+      const latestUrl = String(latest?.url || "").toLowerCase();
+      const latestTitle = String(latest?.title || "").toLowerCase();
+
+      // Check if user is actively on any Google sign-in / verification / captcha / password screen
       if (
         latestUrl.includes("accounts.google.com") ||
         latestUrl.includes("/signin") ||
         latestUrl.includes("/challenge") ||
+        latestUrl.includes("/checkcookie") ||
         latestTitle.includes("sign in") ||
         latestTitle.includes("verify it's you") ||
         latestTitle.includes("verify it’s you") ||
@@ -262,24 +293,47 @@ export function isGeminiAuthenticatedOnDisk(profileDir) {
         latestTitle.includes("2-step") ||
         latestTitle.includes("google accounts")
       ) {
-        // Under NO circumstances close the window while the user is still on accounts.google.com
-        return false;
-      }
-
-      // Check if the latest visited page is actually Gemini
-      if (
-        (latestUrl.startsWith("https://gemini.google.com") || latestUrl.startsWith("http://gemini.google.com")) &&
-        !latestUrl.includes("accounts.google.com")
-      ) {
-        hasGeminiUrl = true;
+        // Explicitly block auto-close while still on Google Accounts challenges
+        isActivelySigningIn = true;
       }
     }
   }
 
-  // 2) Cookies Verification (Cookies SQLite database + WAL)
-  let hasGeminiCookies = false;
-  let hasAuthCookies = false;
+  // 3) Session files check (catches live active tabs even if SQLite hasn't flushed)
+  try {
+    const sessDir = path.join(defaultDir, "Sessions");
+    if (fs.existsSync(sessDir)) {
+      const files = fs.readdirSync(sessDir);
+      for (const f of files) {
+        try {
+          const buf = fs.readFileSync(path.join(sessDir, f));
+          const str = buf.toString("latin1");
 
+          if (str.includes("gemini.google.com")) {
+            hasNavigatedToGemini = true;
+          }
+
+          if (str.includes("challenge/recaptcha") || str.includes("signin/challenge") || str.includes("v3/signin")) {
+            const geminiIdx = str.lastIndexOf("gemini.google.com");
+            const accountsIdx = Math.max(
+              str.lastIndexOf("challenge/recaptcha"),
+              str.lastIndexOf("signin/challenge"),
+              str.lastIndexOf("v3/signin")
+            );
+            if (accountsIdx > geminiIdx) {
+              isActivelySigningIn = true;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
+  if (isActivelySigningIn) {
+    return false;
+  }
+
+  // 4) Cookies Verification (Cookies SQLite database)
   const cookiePaths = [
     path.join(defaultDir, "Network", "Cookies"),
     path.join(defaultDir, "Cookies"),
@@ -290,7 +344,7 @@ export function isGeminiAuthenticatedOnDisk(profileDir) {
       const cData = querySQLiteSafe(cPath, (db) => {
         try {
           const geminiCount = db.prepare("SELECT count(*) as c FROM cookies WHERE host_key LIKE '%gemini.google.com%'").get();
-          const authCount = db.prepare("SELECT count(*) as c FROM cookies WHERE host_key = '.google.com' AND name IN ('__Secure-1PSID', '__Secure-3PSID', '__Secure-1PSIDTS', '__Secure-3PSIDTS', 'SAPISID')").get();
+          const authCount = db.prepare("SELECT count(*) as c FROM cookies WHERE host_key = '.google.com' AND name IN ('__Secure-1PSID', '__Secure-3PSID', '__Secure-1PSIDTS', '__Secure-3PSIDTS', 'SAPISID', 'SID', 'SSID')").get();
           return { gemini: geminiCount?.c || 0, auth: authCount?.c || 0 };
         } catch (_) {
           return null;
@@ -304,45 +358,29 @@ export function isGeminiAuthenticatedOnDisk(profileDir) {
     }
   }
 
-  // If Gemini navigation is confirmed AND auth or Gemini cookies exist -> successfully logged into Gemini!
-  if (hasGeminiUrl && (hasGeminiCookies || hasAuthCookies)) {
-    return true;
-  }
-
-  // If Gemini cookies exist AND Google auth cookies exist AND the latest URL is not on accounts.google.com
-  if (hasGeminiCookies && hasAuthCookies && (!latestUrl || !latestUrl.includes("accounts.google.com"))) {
-    return true;
-  }
-
-  // 3) Session files check fallback (for when SQLite hasn't flushed yet)
-  try {
-    const sessDir = path.join(defaultDir, "Sessions");
-    if (fs.existsSync(sessDir)) {
-      const files = fs.readdirSync(sessDir);
-      for (const f of files) {
+  // Fast check: If Cookies file binary contains Google session cookie indicators
+  if (!hasAuthCookies) {
+    for (const cPath of cookiePaths) {
+      if (fs.existsSync(cPath)) {
         try {
-          const buf = fs.readFileSync(path.join(sessDir, f));
+          const buf = fs.readFileSync(cPath);
           const str = buf.toString("latin1");
-          // If the session file contains active sign-in markers:
-          if (str.includes("challenge/recaptcha") || str.includes("signin/challenge") || str.includes("v3/signin")) {
-            const geminiIdx = str.lastIndexOf("https://gemini.google.com/app");
-            const accountsIdx = Math.max(
-              str.lastIndexOf("challenge/recaptcha"),
-              str.lastIndexOf("signin/challenge"),
-              str.lastIndexOf("v3/signin")
-            );
-            if (geminiIdx < accountsIdx) {
-              // Sign-in challenge is newer than Gemini! Still signing in.
-              return false;
-            }
+          if (str.includes("__Secure-1PSID") || str.includes("SAPISID") || str.includes(".google.com")) {
+            hasAuthCookies = true;
           }
-          if (str.includes("https://gemini.google.com/app") && (hasGeminiCookies || hasAuthCookies)) {
-            return true;
+          if (str.includes("gemini.google.com")) {
+            hasGeminiCookies = true;
           }
         } catch (_) {}
       }
     }
-  } catch (_) {}
+  }
+
+  // VERDICT:
+  // User has reached Gemini AND is not actively on a sign-in challenge AND (has an authenticated Google profile OR auth/gemini cookies)
+  if (hasNavigatedToGemini && (hasGoogleAccount || hasAuthCookies || hasGeminiCookies)) {
+    return true;
+  }
 
   return false;
 }
