@@ -23,7 +23,9 @@ temp/
 # ── Media/artifacts ──────────────────────────
 *.png
 !frontend/favicon.png
+!frontend/LOGO.png
 *.mp4
+!frontend/hero-bg.mp4
 *.webm
 *.tmp
 
@@ -39,3 +41,4 @@ profiles/
 **/profiles/
 
 *.log
+
