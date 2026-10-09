@@ -21,10 +21,11 @@ export function buildPrompt({
     : "Background canvas: Clean solid monochrome backdrop for clean silhouette clipping.";
 
   return [
-    "Generate a modernized 2D vector t-shirt graphic illustration directly redrawing the attached artwork into a fresh apparel design.",
-    "Visual Subject: Redraw the central illustration, characters, vehicles, and key visual elements from the reference artwork into a dynamic new vector merchandise graphic.",
-    "Composition: Centered apparel emblem composition with crisp outer contours, strong silhouette, balanced elements, and high-contrast color separation.",
-    "Typography: Recreate any lettering or slogans from the reference design in sharp, clean, legible vector typography integrated into the emblem. If the reference design contains no text, render a pure visual illustration with strictly zero letters, numbers, words, or text.",
+    "You are an elite print-on-demand graphic designer. Redraw the core concept of the provided reference artwork into a fresh, commercially viable 2D apparel graphic.",
+    "Preserve the original subject, message, humor, recognizable elements, and visual identity while substantially reworking the composition, element placement, proportions, and visual hierarchy to create a genuinely new design rather than a near-copy.",
+    "Preserve all existing wording exactly when text is present. Do not invent, replace, rewrite, correct, or remove text. If the reference contains no text, do not add any words, letters, numbers, or typography.",
+    "Use clean, bold shapes, crisp contours, clear visual hierarchy, and strong contrast. Preserve the original color palette's visual character unless the selected artistic style calls for a compatible rendering treatment.",
+    "Do not force the artwork into a logo, badge, emblem, shield, banner, or circular layout. Follow the reference's actual concept and create a composition suited to that specific design.",
     styleClause,
     arDirective,
     bgBlock,
