@@ -15,6 +15,7 @@
     rel="stylesheet" />
   <link rel="icon" type="image/png" href="favicon.png" />
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/magic-listing-hardening.css" />
 </head>
 
 <body>
@@ -83,7 +84,6 @@
   </aside>
 
   <main class="main" id="main-content">
-    <!-- Shared Phantom Arc Aura Background Host (visible across all inner views, excluded on Home) -->
     <div id="auraBgHost" class="aura-container aura-bg-host hidden" aria-hidden="true">
       <div class="aura-layer aura-layer-1" aria-hidden="true"></div>
       <div class="aura-layer aura-layer-2" aria-hidden="true"></div>
@@ -109,7 +109,6 @@
     <div id="view"></div>
   </main>
 
-  <!-- Edit Modal -->
   <div class="modal-backdrop panel hidden" id="editModal">
     <div class="modal modal-wide">
       <button class="modal-close" id="editModalClose" title="Close"><i data-lucide="x"></i></button>
@@ -129,7 +128,6 @@
     </div>
   </div>
 
-  <!-- Move to Folder Modal -->
   <div class="modal-backdrop panel hidden" id="moveModal">
     <div class="modal">
       <button class="modal-close" id="moveModalClose" title="Close"><i data-lucide="x"></i></button>
@@ -146,7 +144,6 @@
     </div>
   </div>
 
-  <!-- Fullscreen Expand Modal -->
   <div class="modal-backdrop panel hidden" id="expandModal">
     <div class="modal modal-expand">
       <button class="modal-close" id="expandModalClose" title="Close"><i data-lucide="x"></i></button>
@@ -185,7 +182,6 @@
 
   <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
-  <!-- Library Import Picker (Prepare Designs) -->
   <div class="modal-backdrop panel hidden" id="prepLibraryModal">
     <div class="modal modal-expand">
       <button class="modal-close" id="prepLibraryClose" title="Close"><i data-lucide="x"></i></button>
@@ -208,7 +204,6 @@
     </div>
   </div>
 
-  <!-- About Us Modal -->
   <div class="about-modal-backdrop" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle">
     <div class="about-modal-content">
       <header class="about-modal-header">
@@ -271,7 +266,6 @@
         </div>
         <div class="about-feature-card">
           <div class="about-feature-icon">
-            <!-- Palette icon matching the sidebar Art Style + Niche tab -->
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
               <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle>
@@ -291,7 +285,6 @@
         </div>
         <div class="about-feature-card">
           <div class="about-feature-icon">
-            <!-- Same price-tag SVG as the sidebar Magic Listing button -->
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
               <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
@@ -307,7 +300,6 @@
     </div>
   </div>
 
-  <!-- Style Catalog Modal -->
   <div class="style-catalog-backdrop" id="styleCatalogModal" role="dialog" aria-modal="true"
     aria-labelledby="styleCatalogTitle">
     <div class="style-catalog-content">
@@ -323,6 +315,7 @@
 
   <script src="/vendor/lucide/umd/lucide.min.js"></script>
   <script src="/app.js"></script>
+  <script src="/magic-listing-hardening.js"></script>
 </body>
 
 </html>
