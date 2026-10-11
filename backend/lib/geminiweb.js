@@ -49,22 +49,22 @@ async function firstVisible(page, candidates, { timeout = 5000 } = {}) {
 
 async function dismissModals(page) {
   try {
-    const modalSelectors = [
-      'button:has-text("Agree")', 'button:has-text("Accept all")', 'button:has-text("Got it")', 'button:has-text("Dismiss")', 'button:has-text("Not now")',
-      'button:has-text("J\'accepte")', 'button:has-text("Accepter tout")', 'button:has-text("Tout accepter")', 'button:has-text("Continuer")', 'button:has-text("Plus tard")',
-      '[role="dialog"] button[aria-label*="Close" i]', '[role="dialog"] button[aria-label*="Fermer" i]'
-    ];
-    for (const sel of modalSelectors) {
-      const btn = page.locator(sel).first();
-      if (await btn.isVisible({ timeout: 300 }).catch(() => false)) {
-        await btn.click({ force: true }).catch(() => {});
-        await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      const labels = ["agree", "accept all", "got it", "dismiss", "not now", "j'accepte", "accepter tout", "tout accepter", "continuer", "plus tard"];
+      const buttons = document.querySelectorAll('button, [role="dialog"] button[aria-label*="Close" i], [role="dialog"] button[aria-label*="Fermer" i]');
+      for (const btn of buttons) {
+        if (btn.offsetWidth === 0 && btn.offsetHeight === 0) continue;
+        const text = (btn.innerText || "").trim().toLowerCase();
+        const aria = (btn.getAttribute("aria-label") || "").toLowerCase();
+        if (labels.includes(text) || (btn.closest('[role="dialog"]') && (aria.includes("close") || aria.includes("fermer")))) {
+          btn.click();
+        }
       }
-    }
+    }).catch(() => {});
   } catch {}
 }
 
-const PREVIEW_SELECTOR = ".file-preview, .uploaded-image, mat-chip, [aria-label*='Remove' i], img[src^='blob:'], img[src^='data:']";
+const PREVIEW_SELECTOR = ".file-preview, .uploaded-image, mat-chip, [aria-label*='Remove' i], img[src^='blob:'], img[src^='data:'], input-area-v2 img, input-container img, [class*='attachment']";
 
 async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 20000, expectedCount = 1) {
   const loc = page.locator(PREVIEW_SELECTOR);
@@ -83,30 +83,14 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   await dismissModals(page);
   const beforePreview = await page.locator(PREVIEW_SELECTOR).count().catch(() => 0);
 
-  // 1. Ensure the composer toolbar is fully mounted in the DOM (fast 8s failover)
+  // 1. Ensure the composer toolbar is fully mounted in the DOM
   await page.locator('rich-textarea, mat-toolbar, div[contenteditable="true"], .input-area, .composer-root')
     .first()
     .waitFor({ state: "visible", timeout: 30000 })
     .catch(() => {});
-  // Wait for composer idle state so that Angular animations do not toggle the attachment dropdown shut
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(250);
 
-  // 2. Strategy A (Primary path): Direct <input type="file"> DOM bypass (setInputFiles)
-  const directInput = page.locator(SELECTORS.fileInput.join(", ")).last();
-  if (await directInput.count().catch(() => 0) > 0) {
-    try {
-      await directInput.setInputFiles(imagePaths, { timeout: 3000 });
-      const mounted = await waitForAttachmentPreview(page, beforePreview, 4000, imagePaths.length);
-      if (mounted) {
-        console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s) via direct input bypass`);
-        return;
-      }
-    } catch (_) {}
-  }
-
-  if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-
-  // 3. Strategy B (UI fallback clicking): Fast 8s failover timeout
+  // 2. UI attachment via Upload & tools menu + filechooser
   const attachSelector = SELECTORS.attachButton.join(", ");
   const attachLoc = page.locator(attachSelector).first();
   await attachLoc.waitFor({ state: "visible", timeout: 30000 });
@@ -118,10 +102,9 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   if (!isMenuOpen) {
     console.log("[geminiweb] Clicking attach button...");
     await attachLoc.click({ timeout: 4000 }).catch(() => {});
-    // Wait for composer idle state & Angular dropdown animation
     isMenuOpen = await uploadItem.waitFor({ state: "visible", timeout: 3000 }).then(() => true).catch(() => false);
     if (!isMenuOpen) {
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(250);
       await attachLoc.click({ force: true, timeout: 3000 }).catch(() => {});
       isMenuOpen = await uploadItem.waitFor({ state: "visible", timeout: 3000 }).then(() => true).catch(() => false);
     }
@@ -143,15 +126,20 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   }
 
   console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s)`);
-  await waitForAttachmentPreview(page, beforePreview, Math.max(5000, imagePaths.length * 2500), imagePaths.length);
+  await waitForAttachmentPreview(page, beforePreview, 1500, imagePaths.length);
 }
 
 async function fillPrompt(page, promptText) {
   const editor = await firstVisible(page, SELECTORS.promptInput, { timeout: 20000 });
   if (!editor) throw new Error("Gemini prompt editor not found");
-  await editor.fill(promptText);
+  await editor.click({ timeout: 3000 }).catch(() => {});
   await editor.evaluate((el) => {
-    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.innerHTML = "";
+    el.focus();
+  }).catch(() => {});
+  await page.keyboard.insertText(promptText);
+  await editor.evaluate((el) => {
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }).catch(() => {});
   return editor;
@@ -160,40 +148,52 @@ async function fillPrompt(page, promptText) {
 async function submitPrompt(page, editor) {
   console.log("[geminiweb] Submitting prompt...");
   const sendSelector = SELECTORS.sendButton.join(", ");
-  const deadline = Date.now() + 15000;
-  let clicked = false;
-  while (Date.now() < deadline && !clicked) {
+  const uqBefore = await page.locator("user-query, .user-query-container").count().catch(() => 0);
+  const mrBefore = await page.locator("model-response").count().catch(() => 0);
+
+  const checkDispatched = async () => {
+    return page.evaluate(({ uqPrev, mrPrev }) => {
+      const stopBtn = document.querySelector(
+        'button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]'
+      );
+      if (stopBtn && window.getComputedStyle(stopBtn).display !== "none" && stopBtn.offsetWidth > 0) return true;
+
+      const uqNow = document.querySelectorAll("user-query, .user-query-container").length;
+      const mrNow = document.querySelectorAll("model-response").length;
+      if (uqNow > uqPrev || mrNow > mrPrev) return true;
+
+      const ed = document.querySelector('rich-textarea div[contenteditable="true"], .ql-editor, div[role="textbox"]');
+      const edText = (ed?.innerText || "").trim();
+      return edText.length === 0;
+    }, { uqPrev: uqBefore, mrPrev: mrBefore }).catch(() => false);
+  };
+
+  const deadline = Date.now() + 25000;
+  let attempts = 0;
+
+  while (Date.now() < deadline) {
+    attempts++;
+
     const send = page.locator(sendSelector).first();
-    if (await send.isVisible().catch(() => false)) {
-      await send.click({ force: true, timeout: 3000 }).catch(() => {});
-      clicked = true;
-      break;
-    }
-    await page.waitForTimeout(200);
-  }
-  if (!clicked) {
-    await editor.focus().catch(() => {});
-    await page.keyboard.press("Enter");
-  }
-
-  // Verification step: ensure prompt was dispatched (editor cleared or stop button appeared)
-  await page.waitForTimeout(500);
-  const stopAppeared = await page.evaluate(() => {
-    const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
-    return !!stopBtn;
-  }).catch(() => false);
-
-  if (!stopAppeared) {
-    const remainingText = await editor.innerText().catch(() => "");
-    if (remainingText && remainingText.trim().length > 0) {
-      console.log("[geminiweb] Prompt still in editor after send click; pressing Enter as fallback...");
+    const isSendVisible = await send.isVisible().catch(() => false);
+    if (isSendVisible) {
+      await send.click({ timeout: 3000 }).catch(() => {});
+    } else {
       await editor.focus().catch(() => {});
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(400);
+      await page.keyboard.press("Enter").catch(() => {});
+    }
+
+    // Poll every 300ms for up to 2.1s to see if the click dispatched the prompt
+    for (let w = 0; w < 7; w++) {
+      await page.waitForTimeout(300);
+      if (await checkDispatched()) {
+        console.log(`[geminiweb] Prompt submitted successfully (confirmed on attempt ${attempts}).`);
+        return;
+      }
     }
   }
 
-  console.log("[geminiweb] Prompt submitted successfully.");
+  console.log("[geminiweb] Prompt submission loop finished.");
 }
 
 async function monitorAndExtractOutput(page, beforeCount, timeout = 120000, outputPath = null, signal = null) {
@@ -384,16 +384,22 @@ async function ensureGeminiApp(page) {
     throw new Error("SESSION_EXPIRED: Account redirected to Google login");
   }
   if (!currentUrl.includes("gemini.google.com/app")) {
-    await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+    await page.goto(GEMINI_URL, { waitUntil: "commit", timeout: 20000 }).catch(() => {});
     if ((page.url() || "").includes("accounts.google.com")) {
       throw new Error("SESSION_EXPIRED: Account redirected to Google login");
     }
+    await page.locator('rich-textarea, div[contenteditable="true"], .ql-editor')
+      .first()
+      .waitFor({ state: "visible", timeout: 25000 })
+      .catch(() => {});
     return;
   }
-  const newChatBtn = page.locator('a[href="/app"], a[href="/app/"], button[aria-label*="New chat" i], button[aria-label*="Nouvelle discussion" i]').first();
-  if (await newChatBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await newChatBtn.click({ force: true }).catch(() => {});
-    await page.waitForTimeout(400);
+  const newChatBtn = page.locator(
+    'a[href="/app"], a[href="/app/"], a:has-text("New chat"), button[aria-label*="New chat" i], button[aria-label*="Nouvelle discussion" i], [data-test-id*="new-chat" i]'
+  ).first();
+  if (await newChatBtn.isVisible().catch(() => false)) {
+    await newChatBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(350);
   }
 }
 
@@ -436,14 +442,13 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
 
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-  const responseLoc = page.locator("model-response, message-content, [data-test-id='model-response-text']");
-  const countBefore = await responseLoc.count().catch(() => 0);
+  const countBefore = await page.locator("model-response").count().catch(() => 0);
 
   const editor = await fillPrompt(page, prompt);
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
   await submitPrompt(page, editor);
 
-  console.log(`[geminiweb] Monitoring Gemini text response (baseline count: ${countBefore})...`);
+  console.log(`[geminiweb] Monitoring Gemini text response (baseline turns: ${countBefore})...`);
   const start = Date.now();
   let lastText = "";
   let stableTicks = 0;
@@ -451,67 +456,77 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
   while (Date.now() - start < timeoutMs) {
     if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-    // 1. Fail fast on explicit error toasts / quota alerts
-    const toastMsg = await page.evaluate(() => {
-      const el = document.querySelector('mat-snack-bar-container, [role="alert"], .snack-bar, .toast');
-      return el ? el.innerText.trim() : null;
-    }).catch(() => null);
+    // Single-pass DOM evaluation for toast errors, streaming status, and response text
+    const probe = await page.evaluate((prevTurnCount) => {
+      const toastEl = document.querySelector('mat-snack-bar-container, [role="alert"], .snack-bar, .toast');
+      const toastMsg = toastEl ? (toastEl.innerText || "").trim() : null;
 
-    if (toastMsg && /limit|quota|error|try again|failed|unable/i.test(toastMsg)) {
-      throw new Error(`GEMINI_ERROR: ${toastMsg}`);
-    }
-
-    // 2. Dynamic streaming & completion indicators
-    const streamStatus = await page.evaluate(() => {
-      // Check for active Stop button
       const stopBtn = document.querySelector(
-        'button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"], button:has(mat-icon[data-mat-icon-name*="stop"])'
+        'button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]'
       );
-      if (stopBtn && window.getComputedStyle(stopBtn).display !== "none") {
-        return { isActivelyGenerating: true, hasCopyBtn: false };
-      }
-
-      // Check for active spinner or shimmer in model response
-      const spinner = document.querySelector(
-        'model-response mat-spinner, model-response mat-progress-spinner, model-response .loading-indicator, model-response .shimmer, [class*="generating"]'
+      const stopActive = Boolean(
+        stopBtn &&
+        window.getComputedStyle(stopBtn).display !== "none" &&
+        window.getComputedStyle(stopBtn).visibility !== "hidden" &&
+        stopBtn.offsetWidth > 0
       );
-      if (spinner && window.getComputedStyle(spinner).display !== "none") {
-        return { isActivelyGenerating: true, hasCopyBtn: false };
-      }
 
-      // Fast-path: response action toolbar (Copy button) rendered on latest response
-      const lastModelResp = document.querySelector("model-response:last-of-type");
-      const copyBtn = lastModelResp?.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]');
+      const turns = document.querySelectorAll("model-response");
+      let text = "";
+      let hasCopyBtn = false;
+
+      if (turns.length > prevTurnCount) {
+        const lastTurn = turns[turns.length - 1];
+        const contentEl = lastTurn.querySelector("message-content, structured-content-container, .model-response-text") || lastTurn;
+        text = (contentEl.innerText || "").trim();
+        hasCopyBtn = Boolean(
+          lastTurn.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i], [data-test-id*="copy" i]')
+        );
+      } else if (prevTurnCount === 0) {
+        const fallbackEl = document.querySelector("message-content:last-of-type, [data-test-id='model-response-text']:last-of-type");
+        if (fallbackEl) {
+          text = (fallbackEl.innerText || "").trim();
+        }
+      }
 
       return {
-        isActivelyGenerating: false,
-        hasCopyBtn: !!copyBtn,
+        toastMsg,
+        isActivelyGenerating: stopActive,
+        hasCopyBtn,
+        text,
       };
-    }).catch(() => ({ isActivelyGenerating: false, hasCopyBtn: false }));
+    }, countBefore).catch(() => ({
+      toastMsg: null,
+      isActivelyGenerating: false,
+      hasCopyBtn: false,
+      text: "",
+    }));
 
-    // 3. Extract text from the newly generated model response
-    const currentCount = await responseLoc.count().catch(() => 0);
-    let currentText = "";
-    if (currentCount > countBefore) {
-      currentText = await responseLoc.last().innerText().catch(() => "");
-    } else if (currentCount > 0 && countBefore === 0) {
-      currentText = await responseLoc.last().innerText().catch(() => "");
+    if (probe.toastMsg && /limit|quota|error|try again|failed|unable/i.test(probe.toastMsg)) {
+      throw new Error(`GEMINI_ERROR: ${probe.toastMsg}`);
     }
-    const trimmed = (currentText || "").trim();
+
+    const trimmed = probe.text;
 
     if (trimmed.length > 0) {
-      // Fast-path: When action toolbar (Copy button) is present, generation is complete
-      if (streamStatus.hasCopyBtn && trimmed.length > 20) {
+      // Fast-path 1: Copy button rendered on the completed response
+      if (probe.hasCopyBtn && trimmed.length > 20) {
         console.log(`[geminiweb] Text output captured via Copy action detection (length: ${trimmed.length})`);
         return trimmed;
       }
 
-      // Stability fallback: When no stop button or spinner is active, verify stable text
-      if (!streamStatus.isActivelyGenerating) {
+      if (!probe.isActivelyGenerating) {
+        // Fast-path 2: Complete JSON object present and stable for 1 tick
+        if (trimmed === lastText && trimmed.includes("{") && trimmed.includes("}") && trimmed.length > 40) {
+          console.log(`[geminiweb] JSON text output captured immediately (length: ${trimmed.length})`);
+          return trimmed;
+        }
+
+        // Stability fallback: text unchanged for 2 consecutive checks (~800ms)
         if (trimmed === lastText) {
           stableTicks++;
-          if (stableTicks >= 3) {
-            console.log(`[geminiweb] Text output captured via text stability (length: ${trimmed.length})`);
+          if (stableTicks >= 2) {
+            console.log(`[geminiweb] Text output captured via stability (length: ${trimmed.length})`);
             return trimmed;
           }
         } else {

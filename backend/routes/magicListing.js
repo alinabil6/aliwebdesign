@@ -9,6 +9,7 @@ import { Router } from "express";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import sharp from "sharp";
 import { v4 as uuidv4 } from "uuid";
 import { withAbs, listReadyAccountsWithAbs } from "../lib/accounts.js";
 import { getProfilePage, canLaunchBrowser } from "../lib/browser.js";
@@ -312,8 +313,18 @@ async function processListingOnAccount(account, design, referenceData, platform,
   console.log(`[magicListing] Processing design ${designIndex} (${fileName}) for platform: [${plat}]`);
 
   const base64Data = String(imageBase64).replace(/^data:image\/\w+;base64,/, "");
-  const imagePath = path.join(os.tmpdir(), `magic-listing-${uuidv4().slice(0, 8)}.png`);
-  fs.writeFileSync(imagePath, Buffer.from(base64Data, "base64"));
+  const rawBuf = Buffer.from(base64Data, "base64");
+  const imagePath = path.join(os.tmpdir(), `magic-listing-${uuidv4().slice(0, 8)}.jpg`);
+  try {
+    const jpgBuf = await sharp(rawBuf)
+      .resize(800, 800, { fit: "inside", withoutEnlargement: true })
+      .flatten({ background: { r: 30, g: 30, b: 30 } })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+    fs.writeFileSync(imagePath, jpgBuf);
+  } catch {
+    fs.writeFileSync(imagePath, rawBuf);
+  }
 
   try {
     if (MOCK_GEMINI || !canLaunchBrowser(account.browser)) {
