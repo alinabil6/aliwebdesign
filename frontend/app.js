@@ -3047,6 +3047,8 @@ function renderMagicListing() {
   let abortController = null;
   // Hoisted so the Stop handler can stop the progress engine.
   let tracker = null;
+  // FIX: Declare allListings — was previously an implicit global.
+  let allListings = [];
   // Platform mode: "amazon" (default) | "teepublic" — swaps the prompt schema
   // on the backend and the result-card fields on the frontend.
   let currentPlatform = "amazon";
@@ -3322,7 +3324,7 @@ function renderMagicListing() {
     refDrop.classList.remove("drag");
     const file = [...(e.dataTransfer?.files ?? [])].find((f) => REF_EXT_RE.test(f.name));
     if (file) {
-      loadRefFile(file);
+      loadRefFiles([file]);
     } else if (e.dataTransfer?.files?.length) {
       alert("Unsupported file type — drop a .txt, .csv, .json or .tsv file.");
     }
@@ -3464,7 +3466,9 @@ function renderMagicListing() {
           referenceData,
           platform: currentPlatform,
         }),
-        signal: abortController.signal,
+        // FIX: 3-minute client-side timeout prevents the UI from hanging
+        // forever at 95% if the backend stops responding.
+        signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(180000)]),
       });
 
       if (!res.ok) {

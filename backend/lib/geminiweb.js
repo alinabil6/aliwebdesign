@@ -66,7 +66,7 @@ async function dismissModals(page) {
 
 const PREVIEW_SELECTOR = ".file-preview, .uploaded-image, mat-chip, [aria-label*='Remove' i], img[src^='blob:'], img[src^='data:']";
 
-async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 8000, expectedCount = 1) {
+async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 20000, expectedCount = 1) {
   const loc = page.locator(PREVIEW_SELECTOR);
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
@@ -86,7 +86,7 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   // 1. Ensure the composer toolbar is fully mounted in the DOM (fast 8s failover)
   await page.locator('rich-textarea, mat-toolbar, div[contenteditable="true"], .input-area, .composer-root')
     .first()
-    .waitFor({ state: "visible", timeout: 8000 })
+    .waitFor({ state: "visible", timeout: 30000 })
     .catch(() => {});
   // Wait for composer idle state so that Angular animations do not toggle the attachment dropdown shut
   await page.waitForTimeout(400);
@@ -109,7 +109,7 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   // 3. Strategy B (UI fallback clicking): Fast 8s failover timeout
   const attachSelector = SELECTORS.attachButton.join(", ");
   const attachLoc = page.locator(attachSelector).first();
-  await attachLoc.waitFor({ state: "visible", timeout: 8000 });
+  await attachLoc.waitFor({ state: "visible", timeout: 30000 });
 
   const uploadMenuSelector = SELECTORS.uploadMenuItem.join(", ");
   const uploadItem = page.locator(uploadMenuSelector).first();

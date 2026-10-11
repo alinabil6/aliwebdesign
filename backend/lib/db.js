@@ -299,6 +299,31 @@ export function reconcileAccountStates() {
   return info.changes;
 }
 
+// ────────────────────────────────────────────────
+// Runtime watchdog — rescue accounts stuck mid-session.
+//
+// FIX: The boot sweep only runs at startup; a hung browser during runtime
+// would permanently strand accounts. This interval checks every 5 minutes
+// and resets any account stuck in 'running' or 'generating' for > 5 min.
+// ────────────────────────────────────────────────
+const _stuckAccountWatchdog = db.prepare(
+  `UPDATE browser_accounts
+      SET status = 'ready'
+    WHERE active = 1
+      AND status IN ('running', 'generating')
+      AND last_used_at < datetime('now', '-5 minutes')`
+);
+setInterval(() => {
+  try {
+    const info = _stuckAccountWatchdog.run();
+    if (info.changes > 0) {
+      console.log(`[db] Watchdog: reset ${info.changes} stuck account(s) back to ready.`);
+    }
+  } catch (err) {
+    console.error("[db] Watchdog error:", err.message);
+  }
+}, 5 * 60 * 1000);
+
 export function deleteAccountRow(id) {
   return accountStmts.remove.run(id);
 }

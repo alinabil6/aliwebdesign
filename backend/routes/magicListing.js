@@ -341,7 +341,6 @@ async function processListingOnAccount(account, design, referenceData, platform,
     }
 
     console.log(`[magicListing] Navigating Gemini Web session for account ${account.id}...`);
-    const page = await getProfilePage(account);
 
     const prompt = isEtsy
       ? buildEtsyPrompt({
@@ -358,17 +357,26 @@ async function processListingOnAccount(account, design, referenceData, platform,
             imageContext: `Design index ${designIndex}: ${fileName}`,
           });
 
-    console.log(`[magicListing] Sending Vision prompt + image attachment to ${account.id}...`);
-
     const TIMEOUT_MS = 75000;
-    const reply = await Promise.race([
-      web.generateText({
+    // FIX: getProfilePage is now INSIDE the Promise.race so a frozen Chromium
+    // launch cannot hang the worker beyond TIMEOUT_MS.
+    const genPromise = (async () => {
+      const page = await getProfilePage(account);
+      console.log(`[magicListing] Sending Vision prompt + image attachment to ${account.id}...`);
+      return web.generateText({
         prompt,
         imagePaths: [imagePath],
         page,
         signal,
         timeoutMs: 65000,
-      }),
+      });
+    })();
+    // FIX: Prevent UnhandledPromiseRejection when the timeout wins the race
+    // and the generation promise rejects later in the background.
+    genPromise.catch(() => {});
+
+    const reply = await Promise.race([
+      genPromise,
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("MAGIC_LISTING_TIMEOUT")), TIMEOUT_MS)
       ),
@@ -450,7 +458,9 @@ router.post("/batch", async (req, res) => {
     const MAX_CONCURRENT = 4;
     const workerCount = Math.min(designs.length, MAX_CONCURRENT);
 
-    async function worker() {
+    async function worker(workerIndex) {
+      // FIX: Stagger browser launches to avoid CPU/bandwidth contention
+      if (workerIndex > 0) await new Promise((r) => setTimeout(r, workerIndex * 2000));
       while (nextIndex < designs.length) {
         const currentIndex = nextIndex++;
         const design = designs[currentIndex];
@@ -481,7 +491,7 @@ router.post("/batch", async (req, res) => {
       }
     }
 
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    await Promise.all(Array.from({ length: workerCount }, (_, i) => worker(i)));
 
     results.sort((a, b) => (a.designIndex ?? 0) - (b.designIndex ?? 0));
     res.json({ success: true, results, failed, total: designs.length });
