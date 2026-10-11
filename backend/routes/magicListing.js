@@ -295,6 +295,7 @@ async function acquireListingAccount(timeoutMs = 60000, excludeIds = []) {
   while (Date.now() - start < timeoutMs) {
     const claimed = claimNextReadyAccount(excludeIds);
     if (claimed) {
+      console.log(`[magicListing] Leased account ID: ${claimed.id}`);
       return withAbs(claimed);
     }
     await new Promise((r) => setTimeout(r, 1000));
@@ -341,7 +342,19 @@ async function processListingOnAccount(account, design, referenceData, platform,
     }
 
     console.log(`[magicListing] Navigating Gemini Web session for account ${account.id}...`);
-    const page = await getProfilePage(account);
+    let page;
+    try {
+      page = await Promise.race([
+        getProfilePage(account),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout acquiring browser profile after 15s")), 15000)
+        ),
+      ]);
+    } catch (err) {
+      console.error(`[magicListing] Failed to acquire profile for account ${account.id}: ${err.message}`);
+      setAccountStatus(account.id, "ready");
+      throw new Error(`Failed to acquire profile for account ${account.id}: ${err.message}`);
+    }
 
     const prompt = isEtsy
       ? buildEtsyPrompt({
@@ -403,6 +416,7 @@ async function processListingOnAccount(account, design, referenceData, platform,
 
 // POST /api/magic-listing/generate
 router.post("/generate", async (req, res) => {
+  console.log(`[magicListing] Incoming ${req.method} ${req.url} - designs:${req.body?.designs?.length || 1}`);
   let account = null;
   try {
     const { imageBase64 = "", referenceData = "", designIndex = 0, fileName = "", platform = "amazon" } = req.body || {};
@@ -435,6 +449,7 @@ router.post("/generate", async (req, res) => {
 
 // POST /api/magic-listing/batch
 router.post("/batch", async (req, res) => {
+  console.log(`[magicListing] Incoming ${req.method} ${req.url} - designs:${req.body?.designs?.length || 1}`);
   try {
     const { designs = [], referenceData = "", platform = "amazon" } = req.body || {};
     if (!Array.isArray(designs) || designs.length === 0) {
