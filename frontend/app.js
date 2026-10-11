@@ -3752,7 +3752,7 @@ function magicListingCard(item) {
           <div class="ml-tag-cloud">
             ${tags.map((t) => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
           </div>
-          <p class="ml-field" style="margin-top:0.6rem;"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-line;">${esc(description)}</span></p>
+          <p class="ml-field" style="margin-top:0.6rem;"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-wrap;overflow-wrap:anywhere;">${esc(description)}</span></p>
         </div>
         <div class="ml-card-actions">
           ${copyBtn("Title", title)}
@@ -3798,7 +3798,7 @@ function magicListingCard(item) {
         </div>
         <div class="ml-card-body">
           <p class="ml-field"><strong>Title</strong> <span class="ml-chars">${title.length}/40–80</span><br>${esc(title)}</p>
-          <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length}/150–300</span><br>${esc(description)}</p>
+          <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-wrap;overflow-wrap:anywhere;">${esc(description)}</span></p>
           <p class="ml-field"><strong>Main Tag</strong><br><span class="ml-tag-pill">${esc(mainTag || "N/A")}</span></p>
           <p class="ml-field"><strong>Supporting Tags</strong> <span class="ml-chars">${tags.length}/6–15</span></p>
           <div class="ml-tag-cloud">
@@ -3843,7 +3843,7 @@ function magicListingCard(item) {
         <p class="ml-field"><strong>Brand</strong> <span class="ml-chars">${brand.length}/50</span><br>${esc(brand)}</p>
         <p class="ml-field"><strong>Bullet 1</strong> <span class="ml-chars">${bullet1.length}/256</span><br>${esc(bullet1)}</p>
         <p class="ml-field"><strong>Bullet 2</strong> <span class="ml-chars">${bullet2.length}/256</span><br>${esc(bullet2)}</p>
-        <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length}/500</span><br>${esc(description)}</p>
+        <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-wrap;overflow-wrap:anywhere;">${esc(description)}</span></p>
       </div>
       <div class="ml-card-actions">
         ${copyBtn("Title", title)}

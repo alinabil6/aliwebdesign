@@ -46,6 +46,14 @@ function sanitizeCopy(text) {
     .trim();
 }
 
+function preserveDescription(text) {
+  return String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\u0000/g, "")
+    .trim();
+}
+
 function truncateAtWord(text, maxLen) {
   const s = String(text ?? "").trim();
   if (s.length <= maxLen) return s;
@@ -108,7 +116,7 @@ function normalizeListing(raw) {
   let brand = (obj.brand || obj.brand_name || obj.brandName || "").trim();
   const bullet1 = (obj.bullet1 || obj.bullet_1 || "").trim();
   const bullet2 = (obj.bullet2 || obj.bullet_2 || "").trim();
-  let description = (obj.description || obj.desc || "").trim();
+  let description = preserveDescription(obj.description || obj.desc || "");
 
   if (!brand) {
     const titleWords = title.split(" ").slice(0, 3).join(" ");
@@ -126,7 +134,7 @@ function normalizeListing(raw) {
     brand: truncateAtWord(sanitizeCopy(brand), 50),
     bullet1: truncateAtWord(sanitizeCopy(bullet1), 256),
     bullet2: truncateAtWord(sanitizeCopy(bullet2), 256),
-    description: truncateAtWord(sanitizeCopy(description), 500),
+    description: preserveDescription(description),
     trademark_safe: obj.trademark_safe === true,
   };
 }
@@ -193,7 +201,7 @@ function extractJSON(rawText, fieldKeys = {}) {
 function normalizeTeePublicListing(raw) {
   const obj = typeof raw === "object" && raw !== null ? raw : {};
   let title = (obj.title || "").trim();
-  let description = (obj.description || obj.desc || "").trim();
+  let description = preserveDescription(obj.description || obj.desc || "");
   let mainTag = String(
     obj.main_tag || obj.mainTag || obj.primary_tag || obj.primaryTag || ""
   ).trim();
@@ -230,7 +238,7 @@ function normalizeTeePublicListing(raw) {
 
   return {
     title: clean(title, 80),
-    description: clean(description, 300),
+    description: preserveDescription(description),
     main_tag: mainTagClean,
     mainTag: mainTagClean,
     supporting_tags: supportingTags,
@@ -243,7 +251,7 @@ function normalizeEtsyListing(raw) {
   const obj = typeof raw === "object" && raw !== null ? raw : {};
   let title = (obj.title || "").trim();
   let category = (obj.category || "Clothing > Unisex Adult Clothing > Tops & Tees > T-shirts").trim();
-  let description = (obj.description || obj.desc || "").trim();
+  let description = preserveDescription(obj.description || obj.desc || "");
   const attrs = typeof obj.attributes === "object" && obj.attributes !== null ? obj.attributes : {};
 
   const attributes = {
@@ -285,7 +293,7 @@ function normalizeEtsyListing(raw) {
     category: truncateAtWord(category, 100),
     attributes,
     tags,
-    description: truncateAtWord(description, 1500),
+    description: preserveDescription(description),
     trademark_safe: obj.trademark_safe === true || obj.trademark_safe === undefined,
   };
 }
