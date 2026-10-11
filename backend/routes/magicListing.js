@@ -357,7 +357,7 @@ async function processListingOnAccount(account, design, referenceData, platform,
             imageContext: `Design index ${designIndex}: ${fileName}`,
           });
 
-    const TIMEOUT_MS = 75000;
+    const TIMEOUT_MS = 110000;
     // FIX: getProfilePage is now INSIDE the Promise.race so a frozen Chromium
     // launch cannot hang the worker beyond TIMEOUT_MS.
     const genPromise = (async () => {
@@ -368,7 +368,7 @@ async function processListingOnAccount(account, design, referenceData, platform,
         imagePaths: [imagePath],
         page,
         signal,
-        timeoutMs: 65000,
+        timeoutMs: 95000,
       });
     })();
     // FIX: Prevent UnhandledPromiseRejection when the timeout wins the race

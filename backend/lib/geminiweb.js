@@ -175,6 +175,24 @@ async function submitPrompt(page, editor) {
     await editor.focus().catch(() => {});
     await page.keyboard.press("Enter");
   }
+
+  // Verification step: ensure prompt was dispatched (editor cleared or stop button appeared)
+  await page.waitForTimeout(500);
+  const stopAppeared = await page.evaluate(() => {
+    const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
+    return !!stopBtn;
+  }).catch(() => false);
+
+  if (!stopAppeared) {
+    const remainingText = await editor.innerText().catch(() => "");
+    if (remainingText && remainingText.trim().length > 0) {
+      console.log("[geminiweb] Prompt still in editor after send click; pressing Enter as fallback...");
+      await editor.focus().catch(() => {});
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(400);
+    }
+  }
+
   console.log("[geminiweb] Prompt submitted successfully.");
 }
 
@@ -406,7 +424,7 @@ export async function checkSession(page, { navigate = true, fallbackEmail = null
   }
 }
 
-export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 60000 }) {
+export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 90000 }) {
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
   await ensureGeminiApp(page);
   await dismissModals(page);
@@ -418,10 +436,14 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
 
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
+  const responseLoc = page.locator("model-response, message-content, [data-test-id='model-response-text']");
+  const countBefore = await responseLoc.count().catch(() => 0);
+
   const editor = await fillPrompt(page, prompt);
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
   await submitPrompt(page, editor);
 
+  console.log(`[geminiweb] Monitoring Gemini text response (baseline count: ${countBefore})...`);
   const start = Date.now();
   let lastText = "";
   let stableTicks = 0;
@@ -429,27 +451,76 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
   while (Date.now() - start < timeoutMs) {
     if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-    const isStreamingDone = await page.evaluate(() => {
-      const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
-      if (stopBtn) return false;
-      const sendBtn = document.querySelector('button[aria-label*="Send" i], button[aria-label*="Envoyer" i], .send-button');
-      return sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true";
-    }).catch(() => false);
+    // 1. Fail fast on explicit error toasts / quota alerts
+    const toastMsg = await page.evaluate(() => {
+      const el = document.querySelector('mat-snack-bar-container, [role="alert"], .snack-bar, .toast');
+      return el ? el.innerText.trim() : null;
+    }).catch(() => null);
 
-    const currentText = await page.locator("model-response, message-content, [data-test-id='model-response-text']").last().innerText().catch(() => "");
+    if (toastMsg && /limit|quota|error|try again|failed|unable/i.test(toastMsg)) {
+      throw new Error(`GEMINI_ERROR: ${toastMsg}`);
+    }
+
+    // 2. Dynamic streaming & completion indicators
+    const streamStatus = await page.evaluate(() => {
+      // Check for active Stop button
+      const stopBtn = document.querySelector(
+        'button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"], button:has(mat-icon[data-mat-icon-name*="stop"])'
+      );
+      if (stopBtn && window.getComputedStyle(stopBtn).display !== "none") {
+        return { isActivelyGenerating: true, hasCopyBtn: false };
+      }
+
+      // Check for active spinner or shimmer in model response
+      const spinner = document.querySelector(
+        'model-response mat-spinner, model-response mat-progress-spinner, model-response .loading-indicator, model-response .shimmer, [class*="generating"]'
+      );
+      if (spinner && window.getComputedStyle(spinner).display !== "none") {
+        return { isActivelyGenerating: true, hasCopyBtn: false };
+      }
+
+      // Fast-path: response action toolbar (Copy button) rendered on latest response
+      const lastModelResp = document.querySelector("model-response:last-of-type");
+      const copyBtn = lastModelResp?.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]');
+
+      return {
+        isActivelyGenerating: false,
+        hasCopyBtn: !!copyBtn,
+      };
+    }).catch(() => ({ isActivelyGenerating: false, hasCopyBtn: false }));
+
+    // 3. Extract text from the newly generated model response
+    const currentCount = await responseLoc.count().catch(() => 0);
+    let currentText = "";
+    if (currentCount > countBefore) {
+      currentText = await responseLoc.last().innerText().catch(() => "");
+    } else if (currentCount > 0 && countBefore === 0) {
+      currentText = await responseLoc.last().innerText().catch(() => "");
+    }
     const trimmed = (currentText || "").trim();
 
     if (trimmed.length > 0) {
-      if (isStreamingDone) {
+      // Fast-path: When action toolbar (Copy button) is present, generation is complete
+      if (streamStatus.hasCopyBtn && trimmed.length > 20) {
+        console.log(`[geminiweb] Text output captured via Copy action detection (length: ${trimmed.length})`);
+        return trimmed;
+      }
+
+      // Stability fallback: When no stop button or spinner is active, verify stable text
+      if (!streamStatus.isActivelyGenerating) {
         if (trimmed === lastText) {
           stableTicks++;
-          if (stableTicks >= 2) {
+          if (stableTicks >= 3) {
+            console.log(`[geminiweb] Text output captured via text stability (length: ${trimmed.length})`);
             return trimmed;
           }
         } else {
           stableTicks = 0;
         }
+      } else {
+        stableTicks = 0;
       }
+
       lastText = trimmed;
     }
 
@@ -457,6 +528,7 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
   }
 
   if (lastText && lastText.length > 0) {
+    console.log(`[geminiweb] Returning last captured text at deadline (length: ${lastText.length})`);
     return lastText;
   }
   throw new Error(`Timed out waiting for Gemini text response (${Math.round(timeoutMs / 1000)}s)`);
