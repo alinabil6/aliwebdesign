@@ -406,6 +406,42 @@ export async function checkSession(page, { navigate = true, fallbackEmail = null
   }
 }
 
+function looksLikeCompleteJsonText(text) {
+  const s = String(text || "").trim();
+  return s.includes("{") && s.lastIndexOf("}") > s.indexOf("{") && /"(title|description|category|main_tag|brand)"\s*:/i.test(s);
+}
+
+async function latestTextResponse(page) {
+  return await page.evaluate(() => {
+    const selectors = [
+      "model-response",
+      "message-content",
+      "[data-test-id='model-response-text']",
+      ".response-container",
+      "[data-message-author-role='model']",
+    ];
+    const seen = new Set();
+    const candidates = [];
+
+    for (const selector of selectors) {
+      for (const el of document.querySelectorAll(selector)) {
+        if (seen.has(el)) continue;
+        seen.add(el);
+        const text = (el.innerText || el.textContent || "").trim();
+        if (text) candidates.push(text);
+      }
+    }
+
+    const jsonLike = candidates.filter((text) => {
+      const start = text.indexOf("{");
+      const end = text.lastIndexOf("}");
+      return start >= 0 && end > start && /"(title|description|category|main_tag|brand)"\s*:/i.test(text);
+    });
+
+    return (jsonLike.at(-1) || candidates.at(-1) || "").trim();
+  }).catch(() => "");
+}
+
 export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 60000 }) {
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
   await ensureGeminiApp(page);
@@ -425,6 +461,7 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
   const start = Date.now();
   let lastText = "";
   let stableTicks = 0;
+  let textFirstSeenAt = 0;
 
   while (Date.now() - start < timeoutMs) {
     if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
@@ -436,19 +473,22 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
       return sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true";
     }).catch(() => false);
 
-    const currentText = await page.locator("model-response, message-content, [data-test-id='model-response-text']").last().innerText().catch(() => "");
+    const currentText = await latestTextResponse(page);
     const trimmed = (currentText || "").trim();
 
     if (trimmed.length > 0) {
-      if (isStreamingDone) {
-        if (trimmed === lastText) {
-          stableTicks++;
-          if (stableTicks >= 2) {
-            return trimmed;
-          }
-        } else {
-          stableTicks = 0;
+      if (!textFirstSeenAt) textFirstSeenAt = Date.now();
+      if (trimmed === lastText) {
+        stableTicks++;
+        const hasCompleteJson = looksLikeCompleteJsonText(trimmed);
+        const stableEnough = stableTicks >= (hasCompleteJson ? 3 : 5);
+        const longEnoughAfterFirstText = Date.now() - textFirstSeenAt > 1600;
+        if ((isStreamingDone || hasCompleteJson) && stableEnough && longEnoughAfterFirstText) {
+          console.log(`[geminiweb] Text response captured (${trimmed.length} chars, streamingDone=${isStreamingDone})`);
+          return trimmed;
         }
+      } else {
+        stableTicks = 0;
       }
       lastText = trimmed;
     }
@@ -457,6 +497,7 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
   }
 
   if (lastText && lastText.length > 0) {
+    console.warn(`[geminiweb] Text response timed out but returning last captured text (${lastText.length} chars)`);
     return lastText;
   }
   throw new Error(`Timed out waiting for Gemini text response (${Math.round(timeoutMs / 1000)}s)`);

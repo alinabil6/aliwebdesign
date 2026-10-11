@@ -3466,9 +3466,9 @@ function renderMagicListing() {
           referenceData,
           platform: currentPlatform,
         }),
-        // FIX: 3-minute client-side timeout prevents the UI from hanging
-        // forever at 95% if the backend stops responding.
-        signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(180000)]),
+        // 6-minute client-side timeout gives slow Gemini text listings enough
+        // room while still preventing the UI from hanging forever at 95%.
+        signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(360000)]),
       });
 
       if (!res.ok) {

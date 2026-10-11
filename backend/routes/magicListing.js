@@ -368,17 +368,18 @@ async function processListingOnAccount(account, design, referenceData, platform,
 
     console.log(`[magicListing] Sending Vision prompt + image attachment to ${account.id}...`);
 
-    const TIMEOUT_MS = 75000;
+    const TEXT_TIMEOUT_MS = 180000;
+    const ROUTE_TIMEOUT_MS = TEXT_TIMEOUT_MS + 15000;
     const reply = await Promise.race([
       web.generateText({
         prompt,
         imagePaths: [imagePath],
         page,
         signal,
-        timeoutMs: 65000,
+        timeoutMs: TEXT_TIMEOUT_MS,
       }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("MAGIC_LISTING_TIMEOUT")), TIMEOUT_MS)
+        setTimeout(() => reject(new Error("MAGIC_LISTING_TIMEOUT")), ROUTE_TIMEOUT_MS)
       ),
     ]);
 
