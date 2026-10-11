@@ -9,7 +9,6 @@ import { Router } from "express";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import sharp from "sharp";
 import { v4 as uuidv4 } from "uuid";
 import { withAbs, listReadyAccountsWithAbs } from "../lib/accounts.js";
 import { getProfilePage, canLaunchBrowser } from "../lib/browser.js";
@@ -313,18 +312,8 @@ async function processListingOnAccount(account, design, referenceData, platform,
   console.log(`[magicListing] Processing design ${designIndex} (${fileName}) for platform: [${plat}]`);
 
   const base64Data = String(imageBase64).replace(/^data:image\/\w+;base64,/, "");
-  const rawBuf = Buffer.from(base64Data, "base64");
-  const imagePath = path.join(os.tmpdir(), `magic-listing-${uuidv4().slice(0, 8)}.jpg`);
-  try {
-    const jpgBuf = await sharp(rawBuf)
-      .resize(800, 800, { fit: "inside", withoutEnlargement: true })
-      .flatten({ background: { r: 30, g: 30, b: 30 } })
-      .jpeg({ quality: 82 })
-      .toBuffer();
-    fs.writeFileSync(imagePath, jpgBuf);
-  } catch {
-    fs.writeFileSync(imagePath, rawBuf);
-  }
+  const imagePath = path.join(os.tmpdir(), `magic-listing-${uuidv4().slice(0, 8)}.png`);
+  fs.writeFileSync(imagePath, Buffer.from(base64Data, "base64"));
 
   try {
     if (MOCK_GEMINI || !canLaunchBrowser(account.browser)) {
@@ -352,6 +341,7 @@ async function processListingOnAccount(account, design, referenceData, platform,
     }
 
     console.log(`[magicListing] Navigating Gemini Web session for account ${account.id}...`);
+    const page = await getProfilePage(account);
 
     const prompt = isEtsy
       ? buildEtsyPrompt({
@@ -368,26 +358,17 @@ async function processListingOnAccount(account, design, referenceData, platform,
             imageContext: `Design index ${designIndex}: ${fileName}`,
           });
 
-    const TIMEOUT_MS = 110000;
-    // FIX: getProfilePage is now INSIDE the Promise.race so a frozen Chromium
-    // launch cannot hang the worker beyond TIMEOUT_MS.
-    const genPromise = (async () => {
-      const page = await getProfilePage(account);
-      console.log(`[magicListing] Sending Vision prompt + image attachment to ${account.id}...`);
-      return web.generateText({
+    console.log(`[magicListing] Sending Vision prompt + image attachment to ${account.id}...`);
+
+    const TIMEOUT_MS = 75000;
+    const reply = await Promise.race([
+      web.generateText({
         prompt,
         imagePaths: [imagePath],
         page,
         signal,
-        timeoutMs: 95000,
-      });
-    })();
-    // FIX: Prevent UnhandledPromiseRejection when the timeout wins the race
-    // and the generation promise rejects later in the background.
-    genPromise.catch(() => {});
-
-    const reply = await Promise.race([
-      genPromise,
+        timeoutMs: 65000,
+      }),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("MAGIC_LISTING_TIMEOUT")), TIMEOUT_MS)
       ),
@@ -469,9 +450,7 @@ router.post("/batch", async (req, res) => {
     const MAX_CONCURRENT = 4;
     const workerCount = Math.min(designs.length, MAX_CONCURRENT);
 
-    async function worker(workerIndex) {
-      // FIX: Stagger browser launches to avoid CPU/bandwidth contention
-      if (workerIndex > 0) await new Promise((r) => setTimeout(r, workerIndex * 2000));
+    async function worker() {
       while (nextIndex < designs.length) {
         const currentIndex = nextIndex++;
         const design = designs[currentIndex];
@@ -502,7 +481,7 @@ router.post("/batch", async (req, res) => {
       }
     }
 
-    await Promise.all(Array.from({ length: workerCount }, (_, i) => worker(i)));
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
     results.sort((a, b) => (a.designIndex ?? 0) - (b.designIndex ?? 0));
     res.json({ success: true, results, failed, total: designs.length });
