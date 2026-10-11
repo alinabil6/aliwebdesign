@@ -3438,42 +3438,18 @@ function renderMagicListing() {
         labelEl.textContent = `Preparing design ${i + 1} of ${listingFiles.length}…`;
 
         const file = listingFiles[i];
-        let thumbnailUrl = "";
-        try {
-          thumbnailUrl = await fileToBase64(file);
-        } catch (thumbErr) {
-          console.error(`[magicListing] Failed to read thumbnail for ${file.name}:`, thumbErr);
-        }
-
-        // Downscaled JPEG for the AI vision payload, with immediate fallback to fileToBase64
-        let visionBase64 = "";
-        try {
-          visionBase64 = await Promise.race([
-            optimizeImageForVision(file),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Image optimization timed out after 10s")), 10000)
-            ),
-          ]);
-        } catch (visionErr) {
-          console.error(`[magicListing] Failed to optimize vision image for ${file.name}, falling back to fileToBase64:`, visionErr);
-          try {
-            visionBase64 = thumbnailUrl || (await fileToBase64(file));
-          } catch (fallbackErr) {
-            console.error(`[magicListing] Fallback fileToBase64 also failed for ${file.name}:`, fallbackErr);
-          }
-        }
-
-        if (!visionBase64 && !thumbnailUrl) {
-          console.error(`[magicListing] Preprocessing failed for ${file.name}; skipping.`);
-          continue;
-        }
-
+        // Full-res data URL for the UI thumbnail…
+        const thumbnailUrl = await fileToBase64(file);
+        // …but a downscaled JPEG for the AI vision payload, so high-res print
+        // files (>15MB) never blow past the server body limit (HTTP 413).
+        const visionBase64 = await optimizeImageForVision(file);
         designs.push({
-          imageBase64: visionBase64 || thumbnailUrl,
+          imageBase64: visionBase64,
           fileName: file.name,
           designIndex: i + 1,
-          thumbnailUrl: thumbnailUrl || visionBase64,
         });
+        // Keep the thumbnail paired with the design index for the result cards.
+        designs[i].thumbnailUrl = thumbnailUrl;
       }
       if (designs.length === 0) return;
 
