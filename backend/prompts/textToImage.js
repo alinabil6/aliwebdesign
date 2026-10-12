@@ -1,4 +1,5 @@
 import { buildBackgroundBlock } from "../lib/backgroundEnforcer.js";
+import { buildAspectRatioDirective } from "../lib/aspectRatioEnforcer.js";
 
 const VARIANT_STYLES = [
   "clean bold vector",
@@ -21,8 +22,7 @@ export function buildPrompt({
   const bg = buildBackgroundBlock(bg_color);
   const style = VARIANT_STYLES[variant % VARIANT_STYLES.length];
   const concept = String(prompt || "").trim();
-  const ar = String(aspectRatio || "1:1").trim();
-  const arDirective = ar && ar !== "1:1" ? `Aspect ratio: ${ar} (--ar ${ar}). Design canvas structured strictly to ${ar} aspect ratio format.` : "";
+  const arDirective = buildAspectRatioDirective(aspectRatio, { hasReferenceImage: false });
 
   const styleClause = style_directive
     ? `Artistic technique: ${style_name || style}. ${style_directive}.`

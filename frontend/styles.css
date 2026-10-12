@@ -3079,10 +3079,21 @@ kbd {
 
 /* ── Card Aspect Ratio & Hover Dock ── */
 
+.design-mount {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .design-mount img {
   width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: cover;
+  height: auto;
+  max-height: 480px;
+  object-fit: contain;
   border-radius: 10px;
   display: block;
 }

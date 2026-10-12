@@ -7,6 +7,7 @@ import { hasReadyAccount } from "../lib/accounts.js";
 import { runFleetBatch } from "../lib/queue.js";
 import { buildPrompt } from "../prompts/designToDesign.js";
 import { resolveStyle } from "../lib/styleResolver.js";
+import { formatImageToAspectRatio } from "../lib/aspectRatioEnforcer.js";
 
 const router = Router();
 
@@ -48,6 +49,8 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
         aspectRatio,
       }),
       imagePaths: [source.abs],
+      aspectRatio,
+      bgColor,
     }));
 
     // Streaming (NDJSON) vs classic JSON response. The client requests
@@ -88,7 +91,8 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
           tasks,
           async ({ buffer, taskIndex, task, account }) => {
             if (routeAbort.signal.aborted) return null;
-            const out = storeInLibrary(buffer, `${uuidv4()}.png`);
+            const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
+            const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
             const design = insertDesign({
               id: uuidv4(),
               feature: "design-to-design",
@@ -143,7 +147,8 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
         tasks,
         async ({ buffer, taskIndex, task, account }) => {
           if (routeAbort.signal.aborted) return null;
-          const out = storeInLibrary(buffer, `${uuidv4()}.png`);
+          const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
+          const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
           const design = insertDesign({
             id: uuidv4(),
             feature: "design-to-design",

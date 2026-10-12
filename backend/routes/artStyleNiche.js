@@ -6,6 +6,7 @@ import { insertDesign } from "../lib/db.js";
 import { hasReadyAccount } from "../lib/accounts.js";
 import { runFleetBatch } from "../lib/queue.js";
 import { buildPrompt } from "../prompts/artStyleNiche.js";
+import { formatImageToAspectRatio } from "../lib/aspectRatioEnforcer.js";
 
 const router = Router();
 
@@ -55,9 +56,12 @@ router.post(
       const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
 
       // All style references are fed together as the moodboard, followed by the niche image
+      const allImagePaths = styles.length > 0 ? [...styles.map((s) => s.abs), niche.abs] : [niche.abs];
       const tasks = Array.from({ length: count }, (_, v) => ({
         prompt: buildPrompt({ variant: v, bg_color, styleCount: styles.length, aspectRatio }),
-        imagePaths: [niche.abs], // Attach niche as visual subject; styles are fused via prompt
+        imagePaths: allImagePaths,
+        aspectRatio,
+        bgColor: bg_color,
       }));
 
       const wantsStream =
@@ -92,7 +96,8 @@ router.post(
             tasks,
             async ({ buffer, taskIndex, task, account }) => {
               if (routeAbort.signal.aborted) return null;
-              const out = storeInLibrary(buffer, `${uuidv4()}.png`);
+              const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
+              const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
               const design = insertDesign({
                 id: uuidv4(),
                 feature: "art-style-niche",
@@ -152,7 +157,8 @@ router.post(
           tasks,
           async ({ buffer, taskIndex, task, account }) => {
             if (routeAbort.signal.aborted) return null;
-            const out = storeInLibrary(buffer, `${uuidv4()}.png`);
+            const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
+            const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
             const design = insertDesign({
               id: uuidv4(),
               feature: "art-style-niche",

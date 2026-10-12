@@ -1,5 +1,6 @@
 import { buildBackgroundBlock } from "../lib/backgroundEnforcer.js";
 import { UNIVERSAL_FOOTER } from "./textToImage.js";
+import { buildAspectRatioDirective } from "../lib/aspectRatioEnforcer.js";
 
 export function buildPrompt({
   bg_color = "#000000",
@@ -9,8 +10,7 @@ export function buildPrompt({
   aspectRatio = "1:1"
 } = {}) {
   const bg = buildBackgroundBlock(bg_color);
-  const ar = String(aspectRatio || "1:1").trim();
-  const arDirective = ar && ar !== "1:1" ? `Aspect ratio: ${ar} (--ar ${ar}). Design canvas structured strictly to ${ar} aspect ratio format.` : "";
+  const arDirective = buildAspectRatioDirective(aspectRatio, { hasReferenceImage: true });
 
   const styleClause = style_directive
     ? `Artistic technique: ${style_name || "vector apparel"}. ${style_directive}.`
