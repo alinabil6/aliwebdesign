@@ -5744,6 +5744,66 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Global refresh button — reloads all application sections and synchronizes health
+  const globalRefreshBtn = $("#globalRefreshBtn");
+  if (globalRefreshBtn) {
+    async function executeGlobalRefresh() {
+      if (globalRefreshBtn.classList.contains("refreshing")) return;
+      globalRefreshBtn.classList.add("refreshing");
+
+      try {
+        // 1. Refresh live top bar health and accounts data
+        await refreshTopBar();
+        if (typeof refreshAccountsData === "function") {
+          await refreshAccountsData();
+        }
+
+        // 2. Clear cached view mounts so every view refreshes on demand
+        mountedViews.clear();
+        if (viewTeardown) {
+          try { viewTeardown(); } catch (_) {}
+          viewTeardown = null;
+        }
+
+        // 3. Clear existing rendered section HTML so they re-mount pristine
+        document.querySelectorAll("#view > .app-section").forEach((sec) => {
+          sec.innerHTML = "";
+        });
+
+        // 4. Re-mount and re-render current view with fresh server data
+        const activeView = currentView || "home";
+        mountedViews.add(activeView);
+        const renderFn = views[activeView] || views.home;
+        const res = renderFn();
+        if (res && typeof res.then === "function") {
+          await res;
+        }
+        renderIcons();
+
+        // 5. Update aura host visibility
+        const auraHost = document.getElementById("auraBgHost");
+        if (auraHost) {
+          auraHost.classList.toggle("hidden", activeView === "home");
+        }
+      } catch (err) {
+        console.error("[globalRefresh] Refresh error:", err);
+      } finally {
+        setTimeout(() => {
+          globalRefreshBtn.classList.remove("refreshing");
+        }, 700);
+      }
+    }
+
+    globalRefreshBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (e.shiftKey) {
+        window.location.reload();
+        return;
+      }
+      executeGlobalRefresh();
+    });
+  }
+
   const themeToggle = $("#themeToggle");
   if (themeToggle) {
     // data-theme="light" on <html> and body.light-mode flips the light-token overrides in styles.css.

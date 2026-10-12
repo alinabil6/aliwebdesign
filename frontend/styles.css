@@ -716,6 +716,142 @@ body:has(#section-home:not(.hidden)) #auraBgHost,
   align-self: center;
 }
 
+/* ── Top Bar Brand & Global Refresh Button ────────────────── */
+.top-brand-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.global-refresh-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px 0 14px;
+  border-radius: 7px;
+  background: #141A24;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+/* Left accent bar matching the webapp cyan/signal-blue palette, scaled down */
+.global-refresh-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  background: #38BDF8;
+  background: linear-gradient(180deg, #38BDF8 0%, #2563EB 100%);
+  border-top-left-radius: 7px;
+  border-bottom-left-radius: 7px;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.global-refresh-btn:hover {
+  background: #1C2433;
+  border-color: rgba(56, 189, 248, 0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35), 0 0 10px rgba(56, 189, 248, 0.18);
+}
+
+.global-refresh-btn:hover::before {
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.85);
+}
+
+.global-refresh-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.global-refresh-btn .global-refresh-icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.3;
+  color: #38BDF8;
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.global-refresh-btn .global-refresh-label {
+  display: inline-block;
+  line-height: 1;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+/* Spin animation on click / refreshing */
+@keyframes globalRefreshSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.global-refresh-btn.refreshing .global-refresh-icon {
+  animation: globalRefreshSpin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.global-refresh-btn.refreshing {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* ── Light / White Mode Overrides ────────────────────────── */
+:root[data-theme="light"] .global-refresh-btn,
+[data-theme="light"] .global-refresh-btn,
+body.light-mode .global-refresh-btn {
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  color: #0F172A;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08), inset 0 1px 0 #FFFFFF;
+}
+
+:root[data-theme="light"] .global-refresh-btn::before,
+[data-theme="light"] .global-refresh-btn::before,
+body.light-mode .global-refresh-btn::before {
+  background: linear-gradient(180deg, #0EA5E9 0%, #2563EB 100%);
+  box-shadow: 0 0 6px rgba(14, 165, 233, 0.4);
+}
+
+:root[data-theme="light"] .global-refresh-btn:hover,
+[data-theme="light"] .global-refresh-btn:hover,
+body.light-mode .global-refresh-btn:hover {
+  background: #F8FAFC;
+  border-color: #38BDF8;
+  color: #0F172A;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1), 0 0 8px rgba(56, 189, 248, 0.2);
+}
+
+:root[data-theme="light"] .global-refresh-btn .global-refresh-icon,
+[data-theme="light"] .global-refresh-btn .global-refresh-icon,
+body.light-mode .global-refresh-btn .global-refresh-icon {
+  color: #0284C7;
+}
+
+@media (max-width: 580px) {
+  .global-refresh-btn .global-refresh-label {
+    display: none;
+  }
+  .global-refresh-btn {
+    padding: 0 8px 0 11px;
+  }
+}
+
+
 .top-status {
   display: inline-flex;
   align-items: center;
