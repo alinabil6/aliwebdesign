@@ -46,14 +46,6 @@ function sanitizeCopy(text) {
     .trim();
 }
 
-function preserveDescription(text) {
-  return String(text ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/\u0000/g, "")
-    .trim();
-}
-
 function truncateAtWord(text, maxLen) {
   const s = String(text ?? "").trim();
   if (s.length <= maxLen) return s;
@@ -116,7 +108,7 @@ function normalizeListing(raw) {
   let brand = (obj.brand || obj.brand_name || obj.brandName || "").trim();
   const bullet1 = (obj.bullet1 || obj.bullet_1 || "").trim();
   const bullet2 = (obj.bullet2 || obj.bullet_2 || "").trim();
-  let description = preserveDescription(obj.description || obj.desc || "");
+  let description = (obj.description || obj.desc || "").trim();
 
   if (!brand) {
     const titleWords = title.split(" ").slice(0, 3).join(" ");
@@ -134,7 +126,7 @@ function normalizeListing(raw) {
     brand: truncateAtWord(sanitizeCopy(brand), 50),
     bullet1: truncateAtWord(sanitizeCopy(bullet1), 256),
     bullet2: truncateAtWord(sanitizeCopy(bullet2), 256),
-    description: preserveDescription(description),
+    description: truncateAtWord(sanitizeCopy(description), 500),
     trademark_safe: obj.trademark_safe === true,
   };
 }
@@ -201,7 +193,7 @@ function extractJSON(rawText, fieldKeys = {}) {
 function normalizeTeePublicListing(raw) {
   const obj = typeof raw === "object" && raw !== null ? raw : {};
   let title = (obj.title || "").trim();
-  let description = preserveDescription(obj.description || obj.desc || "");
+  let description = (obj.description || obj.desc || "").trim();
   let mainTag = String(
     obj.main_tag || obj.mainTag || obj.primary_tag || obj.primaryTag || ""
   ).trim();
@@ -238,7 +230,7 @@ function normalizeTeePublicListing(raw) {
 
   return {
     title: clean(title, 80),
-    description: preserveDescription(description),
+    description: clean(description, 300),
     main_tag: mainTagClean,
     mainTag: mainTagClean,
     supporting_tags: supportingTags,
@@ -251,7 +243,7 @@ function normalizeEtsyListing(raw) {
   const obj = typeof raw === "object" && raw !== null ? raw : {};
   let title = (obj.title || "").trim();
   let category = (obj.category || "Clothing > Unisex Adult Clothing > Tops & Tees > T-shirts").trim();
-  let description = preserveDescription(obj.description || obj.desc || "");
+  let description = (obj.description || obj.desc || "").trim();
   const attrs = typeof obj.attributes === "object" && obj.attributes !== null ? obj.attributes : {};
 
   const attributes = {
@@ -293,7 +285,7 @@ function normalizeEtsyListing(raw) {
     category: truncateAtWord(category, 100),
     attributes,
     tags,
-    description: preserveDescription(description),
+    description: truncateAtWord(description, 1500),
     trademark_safe: obj.trademark_safe === true || obj.trademark_safe === undefined,
   };
 }
@@ -368,18 +360,17 @@ async function processListingOnAccount(account, design, referenceData, platform,
 
     console.log(`[magicListing] Sending Vision prompt + image attachment to ${account.id}...`);
 
-    const TEXT_TIMEOUT_MS = 180000;
-    const ROUTE_TIMEOUT_MS = TEXT_TIMEOUT_MS + 15000;
+    const TIMEOUT_MS = 75000;
     const reply = await Promise.race([
       web.generateText({
         prompt,
         imagePaths: [imagePath],
         page,
         signal,
-        timeoutMs: TEXT_TIMEOUT_MS,
+        timeoutMs: 65000,
       }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("MAGIC_LISTING_TIMEOUT")), ROUTE_TIMEOUT_MS)
+        setTimeout(() => reject(new Error("MAGIC_LISTING_TIMEOUT")), TIMEOUT_MS)
       ),
     ]);
 

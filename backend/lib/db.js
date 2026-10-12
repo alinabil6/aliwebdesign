@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
+import { notifyAccountChanged } from "./accountEvents.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, "..", "aliwebdesign.db");
@@ -217,6 +218,7 @@ export function setAccountStatus(id, status, clearError = null) {
   } else {
     db.prepare(`UPDATE browser_accounts SET status = ? WHERE id = ?`).run(status, id);
   }
+  notifyAccountChanged(id, `status:${status}`);
 }
 
 export function insertAccount({ id, email = null, browser, profile_dir, status = "checking" }) {
@@ -230,6 +232,7 @@ export function insertAccount({ id, email = null, browser, profile_dir, status =
     usage_weekly: null,
     last_error: null,
   });
+  notifyAccountChanged(id, "insert");
   return getAccountById(id);
 }
 
@@ -244,6 +247,7 @@ export function updateAccountStatus(id, { status, email, usage_daily, usage_week
     last_error: last_error ?? null,
     clear_error: clear_error !== undefined ? (clear_error ? 1 : 0) : (status === "ready" ? 1 : 0),
   });
+  notifyAccountChanged(id, `update:${status}`);
   return getAccountById(id);
 }
 
@@ -257,6 +261,7 @@ export function recordGeneration(id) {
     accountStmts.pruneGenerationLog.run(Date.now() - 40 * 24 * 60 * 60 * 1000);
   });
   run();
+  notifyAccountChanged(id, "generation");
   return getAccountById(id);
 }
 
@@ -318,6 +323,7 @@ setInterval(() => {
     const info = _stuckAccountWatchdog.run();
     if (info.changes > 0) {
       console.log(`[db] Watchdog: reset ${info.changes} stuck account(s) back to ready.`);
+      notifyAccountChanged(null, "watchdog_reset");
     }
   } catch (err) {
     console.error("[db] Watchdog error:", err.message);
@@ -325,7 +331,9 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 export function deleteAccountRow(id) {
-  return accountStmts.remove.run(id);
+  const result = accountStmts.remove.run(id);
+  notifyAccountChanged(id, "delete");
+  return result;
 }
 
 // ────────────────────────────────────────────────

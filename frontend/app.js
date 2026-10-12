@@ -360,6 +360,9 @@ async function fetchStreamNDJSON(url, options, onChunk) {
       try {
         const payload = JSON.parse(trimmed);
         onChunk(payload);
+        if (payload.event === "design") {
+          refreshAccountsData();
+        }
       } catch (err) {
         console.warn("Failed to parse NDJSON chunk:", line, err);
       }
@@ -368,9 +371,14 @@ async function fetchStreamNDJSON(url, options, onChunk) {
 
   if (buffer.trim()) {
     try {
-      onChunk(JSON.parse(buffer.trim()));
+      const payload = JSON.parse(buffer.trim());
+      onChunk(payload);
+      if (payload.event === "design") {
+        refreshAccountsData();
+      }
     } catch { /* ignore trailing partial */ }
   }
+  refreshAccountsData();
 }
 
 /** Resolve a File to a base64 data URL. readAsDataURL returns void — the
@@ -900,7 +908,46 @@ function stylePopoverHtml(analysis) {
     </div>`;
 }
 
-/* ── Live Top Bar Health ─────────────────────────────────── */
+/* ── Live Top Bar Health & Real-time Account Auto-Refresh ───── */
+
+let accountsEventSource = null;
+let accountsDirty = false;
+let isRefreshingAccounts = false;
+
+async function refreshAccountsData() {
+  refreshTopBar();
+  const accountsSection = document.getElementById("section-accounts");
+  const isAccountsVisible = accountsSection && !accountsSection.classList.contains("hidden");
+  if (isAccountsVisible) {
+    if (typeof renderAccounts === "function" && !isRefreshingAccounts) {
+      isRefreshingAccounts = true;
+      try {
+        await renderAccounts();
+      } finally {
+        isRefreshingAccounts = false;
+      }
+    }
+  } else {
+    accountsDirty = true;
+  }
+}
+window.refreshAccountsData = refreshAccountsData;
+
+function initAccountsEventStream() {
+  if (accountsEventSource) return;
+  try {
+    accountsEventSource = new EventSource("/api/accounts/events");
+    accountsEventSource.addEventListener("account_change", () => {
+      refreshAccountsData();
+    });
+    accountsEventSource.onerror = () => {
+      // Browser EventSource automatically reconnects on error
+    };
+  } catch (err) {
+    console.warn("[accounts] EventSource setup failed:", err);
+  }
+}
+window.initAccountsEventStream = initAccountsEventStream;
 
 async function refreshTopBar() {
   const dot = $("#topStatusDot");
@@ -1334,6 +1381,7 @@ function renderPixelToPixel() {
       stopAccountPoll();
       abortController = null;
       syncSummary();
+      refreshAccountsData();
     }
   });
 
@@ -1834,6 +1882,11 @@ function showView(name) {
   // section persists (no re-render), restart it when home becomes visible.
   if (name === "home" && document.getElementById("heroTypewriter")) {
     startTypewriter();
+  }
+  // Always refresh accounts when navigating to it (or if marked dirty after a generation)
+  if (name === "accounts") {
+    accountsDirty = false;
+    renderAccounts();
   }
   // Always refresh the library when navigating to it — fetches the latest
   // designs from the backend so newly generated work appears without F5.
@@ -2473,6 +2526,7 @@ function renderTextToImage() {
         grid.classList.add("hidden");
         emptyState.classList.remove("hidden");
       }
+      refreshAccountsData();
     }
   });
 
@@ -3004,6 +3058,7 @@ function renderVariations() {
       progressLine.classList.add("hidden");
       stopAccountPoll();
       abortController = null;
+      refreshAccountsData();
     }
   });
 
@@ -3466,9 +3521,9 @@ function renderMagicListing() {
           referenceData,
           platform: currentPlatform,
         }),
-        // 6-minute client-side timeout gives slow Gemini text listings enough
-        // room while still preventing the UI from hanging forever at 95%.
-        signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(360000)]),
+        // FIX: 3-minute client-side timeout prevents the UI from hanging
+        // forever at 95% if the backend stops responding.
+        signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(180000)]),
       });
 
       if (!res.ok) {
@@ -3552,6 +3607,7 @@ function renderMagicListing() {
       generateBtn.disabled = false;
       stopBtn.disabled = true;
       abortController = null;
+      refreshAccountsData();
     }
   });
 
@@ -3752,7 +3808,7 @@ function magicListingCard(item) {
           <div class="ml-tag-cloud">
             ${tags.map((t) => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
           </div>
-          <p class="ml-field" style="margin-top:0.6rem;"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-wrap;overflow-wrap:anywhere;">${esc(description)}</span></p>
+          <p class="ml-field" style="margin-top:0.6rem;"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-line;">${esc(description)}</span></p>
         </div>
         <div class="ml-card-actions">
           ${copyBtn("Title", title)}
@@ -3798,7 +3854,7 @@ function magicListingCard(item) {
         </div>
         <div class="ml-card-body">
           <p class="ml-field"><strong>Title</strong> <span class="ml-chars">${title.length}/40–80</span><br>${esc(title)}</p>
-          <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-wrap;overflow-wrap:anywhere;">${esc(description)}</span></p>
+          <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length}/150–300</span><br>${esc(description)}</p>
           <p class="ml-field"><strong>Main Tag</strong><br><span class="ml-tag-pill">${esc(mainTag || "N/A")}</span></p>
           <p class="ml-field"><strong>Supporting Tags</strong> <span class="ml-chars">${tags.length}/6–15</span></p>
           <div class="ml-tag-cloud">
@@ -3843,7 +3899,7 @@ function magicListingCard(item) {
         <p class="ml-field"><strong>Brand</strong> <span class="ml-chars">${brand.length}/50</span><br>${esc(brand)}</p>
         <p class="ml-field"><strong>Bullet 1</strong> <span class="ml-chars">${bullet1.length}/256</span><br>${esc(bullet1)}</p>
         <p class="ml-field"><strong>Bullet 2</strong> <span class="ml-chars">${bullet2.length}/256</span><br>${esc(bullet2)}</p>
-        <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-wrap;overflow-wrap:anywhere;">${esc(description)}</span></p>
+        <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length}/500</span><br>${esc(description)}</p>
       </div>
       <div class="ml-card-actions">
         ${copyBtn("Title", title)}
@@ -4281,6 +4337,7 @@ function renderArtStyleNiche() {
       progress.classList.add("hidden");
       updatePairing();
       if (typeof startAccountPoll === "function") startAccountPoll();
+      refreshAccountsData();
     }
   });
 
@@ -4648,6 +4705,7 @@ function renderDesignToDesign() {
       stopBtn.disabled = true;
       setTimeout(() => { if (!abortController) progressLine.classList.add("hidden"); }, 2500);
       abortController = null;
+      refreshAccountsData();
     }
   });
 
@@ -5063,12 +5121,12 @@ async function renderAccounts() {
       return;
     }
     try {
-      const fresh = await api("/api/accounts/usage");
+      const fresh = await api(`/api/accounts/usage?tz=${encodeURIComponent(getAppTimezone())}`);
       if (JSON.stringify(fresh) !== lastAccountsJson) renderAccounts();
     } catch {
       /* keep showing the last good payload */
     }
-  }, 30000);
+  }, 15000);
 
   $("#accountGrid").addEventListener("click", async (e) => {
     const add = e.target.closest("[data-add]");
@@ -5834,8 +5892,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  initAccountsEventStream();
   refreshTopBar();
-  setInterval(refreshTopBar, 30000);
+  setInterval(refreshTopBar, 15000);
   showView("home");
 });
 

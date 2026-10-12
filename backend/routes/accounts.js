@@ -12,6 +12,7 @@ import {
 } from "../lib/accounts.js";
 import { getAccountById, updateAccountStatus } from "../lib/db.js";
 import { buildUsagePayload } from "../lib/usage.js";
+import { accountEvents } from "../lib/accountEvents.js";
 
 const router = Router();
 
@@ -68,6 +69,43 @@ router.get("/summary", (req, res) => {
     generationsToday: payload.fleet.generationsToday,
     generationsWeek: payload.fleet.generationsWeek,
     best: payload.best,
+  });
+});
+
+// GET /api/accounts/events — Server-Sent Events stream for real-time account auto-refresh
+router.get("/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  if (typeof res.flushHeaders === "function") {
+    res.flushHeaders();
+  }
+
+  // Initial connect message
+  res.write(`event: connected\ndata: ${JSON.stringify({ time: Date.now() })}\n\n`);
+
+  const onAccountChange = (data) => {
+    try {
+      res.write(`event: account_change\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch {
+      /* ignore client write failure */
+    }
+  };
+
+  accountEvents.on("change", onAccountChange);
+
+  // Keep-alive heartbeat every 20 seconds
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`: heartbeat\n\n`);
+    } catch {
+      /* ignore */
+    }
+  }, 20000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    accountEvents.off("change", onAccountChange);
   });
 });
 
