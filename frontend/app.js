@@ -3085,14 +3085,25 @@ function renderVariations() {
     activeTotalSlots = totalTasks;
     renderPlaceholders($("#nvResults"), totalTasks, "nv-slot");
 
+    const parsedIdeas = nicheText
+      .split(/[\n,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
     try {
       for (let i = 0; i < baseFiles.length; i++) {
         if (abortController.signal.aborted) break;
         tracker.startItem(i);
 
+        // Map each uploaded design to its corresponding niche idea (1-to-1)
+        // when multiple designs are uploaded and multiple ideas are provided.
+        const targetNiche = (baseFiles.length > 1 && parsedIdeas.length > 1)
+          ? parsedIdeas[i % parsedIdeas.length]
+          : nicheText;
+
         const fd = new FormData();
         fd.append("source", baseFiles[i]);
-        fd.append("niche", nicheText);
+        fd.append("niche", targetNiche);
         fd.append("count", count);
         fd.append("bg_color", selectedBg);
         fd.append("aspectRatio", getNvShape());

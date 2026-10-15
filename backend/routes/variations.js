@@ -39,12 +39,7 @@ router.post("/niche-variations", upload.single("source"), async (req, res) => {
     }
 
     const parsedNiches = parseNicheList(rawNiche);
-    let count = parseInt(req.body.count, 10) || 1;
-    // If the user specified a list of niches (e.g. 4 items), honor that list size
-    if (parsedNiches.length > 1 && count <= 1) {
-      count = parsedNiches.length;
-    }
-    count = Math.min(100, Math.max(1, count));
+    const count = Math.min(100, Math.max(1, parseInt(req.body.count, 10) || 1));
 
     if (!hasReadyAccount()) {
       removeFileSafe(file.path);
