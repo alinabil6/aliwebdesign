@@ -149,9 +149,11 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
 async function fillPrompt(page, promptText) {
   const editor = await firstVisible(page, SELECTORS.promptInput, { timeout: 20000 });
   if (!editor) throw new Error("Gemini prompt editor not found");
-  await editor.fill(promptText);
+  await editor.click({ timeout: 3000 }).catch(() => {});
+  await editor.evaluate((el) => { el.innerHTML = ""; el.focus(); }).catch(() => {});
+  await page.keyboard.insertText(promptText);
   await editor.evaluate((el) => {
-    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }).catch(() => {});
   return editor;
@@ -160,22 +162,39 @@ async function fillPrompt(page, promptText) {
 async function submitPrompt(page, editor) {
   console.log("[geminiweb] Submitting prompt...");
   const sendSelector = SELECTORS.sendButton.join(", ");
-  const deadline = Date.now() + 15000;
-  let clicked = false;
-  while (Date.now() < deadline && !clicked) {
+  const uqBefore = await page.locator("user-query, .user-query-container").count().catch(() => 0);
+  const mrBefore = await page.locator("model-response").count().catch(() => 0);
+
+  const checkDispatched = () => page.evaluate(({ uqPrev, mrPrev }) => {
+    const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
+    if (stopBtn && window.getComputedStyle(stopBtn).display !== "none" && stopBtn.offsetWidth > 0) return true;
+    if (document.querySelectorAll("user-query, .user-query-container").length > uqPrev) return true;
+    if (document.querySelectorAll("model-response").length > mrPrev) return true;
+    const ed = document.querySelector('rich-textarea div[contenteditable="true"], .ql-editor, div[role="textbox"]');
+    return (ed?.innerText || "").trim().length === 0;
+  }, { uqPrev: uqBefore, mrPrev: mrBefore }).catch(() => false);
+
+  const deadline = Date.now() + 30000;
+  let attempts = 0;
+  while (Date.now() < deadline) {
+    attempts++;
     const send = page.locator(sendSelector).first();
     if (await send.isVisible().catch(() => false)) {
-      await send.click({ force: true, timeout: 3000 }).catch(() => {});
-      clicked = true;
-      break;
+      await send.click({ timeout: 3000 }).catch(() => {});
+    } else {
+      await editor.focus().catch(() => {});
+      await page.keyboard.press("Enter").catch(() => {});
     }
-    await page.waitForTimeout(200);
+    // Poll every 300ms for up to 2.1s per attempt
+    for (let w = 0; w < 7; w++) {
+      await page.waitForTimeout(300);
+      if (await checkDispatched()) {
+        console.log(`[geminiweb] Prompt submitted successfully (confirmed on attempt ${attempts}).`);
+        return;
+      }
+    }
   }
-  if (!clicked) {
-    await editor.focus().catch(() => {});
-    await page.keyboard.press("Enter");
-  }
-  console.log("[geminiweb] Prompt submitted successfully.");
+  console.log("[geminiweb] Prompt submission loop finished (unconfirmed).");
 }
 
 async function monitorAndExtractOutput(page, beforeCount, timeout = 120000, outputPath = null, signal = null) {
@@ -366,17 +385,24 @@ async function ensureGeminiApp(page) {
     throw new Error("SESSION_EXPIRED: Account redirected to Google login");
   }
   if (!currentUrl.includes("gemini.google.com/app")) {
-    await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+    await page.goto(GEMINI_URL, { waitUntil: "commit", timeout: 20000 }).catch(() => {});
     if ((page.url() || "").includes("accounts.google.com")) {
       throw new Error("SESSION_EXPIRED: Account redirected to Google login");
     }
-    return;
+  } else {
+    // Already on Gemini — click New Chat so the 2nd design starts a fresh conversation
+    const newChatBtn = page.locator(
+      'a[href="/app"], a[href="/app/"], button[aria-label*="New chat" i], button[aria-label*="Nouvelle discussion" i]'
+    ).first();
+    if (await newChatBtn.isVisible().catch(() => false)) {
+      await newChatBtn.click({ timeout: 2000 }).catch(() => {});
+    }
   }
-  const newChatBtn = page.locator('a[href="/app"], a[href="/app/"], button[aria-label*="New chat" i], button[aria-label*="Nouvelle discussion" i]').first();
-  if (await newChatBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await newChatBtn.click({ force: true }).catch(() => {});
-    await page.waitForTimeout(400);
-  }
+  // Wait until the composer editor is interactive before proceeding
+  await page.locator('rich-textarea div[contenteditable="true"], .ql-editor, div[role="textbox"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 25000 })
+    .catch(() => {});
 }
 
 export async function checkSession(page, { navigate = true, fallbackEmail = null } = {}) {
@@ -406,11 +432,10 @@ export async function checkSession(page, { navigate = true, fallbackEmail = null
   }
 }
 
-export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 60000 }) {
+export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 90000 }) {
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
   await ensureGeminiApp(page);
   await dismissModals(page);
-  await page.waitForTimeout(200);
 
   if (imagePaths?.length) {
     await attachReferenceImages(page, imagePaths, signal);
@@ -418,10 +443,14 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
 
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
+  // Baseline: count model-response turns BEFORE submission
+  const countBefore = await page.locator("model-response").count().catch(() => 0);
+
   const editor = await fillPrompt(page, prompt);
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
   await submitPrompt(page, editor);
 
+  console.log(`[geminiweb] Monitoring Gemini text response (baseline turns: ${countBefore})...`);
   const start = Date.now();
   let lastText = "";
   let stableTicks = 0;
@@ -429,26 +458,59 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
   while (Date.now() - start < timeoutMs) {
     if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-    const isStreamingDone = await page.evaluate(() => {
+    const probe = await page.evaluate((prevCount) => {
+      const toastEl = document.querySelector('mat-snack-bar-container, [role="alert"]');
+      const toastMsg = toastEl ? (toastEl.innerText || "").trim() : null;
+
       const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
-      if (stopBtn) return false;
-      const sendBtn = document.querySelector('button[aria-label*="Send" i], button[aria-label*="Envoyer" i], .send-button');
-      return sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true";
-    }).catch(() => false);
+      const isGenerating = Boolean(
+        stopBtn &&
+        window.getComputedStyle(stopBtn).display !== "none" &&
+        window.getComputedStyle(stopBtn).visibility !== "hidden" &&
+        stopBtn.offsetWidth > 0
+      );
 
-    const currentText = await page.locator("model-response, message-content, [data-test-id='model-response-text']").last().innerText().catch(() => "");
-    const trimmed = (currentText || "").trim();
+      const turns = document.querySelectorAll("model-response");
+      let text = "";
+      let hasCopyBtn = false;
+      if (turns.length > prevCount) {
+        const last = turns[turns.length - 1];
+        const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
+        text = (content.innerText || "").trim();
+        hasCopyBtn = Boolean(last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]'));
+      }
 
+      return { toastMsg, isGenerating, hasCopyBtn, text };
+    }, countBefore).catch(() => ({ toastMsg: null, isGenerating: false, hasCopyBtn: false, text: "" }));
+
+    if (probe.toastMsg && /limit|quota|error|try again|failed|unable/i.test(probe.toastMsg)) {
+      throw new Error(`GEMINI_ERROR: ${probe.toastMsg}`);
+    }
+
+    const trimmed = probe.text;
     if (trimmed.length > 0) {
-      if (isStreamingDone) {
+      // Fast-path: Copy button rendered = generation definitely complete
+      if (probe.hasCopyBtn && trimmed.length > 20) {
+        console.log(`[geminiweb] Text captured via Copy button detection (${trimmed.length} chars).`);
+        return trimmed;
+      }
+      if (!probe.isGenerating) {
+        // Immediate JSON resolution: stable closed JSON for 1 tick
+        if (trimmed === lastText && trimmed.includes("{") && trimmed.includes("}") && trimmed.length > 40) {
+          console.log(`[geminiweb] JSON captured immediately (${trimmed.length} chars).`);
+          return trimmed;
+        }
+        // Stability fallback: same text for 2 consecutive ticks (~800ms)
         if (trimmed === lastText) {
-          stableTicks++;
-          if (stableTicks >= 2) {
+          if (++stableTicks >= 2) {
+            console.log(`[geminiweb] Text captured via stability (${trimmed.length} chars).`);
             return trimmed;
           }
         } else {
           stableTicks = 0;
         }
+      } else {
+        stableTicks = 0;
       }
       lastText = trimmed;
     }
@@ -456,7 +518,8 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
     await page.waitForTimeout(400);
   }
 
-  if (lastText && lastText.length > 0) {
+  if (lastText.length > 0) {
+    console.log(`[geminiweb] Returning last captured text at deadline (${lastText.length} chars).`);
     return lastText;
   }
   throw new Error(`Timed out waiting for Gemini text response (${Math.round(timeoutMs / 1000)}s)`);

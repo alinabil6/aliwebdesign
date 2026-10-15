@@ -312,8 +312,21 @@ async function processListingOnAccount(account, design, referenceData, platform,
   console.log(`[magicListing] Processing design ${designIndex} (${fileName}) for platform: [${plat}]`);
 
   const base64Data = String(imageBase64).replace(/^data:image\/\w+;base64,/, "");
-  const imagePath = path.join(os.tmpdir(), `magic-listing-${uuidv4().slice(0, 8)}.png`);
-  fs.writeFileSync(imagePath, Buffer.from(base64Data, "base64"));
+  const rawBuf = Buffer.from(base64Data, "base64");
+  const imagePath = path.join(os.tmpdir(), `magic-listing-${uuidv4().slice(0, 8)}.jpg`);
+  try {
+    // Compress to 800px JPEG (~40-80 KB) so Gemini attachment upload finishes fast
+    const sharp = (await import("sharp")).default;
+    const jpgBuf = await sharp(rawBuf)
+      .resize(800, 800, { fit: "inside", withoutEnlargement: true })
+      .flatten({ background: { r: 30, g: 30, b: 30 } })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+    fs.writeFileSync(imagePath, jpgBuf);
+  } catch {
+    // Fallback: write raw buffer if sharp fails
+    fs.writeFileSync(imagePath, rawBuf);
+  }
 
   try {
     if (MOCK_GEMINI || !canLaunchBrowser(account.browser)) {
@@ -360,14 +373,14 @@ async function processListingOnAccount(account, design, referenceData, platform,
 
     console.log(`[magicListing] Sending Vision prompt + image attachment to ${account.id}...`);
 
-    const TIMEOUT_MS = 75000;
+    const TIMEOUT_MS = 110000;
     const reply = await Promise.race([
       web.generateText({
         prompt,
         imagePaths: [imagePath],
         page,
         signal,
-        timeoutMs: 65000,
+        timeoutMs: 90000,
       }),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("MAGIC_LISTING_TIMEOUT")), TIMEOUT_MS)
@@ -474,7 +487,9 @@ router.post("/batch", async (req, res) => {
               : (err.message || "This design could not be processed."),
           });
         } finally {
-          if (account) {
+          // NOTE: processListingOnAccount already calls setAccountStatus("ready") in its own finally block.
+          // We only need to call it here if the account was acquired but processListingOnAccount was never called.
+          if (account && !results.find(r => r.designIndex === (design?.designIndex ?? currentIndex))) {
             setAccountStatus(account.id, "ready");
           }
         }
