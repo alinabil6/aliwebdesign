@@ -36,8 +36,8 @@ if (reconciled > 0) {
 // Gzip/br-compress static + JSON responses.
 app.use(compression());
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
 // Static frontend
 app.use(express.static(path.join(ROOT, "frontend")));
@@ -99,6 +99,12 @@ app.use("/api", (req, res) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error(`[error] ${req.method} ${req.originalUrl}:`, err);
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: "File too large. Maximum file size allowed is 100MB." });
+  }
+  if (err.name === "MulterError") {
+    return res.status(400).json({ error: `Upload error: ${err.message}` });
+  }
   res.status(err.status || 500).json({ error: "Internal server error" });
 });
 

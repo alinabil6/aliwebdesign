@@ -6,11 +6,11 @@ import { STYLES, getTaxonomies } from "../lib/stylesRegistry.js";
 
 const router = Router();
 // multipart form: optional "image" file + optional "prompt" text field.
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
-// multi-image analysis: up to 100 designs, 15MB each.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+// multi-image analysis: up to 100 designs, 100MB each.
 const uploadMany = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 15 * 1024 * 1024, files: 100 },
+    limits: { fileSize: 100 * 1024 * 1024, files: 100 },
 });
 
 // GET /api/styles — list the catalog (id/name/category/keywords/directive)
