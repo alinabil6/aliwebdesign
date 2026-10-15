@@ -1053,8 +1053,7 @@ const views = {
   p2p: renderPixelToPixel,
   magicListing: renderMagicListing,
   artstyle: renderArtStyleNiche,
-  designs: renderDesigns,
-  listings: renderListings,
+  designs: renderLibrary,
   accounts: renderAccounts,
   "pixel-to-pixel": renderPixelToPixel,
   "prepare": renderPrepareDesigns,
@@ -1537,7 +1536,7 @@ function renderPrepareDesigns() {
             <i data-lucide="plus" style="width: 14px;"></i> Add more
           </button>
           <button type="button" class="btn secondary btn-sm" id="prepFromLibrary" style="border-radius: 9999px; font-size: 0.8rem; padding: 0.4rem 1.15rem;">
-            <i data-lucide="library" style="width: 14px;"></i> From My Designs
+            <i data-lucide="library" style="width: 14px;"></i> From My Library
           </button>
         </div>
 
@@ -1967,10 +1966,7 @@ function showView(name) {
   // Always refresh the library when navigating to it — fetches the latest
   // designs and listings from the backend so newly generated work appears without F5.
   if (name === "designs") {
-    renderDesigns();
-  }
-  if (name === "listings") {
-    renderListings();
+    renderLibrary();
   }
   try {
     localStorage.setItem("aliwebdesign-last-view", name);
@@ -3228,7 +3224,7 @@ function renderMagicListing() {
 
           <div class="stage-actions ml-stage-actions">
             <button type="button" class="btn secondary btn-sm" id="mlAddMore"><i data-lucide="plus"></i> Add more</button>
-            <button type="button" class="btn secondary btn-sm" id="mlFromLibrary"><i data-lucide="library"></i> From My Designs</button>
+            <button type="button" class="btn secondary btn-sm" id="mlFromLibrary"><i data-lucide="library"></i> From My Library</button>
             <button type="button" class="btn secondary btn-sm" id="mlReplace"><i data-lucide="rotate-ccw"></i> Replace</button>
             <button type="button" class="btn secondary btn-sm" id="mlClearAll" style="color: var(--color-danger, #ef4444);"><i data-lucide="trash-2"></i> Delete all</button>
           </div>
@@ -3527,7 +3523,8 @@ function renderMagicListing() {
 
   $("#mlOpenLibrary").addEventListener("click", (e) => {
     e.preventDefault();
-    showView("listings");
+    libraryActiveTab = "listings";
+    showView("designs");
   });
 
   const downloadCsvBtn = $("#btn-download-listings-csv");
@@ -5497,7 +5494,240 @@ async function saveDesignsBatch(btn) {
   }
 }
 
-async function renderDesigns() {
+async function renderLibrary() {
+  const mount = viewMount("designs");
+
+  if (libraryActiveTab === "listings") {
+    const query = new URLSearchParams({
+      ...(listingsLibraryState.platform ? { platform: listingsLibraryState.platform } : {}),
+      ...(listingsLibraryState.search ? { search: listingsLibraryState.search } : {}),
+      page: listingsLibraryState.page,
+      pageSize: 1000,
+    });
+
+    let data = { rows: [], total: 0, page: 1 };
+    try {
+      data = await api(`/api/listings?${query}`);
+    } catch (err) {
+      console.error("Failed to load listings:", err);
+    }
+
+    listingsLibraryState.total = data.total || 0;
+    listingsLibraryState.page = data.page || 1;
+    listingById.clear();
+    (data.rows || []).forEach((l) => listingById.set(l.id, l));
+
+    const hasItems = (data.rows || []).length > 0;
+
+    mount.innerHTML = `
+      <div class="view">
+        <div class="library-toolbar">
+          <div class="library-header-group">
+            <header class="view-header" style="margin-bottom:0;">
+              <h1 class="page-title">My Library <span class="results-count" style="font-size:14px; margin-left:8px;">${listingsLibraryState.total}</span></h1>
+            </header>
+
+            <div class="library-nav-tabs">
+              <button type="button" class="lib-nav-tab" id="libTabDesigns">
+                <i data-lucide="layout-grid"></i> My Designs
+              </button>
+              <button type="button" class="lib-nav-tab active" id="libTabListings">
+                <i data-lucide="list-checks"></i> My Listings
+              </button>
+            </div>
+          </div>
+
+          <div class="lib-filters">
+            <input type="text" id="libListingSearch" placeholder="Search listings..." value="${esc(listingsLibraryState.search || '')}" class="lib-search-input" />
+
+            <select id="libListingPlatformFilter">
+              <option value="">All platforms</option>
+              <option value="amazon" ${listingsLibraryState.platform === 'amazon' ? 'selected' : ''}>Amazon Merch</option>
+              <option value="teepublic" ${listingsLibraryState.platform === 'teepublic' ? 'selected' : ''}>TeePublic</option>
+              <option value="etsy" ${listingsLibraryState.platform === 'etsy' ? 'selected' : ''}>Etsy</option>
+            </select>
+
+            <button class="btn secondary btn-sm" id="libListingCsvBtn" title="Export to CSV">
+              <i data-lucide="download"></i> Download CSV
+            </button>
+
+            <button class="btn secondary btn-sm" id="libListingSelectBtn">
+              <i data-lucide="${isListingSelectMode ? 'x' : 'check-square'}"></i> ${isListingSelectMode ? 'Cancel' : 'Select'}
+            </button>
+
+            <button class="icon-btn" id="libListingRefreshBtn" title="Refresh library"><i data-lucide="refresh-cw"></i></button>
+          </div>
+        </div>
+
+        <div class="batch-bar ${isListingSelectMode ? '' : 'hidden'}" id="listingBatchBar">
+          <div class="batch-info"><span id="listingBatchCount">${selectedListingIds.size}</span> listing(s) selected</div>
+          <div class="batch-actions">
+            <button class="btn secondary btn-sm" id="listingBatchSelectAll"><i data-lucide="check-check"></i> Select all</button>
+            <button class="btn secondary btn-sm" id="listingBatchDeselectAll">Deselect all</button>
+            <button class="btn secondary btn-sm" id="listingBatchExportCsv"><i data-lucide="download"></i> Download selected CSV</button>
+            <button class="btn primary btn-sm danger" id="listingBatchDeleteBtn" style="background:#EF4444;" ${selectedListingIds.size === 0 ? 'disabled' : ''}>
+              <i data-lucide="trash-2"></i> Delete selected
+            </button>
+          </div>
+        </div>
+
+        ${hasItems ? `
+          <div class="ml-results-grid library-grid ${isListingSelectMode ? 'selecting' : ''}" id="listingsGrid">
+            ${(data.rows || []).map(listingLibraryCard).join("")}
+          </div>
+        ` : `
+          <div class="empty-state" style="text-align:center; padding: 60px 20px; color: var(--color-ink-60, #94a3b8);">
+            <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:rgba(37,99,235,0.1); color:#38bdf8; margin-bottom:16px;">
+              <i data-lucide="tag" style="width:32px; height:32px;"></i>
+            </div>
+            <h3 style="color:var(--color-ink,#fff); font-size:18px; margin-bottom:8px;">No Listings Found</h3>
+            <p style="max-width:440px; margin:0 auto 20px auto; font-size:14px; line-height:1.5;">
+              ${listingsLibraryState.search || listingsLibraryState.platform
+                ? "No saved listings match the selected filters. Try clearing the search or switching platform."
+                : "Generate vision-powered Amazon, TeePublic, or Etsy listings in Magic Listing to save and manage them here."}
+            </p>
+            <button type="button" class="btn primary" id="emptyGoToMagicListing">
+              <i data-lucide="sparkles"></i> Go to Magic Listing
+            </button>
+          </div>
+        `}
+      </div>`;
+
+    renderIcons();
+
+    $("#libTabDesigns")?.addEventListener("click", () => {
+      libraryActiveTab = "designs";
+      renderLibrary();
+    });
+    $("#libTabListings")?.addEventListener("click", () => {
+      libraryActiveTab = "listings";
+      renderLibrary();
+    });
+    $("#emptyGoToMagicListing")?.addEventListener("click", () => showView("magicListing"));
+
+    $("#libListingPlatformFilter")?.addEventListener("change", (e) => {
+      listingsLibraryState.platform = e.target.value;
+      renderLibrary();
+    });
+
+    let searchTimer = null;
+    $("#libListingSearch")?.addEventListener("input", (e) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        listingsLibraryState.search = e.target.value;
+        renderLibrary();
+      }, 250);
+    });
+
+    $("#libListingRefreshBtn")?.addEventListener("click", () => renderLibrary());
+
+    $("#libListingSelectBtn")?.addEventListener("click", () => {
+      isListingSelectMode = !isListingSelectMode;
+      if (!isListingSelectMode) selectedListingIds.clear();
+      renderLibrary();
+    });
+
+    $("#listingBatchSelectAll")?.addEventListener("click", () => {
+      listingById.forEach((_, id) => selectedListingIds.add(id));
+      renderLibrary();
+    });
+
+    $("#listingBatchDeselectAll")?.addEventListener("click", () => {
+      selectedListingIds.clear();
+      renderLibrary();
+    });
+
+    const exportItemsToCsv = (items) => {
+      const formatted = items.map((l) => ({
+        designIndex: (l.id || "").slice(0, 8),
+        fileName: l.file_name,
+        platform: l.platform,
+        listing: {
+          title: l.title,
+          brand: l.brand,
+          category: l.category,
+          bullet1: l.bullet1,
+          bullet2: l.bullet2,
+          description: l.description,
+          mainTag: l.main_tag,
+          supportingTags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
+          tags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
+          attributes: typeof l.attributes === "string" ? JSON.parse(l.attributes || "{}") : (l.attributes || {}),
+        },
+      }));
+      exportListingsToCSV(formatted);
+    };
+
+    $("#libListingCsvBtn")?.addEventListener("click", () => {
+      const allItems = [...listingById.values()];
+      if (allItems.length === 0) return alert("No listings to export.");
+      exportItemsToCsv(allItems);
+    });
+
+    $("#listingBatchExportCsv")?.addEventListener("click", () => {
+      const targets = selectedListingIds.size > 0
+        ? [...listingById.values()].filter((l) => selectedListingIds.has(l.id))
+        : [...listingById.values()];
+      if (targets.length === 0) return alert("No listings selected.");
+      exportItemsToCsv(targets);
+    });
+
+    $("#listingBatchDeleteBtn")?.addEventListener("click", async () => {
+      if (selectedListingIds.size === 0) return;
+      if (!confirm(`Permanently delete ${selectedListingIds.size} listing(s)?`)) return;
+
+      try {
+        await api("/api/listings/delete-batch", {
+          method: "POST",
+          body: JSON.stringify({ ids: [...selectedListingIds] }),
+        });
+      } catch (err) {
+        console.error("Batch delete error:", err);
+      }
+      selectedListingIds.clear();
+      isListingSelectMode = false;
+      await renderLibrary();
+    });
+
+    $("#listingsGrid")?.addEventListener("click", async (e) => {
+      const card = e.target.closest(".listing-card");
+      if (!card) return;
+      const id = card.dataset.id;
+      const listing = listingById.get(id);
+
+      if (isListingSelectMode) {
+        if (selectedListingIds.has(id)) {
+          selectedListingIds.delete(id);
+        } else {
+          selectedListingIds.add(id);
+        }
+        card.classList.toggle("selected", selectedListingIds.has(id));
+        const badge = $("#listingBatchCount");
+        if (badge) badge.textContent = selectedListingIds.size;
+        const delBtn = $("#listingBatchDeleteBtn");
+        if (delBtn) delBtn.disabled = selectedListingIds.size === 0;
+        return;
+      }
+
+      const copyBtnEl = e.target.closest(".ml-copy");
+      if (copyBtnEl) {
+        copyWithFeedback(copyBtnEl, copyBtnEl.dataset.copy, copyBtnEl.title.replace("Copy ", ""));
+        return;
+      }
+
+      const delActionBtn = e.target.closest("[data-act='delete']");
+      if (delActionBtn && listing) {
+        if (confirm(`Permanently delete listing "${listing.file_name || 'Untitled'}"?`)) {
+          await api(`/api/listings/${id}`, { method: "DELETE" }).catch(() => {});
+          await renderLibrary();
+        }
+      }
+    });
+
+    return;
+  }
+
+  // Designs Tab
   const query = new URLSearchParams({
     ...(libraryState.folder ? { folder: libraryState.folder } : {}),
     ...(libraryState.feature ? { feature: libraryState.feature } : {}),
@@ -5517,15 +5747,14 @@ async function renderDesigns() {
   designById.clear();
   (data.rows || []).forEach((d) => designById.set(d.id, d));
 
-  // Extract unique folders for the filter
   const allFolders = [...new Set((data.rows || []).map((r) => r.folder).filter(Boolean))];
 
-  viewMount("designs").innerHTML = `
+  mount.innerHTML = `
     <div class="view">
       <div class="library-toolbar">
         <div class="library-header-group">
           <header class="view-header" style="margin-bottom:0;">
-            <h1 class="page-title">My Designs <span class="results-count" style="font-size:14px; margin-left:8px;">${libraryState.total}</span></h1>
+            <h1 class="page-title">My Library <span class="results-count" style="font-size:14px; margin-left:8px;">${libraryState.total}</span></h1>
           </header>
 
           <div class="library-nav-tabs">
@@ -5579,38 +5808,41 @@ async function renderDesigns() {
   renderIcons();
   updateBatchSaveLabel();
 
-  // Tab switch
-  $("#libTabListings")?.addEventListener("click", () => showView("listings"));
+  $("#libTabDesigns")?.addEventListener("click", () => {
+    libraryActiveTab = "designs";
+    renderLibrary();
+  });
+  $("#libTabListings")?.addEventListener("click", () => {
+    libraryActiveTab = "listings";
+    renderLibrary();
+  });
 
-  // Filter Listeners
   $("#libFolderFilter").addEventListener("change", (e) => {
     libraryState.folder = e.target.value;
-    renderDesigns();
+    renderLibrary();
   });
 
   $("#libFeatureFilter").addEventListener("change", (e) => {
     libraryState.feature = e.target.value;
-    renderDesigns();
+    renderLibrary();
   });
 
-  $("#libRefreshBtn").addEventListener("click", () => renderDesigns());
+  $("#libRefreshBtn").addEventListener("click", () => renderLibrary());
 
-  // Toggle Batch Selection
   $("#libSelectBtn").addEventListener("click", () => {
     isSelectMode = !isSelectMode;
     if (!isSelectMode) selectedDesignIds.clear();
-    renderDesigns();
+    renderLibrary();
   });
 
-  // Batch Bar Actions
   $("#batchSelectAll")?.addEventListener("click", () => {
     designById.forEach((_, id) => selectedDesignIds.add(id));
-    renderDesigns();
+    renderLibrary();
   });
 
   $("#batchDeselectAll")?.addEventListener("click", () => {
     selectedDesignIds.clear();
-    renderDesigns();
+    renderLibrary();
   });
 
   $("#batchSaveBtn")?.addEventListener("click", (e) => {
@@ -5628,17 +5860,15 @@ async function renderDesigns() {
     }
     selectedDesignIds.clear();
     isSelectMode = false;
-    await renderDesigns();
+    await renderLibrary();
   });
 
-  // Grid Click Handler
   $("#libraryGrid").addEventListener("click", async (e) => {
     const card = e.target.closest(".design-card");
     if (!card) return;
     const id = card.dataset.id;
     const design = designById.get(id);
 
-    // In batch selection mode, clicking card toggles selection
     if (isSelectMode) {
       if (selectedDesignIds.has(id)) {
         selectedDesignIds.delete(id);
@@ -5654,7 +5884,6 @@ async function renderDesigns() {
       return;
     }
 
-    // Normal Mode: Hover Pill Actions
     const btn = e.target.closest("[data-act]");
     if (!btn || !design) return;
 
@@ -5670,412 +5899,7 @@ async function renderDesigns() {
     } else if (act === "delete") {
       if (confirm("Delete this design from library?")) {
         await api(`/api/designs/${id}`, { method: "DELETE" });
-        await renderDesigns();
-      }
-    }
-  });
-}
-
-/* ── My Listings Library View ──────────────────────────────── */
-
-const listingsLibraryState = { platform: "", search: "", page: 1, total: 0 };
-const listingById = new Map();
-let isListingSelectMode = false;
-const selectedListingIds = new Set();
-
-function listingLibraryCard(l) {
-  const isSelected = selectedListingIds.has(l.id);
-  const platform = (l.platform || "amazon").toLowerCase();
-  const dateStr = formatDesignDate(l.created_at);
-  const isTeePublic = platform === "teepublic";
-  const isEtsy = platform === "etsy";
-
-  let tagsList = [];
-  try {
-    tagsList = Array.isArray(l.tags) ? l.tags : (JSON.parse(l.tags || "[]") || []);
-  } catch {
-    tagsList = String(l.tags || "").split(",").map((s) => s.trim()).filter(Boolean);
-  }
-
-  let attrsObj = {};
-  try {
-    attrsObj = typeof l.attributes === "object" && l.attributes ? l.attributes : (JSON.parse(l.attributes || "{}") || {});
-  } catch {
-    attrsObj = {};
-  }
-
-  const title = l.title || "";
-  const description = l.description || "";
-  const brand = l.brand || "";
-  const bullet1 = l.bullet1 || "";
-  const bullet2 = l.bullet2 || "";
-  const mainTag = l.main_tag || "";
-  const category = l.category || "Clothing > Unisex Adult Clothing > Tops & Tees > T-shirts";
-
-  const copyBtn = (label, text) => `
-    <button type="button" class="btn secondary btn-sm ml-copy" data-copy="${esc(text)}" title="Copy ${label}">
-      <i data-lucide="copy"></i> ${label}
-    </button>`;
-
-  const thumbImg = l.thumbnail_path
-    ? `<img src="/library/${esc(l.thumbnail_path)}" class="ml-card-thumb" alt="${esc(l.file_name || "")}" />`
-    : `<div class="ml-card-thumb" style="display:flex;align-items:center;justify-content:center;color:#64748b;"><i data-lucide="tag"></i></div>`;
-
-  const platformBadge = isEtsy
-    ? `<span class="platform-badge etsy"><i data-lucide="sparkles"></i> Etsy</span>`
-    : isTeePublic
-      ? `<span class="platform-badge teepublic"><i data-lucide="shirt"></i> TeePublic</span>`
-      : `<span class="platform-badge amazon"><i data-lucide="shopping-bag"></i> Amazon</span>`;
-
-  let bodyHtml = "";
-  let actionsHtml = "";
-
-  if (isEtsy) {
-    const tagsCsv = tagsList.join(", ");
-    const attrsText = Object.entries(attrsObj).map(([k, v]) => `${k}: ${v}`).join("\n");
-    const allText = `Title: ${title}\n\nCategory: ${category}\n\nAttributes:\n${attrsText}\n\nTags (13):\n${tagsCsv}\n\nDescription:\n${description}`;
-
-    bodyHtml = `
-      <p class="ml-field"><strong>Title</strong> <span class="ml-chars">${title.length}/140</span><br>${esc(title)}</p>
-      <p class="ml-field"><strong>Category</strong><br><span class="ml-tag-pill" style="font-size:0.75rem;">${esc(category)}</span></p>
-      <div class="ml-field">
-        <strong>Attributes</strong>
-        <div class="ml-attributes-grid">
-          ${Object.entries(attrsObj).map(([k, v]) => `
-            <div class="ml-attribute-chip">
-              <span class="attr-label">${esc(k)}</span>
-              <span class="attr-val">${esc(v)}</span>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-      <p class="ml-field"><strong>13 Tags</strong> <span class="ml-chars">${tagsList.length}/13</span></p>
-      <div class="ml-tag-cloud">
-        ${tagsList.map((t) => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
-      </div>
-      <p class="ml-field" style="margin-top:0.6rem;"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-line;">${esc(description)}</span></p>
-    `;
-
-    actionsHtml = `
-      ${copyBtn("Title", title)}
-      ${copyBtn("Category", category)}
-      ${copyBtn("Tags", tagsCsv)}
-      ${copyBtn("Description", description)}
-      ${copyBtn("All", allText)}
-      <button type="button" class="btn secondary btn-sm danger-btn ml-action-btn" data-act="delete" title="Delete listing">
-        <i data-lucide="trash-2"></i> Delete
-      </button>
-    `;
-  } else if (isTeePublic) {
-    const tagsCsv = tagsList.join(", ");
-    const allTagsCsv = [mainTag, ...tagsList].filter(Boolean).join(", ");
-    const allText = `Title: ${title}\n\nDescription: ${description}\n\nMain Tag: ${mainTag}\n\nTags: ${tagsCsv}`;
-
-    bodyHtml = `
-      <p class="ml-field"><strong>Title</strong> <span class="ml-chars">${title.length}/40–80</span><br>${esc(title)}</p>
-      <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length}/150–300</span><br>${esc(description)}</p>
-      <p class="ml-field"><strong>Main Tag</strong><br><span class="ml-tag-pill">${esc(mainTag || "N/A")}</span></p>
-      <p class="ml-field"><strong>Supporting Tags</strong> <span class="ml-chars">${tagsList.length}/6–15</span></p>
-      <div class="ml-tag-cloud">
-        ${tagsList.map((t) => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
-      </div>
-    `;
-
-    actionsHtml = `
-      ${copyBtn("Title", title)}
-      ${copyBtn("Description", description)}
-      ${copyBtn("Main Tag", mainTag)}
-      ${copyBtn("All Tags", allTagsCsv)}
-      ${copyBtn("All", allText)}
-      <button type="button" class="btn secondary btn-sm danger-btn ml-action-btn" data-act="delete" title="Delete listing">
-        <i data-lucide="trash-2"></i> Delete
-      </button>
-    `;
-  } else {
-    // Amazon Merch
-    const allText = `Title: ${title}\nBrand: ${brand}\n\nBullet 1: ${bullet1}\nBullet 2: ${bullet2}\n\nDescription: ${description}`;
-
-    bodyHtml = `
-      <p class="ml-field"><strong>Title</strong> <span class="ml-chars">${title.length}/60</span><br>${esc(title)}</p>
-      <p class="ml-field"><strong>Brand</strong> <span class="ml-chars">${brand.length}/50</span><br>${esc(brand)}</p>
-      <p class="ml-field"><strong>Bullet 1</strong> <span class="ml-chars">${bullet1.length}/256</span><br>${esc(bullet1)}</p>
-      <p class="ml-field"><strong>Bullet 2</strong> <span class="ml-chars">${bullet2.length}/256</span><br>${esc(bullet2)}</p>
-      <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length}/500</span><br>${esc(description)}</p>
-    `;
-
-    actionsHtml = `
-      ${copyBtn("Title", title)}
-      ${copyBtn("Brand", brand)}
-      ${copyBtn("Bullets", `${bullet1}\n${bullet2}`)}
-      ${copyBtn("Description", description)}
-      ${copyBtn("All", allText)}
-      <button type="button" class="btn secondary btn-sm danger-btn ml-action-btn" data-act="delete" title="Delete listing">
-        <i data-lucide="trash-2"></i> Delete
-      </button>
-    `;
-  }
-
-  return `
-    <div class="ml-card listing-card ${isSelected ? 'selected' : ''}" data-id="${esc(l.id)}">
-      ${isListingSelectMode ? `
-        <div class="listing-card-select-overlay">
-          <i data-lucide="check"></i>
-        </div>` : ""}
-      <div class="ml-card-header">
-        <div class="ml-card-title-group">
-          ${thumbImg}
-          <div class="ml-card-meta">
-            <span class="ml-file-name" title="${esc(l.file_name || "")}">${esc(l.file_name || "Untitled Listing")}</span>
-            <div style="font-size:11px; color:var(--color-ink-60,#94a3b8); margin-top:2px;">${esc(dateStr)}</div>
-          </div>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-          ${platformBadge}
-          <span class="ml-card-safe ${l.trademark_safe ? "badge-safe" : "badge-warn"}">
-            <i data-lucide="shield-check"></i> ${l.trademark_safe ? "Safe" : "Check IP"}
-          </span>
-        </div>
-      </div>
-      <div class="ml-card-body">
-        ${bodyHtml}
-      </div>
-      <div class="ml-card-actions">
-        ${actionsHtml}
-      </div>
-    </div>`;
-}
-
-async function renderListings() {
-  const query = new URLSearchParams({
-    ...(listingsLibraryState.platform ? { platform: listingsLibraryState.platform } : {}),
-    ...(listingsLibraryState.search ? { search: listingsLibraryState.search } : {}),
-    page: listingsLibraryState.page,
-    pageSize: 1000,
-  });
-
-  let data = { rows: [], total: 0, page: 1 };
-  try {
-    data = await api(`/api/listings?${query}`);
-  } catch (err) {
-    console.error("Failed to load listings:", err);
-  }
-
-  listingsLibraryState.total = data.total || 0;
-  listingsLibraryState.page = data.page || 1;
-  listingById.clear();
-  (data.rows || []).forEach((l) => listingById.set(l.id, l));
-
-  const hasItems = (data.rows || []).length > 0;
-
-  viewMount("listings").innerHTML = `
-    <div class="view">
-      <div class="library-toolbar">
-        <div class="library-header-group">
-          <header class="view-header" style="margin-bottom:0;">
-            <h1 class="page-title">My Listings <span class="results-count" style="font-size:14px; margin-left:8px;">${listingsLibraryState.total}</span></h1>
-          </header>
-
-          <div class="library-nav-tabs">
-            <button type="button" class="lib-nav-tab" id="listingTabDesigns">
-              <i data-lucide="layout-grid"></i> My Designs
-            </button>
-            <button type="button" class="lib-nav-tab active" id="listingTabListings">
-              <i data-lucide="list-checks"></i> My Listings
-            </button>
-          </div>
-        </div>
-
-        <div class="lib-filters">
-          <input type="text" id="libListingSearch" placeholder="Search listings..." value="${esc(listingsLibraryState.search || '')}" class="lib-search-input" />
-
-          <select id="libListingPlatformFilter">
-            <option value="">All platforms</option>
-            <option value="amazon" ${listingsLibraryState.platform === 'amazon' ? 'selected' : ''}>Amazon Merch</option>
-            <option value="teepublic" ${listingsLibraryState.platform === 'teepublic' ? 'selected' : ''}>TeePublic</option>
-            <option value="etsy" ${listingsLibraryState.platform === 'etsy' ? 'selected' : ''}>Etsy</option>
-          </select>
-
-          <button class="btn secondary btn-sm" id="libListingCsvBtn" title="Export to CSV">
-            <i data-lucide="download"></i> Download CSV
-          </button>
-
-          <button class="btn secondary btn-sm" id="libListingSelectBtn">
-            <i data-lucide="${isListingSelectMode ? 'x' : 'check-square'}"></i> ${isListingSelectMode ? 'Cancel' : 'Select'}
-          </button>
-
-          <button class="icon-btn" id="libListingRefreshBtn" title="Refresh listings"><i data-lucide="refresh-cw"></i></button>
-        </div>
-      </div>
-
-      <div class="batch-bar ${isListingSelectMode ? '' : 'hidden'}" id="listingBatchBar">
-        <div class="batch-info"><span id="listingBatchCount">${selectedListingIds.size}</span> listing(s) selected</div>
-        <div class="batch-actions">
-          <button class="btn secondary btn-sm" id="listingBatchSelectAll"><i data-lucide="check-check"></i> Select all</button>
-          <button class="btn secondary btn-sm" id="listingBatchDeselectAll">Deselect all</button>
-          <button class="btn secondary btn-sm" id="listingBatchExportCsv"><i data-lucide="download"></i> Download selected CSV</button>
-          <button class="btn primary btn-sm danger" id="listingBatchDeleteBtn" style="background:#EF4444;" ${selectedListingIds.size === 0 ? 'disabled' : ''}>
-            <i data-lucide="trash-2"></i> Delete selected
-          </button>
-        </div>
-      </div>
-
-      ${hasItems ? `
-        <div class="ml-results-grid library-grid ${isListingSelectMode ? 'selecting' : ''}" id="listingsGrid">
-          ${(data.rows || []).map(listingLibraryCard).join("")}
-        </div>
-      ` : `
-        <div class="empty-state" style="text-align:center; padding: 60px 20px; color: var(--color-ink-60, #94a3b8);">
-          <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:rgba(37,99,235,0.1); color:#38bdf8; margin-bottom:16px;">
-            <i data-lucide="tag" style="width:32px; height:32px;"></i>
-          </div>
-          <h3 style="color:var(--color-ink,#fff); font-size:18px; margin-bottom:8px;">No Listings Found</h3>
-          <p style="max-width:440px; margin:0 auto 20px auto; font-size:14px; line-height:1.5;">
-            ${listingsLibraryState.search || listingsLibraryState.platform
-              ? "No saved listings match the selected filters. Try clearing the search or switching platform."
-              : "Generate vision-powered Amazon, TeePublic, or Etsy listings in Magic Listing to save and manage them here."}
-          </p>
-          <button type="button" class="btn primary" id="emptyGoToMagicListing">
-            <i data-lucide="sparkles"></i> Go to Magic Listing
-          </button>
-        </div>
-      `}
-    </div>`;
-
-  renderIcons();
-
-  // Tab switch
-  $("#listingTabDesigns")?.addEventListener("click", () => showView("designs"));
-  $("#emptyGoToMagicListing")?.addEventListener("click", () => showView("magicListing"));
-
-  // Platform Filter
-  $("#libListingPlatformFilter")?.addEventListener("change", (e) => {
-    listingsLibraryState.platform = e.target.value;
-    renderListings();
-  });
-
-  // Search input with debounce
-  let searchTimer = null;
-  $("#libListingSearch")?.addEventListener("input", (e) => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      listingsLibraryState.search = e.target.value;
-      renderListings();
-    }, 250);
-  });
-
-  // Refresh
-  $("#libListingRefreshBtn")?.addEventListener("click", () => renderListings());
-
-  // Toggle select mode
-  $("#libListingSelectBtn")?.addEventListener("click", () => {
-    isListingSelectMode = !isListingSelectMode;
-    if (!isListingSelectMode) selectedListingIds.clear();
-    renderListings();
-  });
-
-  // Batch Select All
-  $("#listingBatchSelectAll")?.addEventListener("click", () => {
-    listingById.forEach((_, id) => selectedListingIds.add(id));
-    renderListings();
-  });
-
-  // Batch Deselect All
-  $("#listingBatchDeselectAll")?.addEventListener("click", () => {
-    selectedListingIds.clear();
-    renderListings();
-  });
-
-  // CSV Export helper
-  const exportItemsToCsv = (items) => {
-    const formatted = items.map((l) => ({
-      designIndex: (l.id || "").slice(0, 8),
-      fileName: l.file_name,
-      platform: l.platform,
-      listing: {
-        title: l.title,
-        brand: l.brand,
-        category: l.category,
-        bullet1: l.bullet1,
-        bullet2: l.bullet2,
-        description: l.description,
-        mainTag: l.main_tag,
-        supportingTags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
-        tags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
-        attributes: typeof l.attributes === "string" ? JSON.parse(l.attributes || "{}") : (l.attributes || {}),
-      },
-    }));
-    exportListingsToCSV(formatted);
-  };
-
-  // Export all CSV
-  $("#libListingCsvBtn")?.addEventListener("click", () => {
-    const allItems = [...listingById.values()];
-    if (allItems.length === 0) return alert("No listings to export.");
-    exportItemsToCsv(allItems);
-  });
-
-  // Export selected CSV
-  $("#listingBatchExportCsv")?.addEventListener("click", () => {
-    const targets = selectedListingIds.size > 0
-      ? [...listingById.values()].filter((l) => selectedListingIds.has(l.id))
-      : [...listingById.values()];
-    if (targets.length === 0) return alert("No listings selected.");
-    exportItemsToCsv(targets);
-  });
-
-  // Delete selected batch
-  $("#listingBatchDeleteBtn")?.addEventListener("click", async () => {
-    if (selectedListingIds.size === 0) return;
-    if (!confirm(`Permanently delete ${selectedListingIds.size} listing(s)?`)) return;
-
-    try {
-      await api("/api/listings/delete-batch", {
-        method: "POST",
-        body: JSON.stringify({ ids: [...selectedListingIds] }),
-      });
-    } catch (err) {
-      console.error("Batch delete error:", err);
-    }
-    selectedListingIds.clear();
-    isListingSelectMode = false;
-    await renderListings();
-  });
-
-  // Listings Grid Click Handler (copy, card toggle, single delete)
-  $("#listingsGrid")?.addEventListener("click", async (e) => {
-    const card = e.target.closest(".listing-card");
-    if (!card) return;
-    const id = card.dataset.id;
-    const listing = listingById.get(id);
-
-    // If in select mode: clicking anywhere on the card toggles selection
-    if (isListingSelectMode) {
-      if (selectedListingIds.has(id)) {
-        selectedListingIds.delete(id);
-      } else {
-        selectedListingIds.add(id);
-      }
-      card.classList.toggle("selected", selectedListingIds.has(id));
-      const badge = $("#listingBatchCount");
-      if (badge) badge.textContent = selectedListingIds.size;
-      const delBtn = $("#listingBatchDeleteBtn");
-      if (delBtn) delBtn.disabled = selectedListingIds.size === 0;
-      return;
-    }
-
-    // Copy buttons
-    const copyBtnEl = e.target.closest(".ml-copy");
-    if (copyBtnEl) {
-      copyWithFeedback(copyBtnEl, copyBtnEl.dataset.copy, copyBtnEl.title.replace("Copy ", ""));
-      return;
-    }
-
-    // Single delete action
-    const delActionBtn = e.target.closest("[data-act='delete']");
-    if (delActionBtn && listing) {
-      if (confirm(`Permanently delete listing "${listing.file_name || 'Untitled'}"?`)) {
-        await api(`/api/listings/${id}`, { method: "DELETE" }).catch(() => {});
-        await renderListings();
+        await renderLibrary();
       }
     }
   });
