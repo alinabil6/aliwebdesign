@@ -4120,10 +4120,10 @@ function renderArtStyleNiche() {
           </div>
 
           <!-- Section 2: Pairwise Mode -->
-          <div class="as-guide-section" style="margin-bottom: 20px; padding: 16px; border-radius: 12px; background: rgba(168,85,247,0.03); border: 1px solid rgba(168,85,247,0.18);">
+          <div class="as-guide-section" style="margin-bottom: 20px; padding: 16px; border-radius: 12px; background: rgba(56,189,248,0.03); border: 1px solid rgba(56,189,248,0.2);">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
-              <span class="badge" style="background:#7c3aed; color:#ffffff; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:0.5px;">Mode 2</span>
-              <h3 style="margin:0; font-size:1rem; font-weight:700; color:#c084fc;">Pairwise Mode (A/B Testing)</h3>
+              <span class="badge" style="background:#2563eb; color:#ffffff; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:0.5px;">Mode 2</span>
+              <h3 style="margin:0; font-size:1rem; font-weight:700; color:var(--color-ion, #38bdf8);">Pairwise Mode (A/B Testing)</h3>
             </div>
             <p style="margin:0 0 10px 0; font-size:0.85rem; line-height:1.45;">
               <strong>Summary:</strong> Generates direct 1-to-1 pairings between style references and niche references.
@@ -4134,7 +4134,7 @@ function renderArtStyleNiche() {
                 <div>📊 <strong>2 styles + 2 niche images:</strong></div>
                 <div style="padding-left:12px;">• Style 1 + Cat 1 &rarr; <strong>Design 1</strong></div>
                 <div style="padding-left:12px;">• Style 2 + Dog 2 &rarr; <strong>Design 2</strong></div>
-                <div style="margin-top:4px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.1); color:#c084fc; font-weight:600;">
+                <div style="margin-top:4px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.1); color:var(--color-ion, #38bdf8); font-weight:600;">
                   ✨ <strong>Result:</strong> Separate designs using individual style–niche pairings.
                 </div>
               </div>
