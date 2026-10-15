@@ -2719,7 +2719,7 @@ function renderVariations() {
 
           <div class="field">
             <label class="field-label" for="nvNiches">Add your ideas</label>
-            <textarea id="nvNiches" class="prompt-editor" placeholder="Describe the new niche, theme, or audience (e.g. Christmas holiday, Retro 90s gaming, Vintage fishing, Dog lover)..."></textarea>
+            <textarea id="nvNiches" class="prompt-editor" placeholder="Enter a niche theme, or separate multiple niches with commas to assign one to each design. Example: angel, shark, storm."></textarea>
           </div>
 
           <div class="manual-style-field">
