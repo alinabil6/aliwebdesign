@@ -4,22 +4,17 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   release:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
 
     steps:
-      - name: Checkout Source Code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js 20
@@ -29,9 +24,12 @@ jobs:
           cache: "npm"
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install --save-dev @electron/rebuild
 
-      - name: Build & Publish Release to GitHub
+      - name: Rebuild Native Modules for Electron
+        run: npx electron-rebuild -f -w better-sqlite3,sharp
+
+      - name: Build & Publish Release via electron-builder
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --publish always
