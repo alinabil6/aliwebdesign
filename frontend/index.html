@@ -93,14 +93,15 @@
     <header class="top-bar">
       <div class="top-brand-group">
         <img src="LOGO.png" alt="Magic Fabrica Studio" class="hero-brand-logo" id="brandLogo" />
+      </div>
+      <span class="top-status">
         <button id="globalRefreshBtn" class="global-refresh-btn" title="Refresh application and reload all sections" aria-label="Refresh application">
           <i data-lucide="rotate-cw" class="global-refresh-icon"></i>
           <span class="global-refresh-label">Refresh</span>
         </button>
-      </div>
-      <span class="top-status">
-        <button class="style-catalog-btn" id="styleCatalogBtn" title="Browse the Magic Style catalog">
-          <i data-lucide="sparkles"></i> Style Catalog
+        <button class="style-catalog-btn" id="styleCatalogBtn" title="Browse the Magic Style catalog" aria-label="Browse the Magic Style catalog">
+          <i data-lucide="sparkles" class="style-catalog-icon"></i>
+          <span class="style-catalog-label">Style Catalog</span>
         </button>
         <button class="nav-about-btn" id="navAboutBtn" title="About Magic Fabrica Studio">
           <i data-lucide="info"></i> About
