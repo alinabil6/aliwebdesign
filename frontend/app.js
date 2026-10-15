@@ -5510,6 +5510,171 @@ async function saveDesignsBatch(btn) {
   }
 }
 
+function getListingThumbUrl(l) {
+  if (!l.thumbnail_path) return "";
+  if (l.thumbnail_path.startsWith("http") || l.thumbnail_path.startsWith("/")) return l.thumbnail_path;
+  return `/library/${l.thumbnail_path}`;
+}
+
+function listingLibraryCard(l) {
+  const isSelected = selectedListingIds.has(l.id);
+  const isTeePublic = l.platform === "teepublic";
+  const isEtsy = l.platform === "etsy";
+
+  const title = l.title || "";
+  const brand = l.brand || "";
+  const description = l.description || "";
+  const bullet1 = l.bullet1 || "";
+  const bullet2 = l.bullet2 || "";
+  const category = l.category || "Clothing > Unisex Adult Clothing > Tops & Tees > T-shirts";
+  const mainTag = l.main_tag || "";
+
+  let tags = [];
+  try {
+    tags = typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (Array.isArray(l.tags) ? l.tags : []);
+  } catch (_) {
+    tags = [];
+  }
+
+  let attrs = {};
+  try {
+    attrs = typeof l.attributes === "string" ? JSON.parse(l.attributes || "{}") : (typeof l.attributes === "object" && l.attributes !== null ? l.attributes : {});
+  } catch (_) {
+    attrs = {};
+  }
+
+  const thumbUrl = getListingThumbUrl(l);
+
+  const copyBtn = (label, text) => `
+    <button type="button" class="btn secondary btn-sm ml-copy" data-copy="${esc(text)}" title="Copy ${label}">
+      <i data-lucide="copy"></i> ${label}
+    </button>`;
+
+  const platLabel = isEtsy ? "Etsy" : isTeePublic ? "TeePublic" : "Amazon Merch";
+  const isSafe = l.trademark_safe === 1 || l.trademark_safe === true;
+
+  const selectOverlay = `
+    <div class="listing-card-select-overlay" title="Select">
+      <i data-lucide="check"></i>
+    </div>`;
+
+  const headerHtml = `
+    <div class="ml-card-header">
+      <div class="ml-card-title-group">
+        ${thumbUrl
+          ? `<img src="${esc(thumbUrl)}" class="ml-card-thumb" alt="${esc(l.file_name || '')}" onerror="this.style.display='none'" />`
+          : `<div class="ml-card-thumb" style="display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);color:#94a3b8;"><i data-lucide="tag"></i></div>`
+        }
+        <div class="ml-card-meta">
+          <span class="ml-index-badge">${platLabel}</span>
+          <span class="ml-file-name" title="${esc(l.file_name || '')}">${esc(l.file_name || 'Listing')}</span>
+        </div>
+      </div>
+      <span class="ml-card-safe ${isSafe ? "badge-safe" : "badge-warn"}">
+        <i data-lucide="shield-check"></i> ${isSafe ? "Trademark safe" : "Check IP"}
+      </span>
+    </div>`;
+
+  // ── Etsy card ──
+  if (isEtsy) {
+    const tagsCsv = tags.join(", ");
+    const attrsText = Object.entries(attrs).map(([k, v]) => `${k}: ${v}`).join("\n");
+    const allText = `Title: ${title}\n\nCategory: ${category}\n\nAttributes:\n${attrsText}\n\nTags (13):\n${tagsCsv}\n\nDescription:\n${description}`;
+
+    return `
+      <div class="ml-card listing-card ${isSelected ? 'selected' : ''}" data-id="${esc(l.id)}">
+        ${selectOverlay}
+        ${headerHtml}
+        <div class="ml-card-body">
+          <p class="ml-field"><strong>Title</strong> <span class="ml-chars">${title.length}/140</span><br>${esc(title)}</p>
+          <p class="ml-field"><strong>Category</strong><br><span class="ml-tag-pill" style="font-size:0.75rem;">${esc(category)}</span></p>
+          ${Object.keys(attrs).length > 0 ? `
+            <div class="ml-field">
+              <strong>Attributes</strong>
+              <div class="ml-attributes-grid">
+                ${Object.entries(attrs).map(([k, v]) => `
+                  <div class="ml-attribute-chip">
+                    <span class="attr-label">${esc(k)}</span>
+                    <span class="attr-val">${esc(v)}</span>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          ` : ''}
+          <p class="ml-field"><strong>Tags</strong> <span class="ml-chars">${tags.length}/13</span></p>
+          <div class="ml-tag-cloud">
+            ${tags.map((t) => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
+          </div>
+          <p class="ml-field" style="margin-top:0.6rem;"><strong>Description</strong> <span class="ml-chars">${description.length} chars</span><br><span style="white-space:pre-line;">${esc(description)}</span></p>
+        </div>
+        <div class="ml-card-actions">
+          ${copyBtn("Title", title)}
+          ${copyBtn("Tags", tagsCsv)}
+          ${copyBtn("All", allText)}
+          <button type="button" class="btn secondary btn-sm danger danger-btn" data-act="delete" title="Delete listing">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+      </div>`;
+  }
+
+  // ── TeePublic card ──
+  if (isTeePublic) {
+    const tagsCsv = tags.join(", ");
+    const allTagsCsv = [mainTag, ...tags].filter(Boolean).join(", ");
+    const allText = `Title: ${title}\n\nDescription: ${description}\n\nMain Tag: ${mainTag}\n\nTags: ${tagsCsv}`;
+
+    return `
+      <div class="ml-card listing-card ${isSelected ? 'selected' : ''}" data-id="${esc(l.id)}">
+        ${selectOverlay}
+        ${headerHtml}
+        <div class="ml-card-body">
+          <p class="ml-field"><strong>Title</strong> <span class="ml-chars">${title.length}/40–80</span><br>${esc(title)}</p>
+          <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length}/150–300</span><br>${esc(description)}</p>
+          <p class="ml-field"><strong>Main Tag</strong><br><span class="ml-tag-pill">${esc(mainTag || "N/A")}</span></p>
+          <p class="ml-field"><strong>Supporting Tags</strong> <span class="ml-chars">${tags.length}/6–15</span></p>
+          <div class="ml-tag-cloud">
+            ${tags.map((t) => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
+          </div>
+        </div>
+        <div class="ml-card-actions">
+          ${copyBtn("Title", title)}
+          ${copyBtn("Main Tag", mainTag)}
+          ${copyBtn("All Tags", allTagsCsv)}
+          ${copyBtn("All", allText)}
+          <button type="button" class="btn secondary btn-sm danger danger-btn" data-act="delete" title="Delete listing">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+      </div>`;
+  }
+
+  // ── Amazon Merch card (default) ──
+  const allText = `Title: ${title}\nBrand: ${brand}\n\nBullet 1: ${bullet1}\nBullet 2: ${bullet2}\n\nDescription: ${description}`;
+
+  return `
+    <div class="ml-card listing-card ${isSelected ? 'selected' : ''}" data-id="${esc(l.id)}">
+      ${selectOverlay}
+      ${headerHtml}
+      <div class="ml-card-body">
+        <p class="ml-field"><strong>Title</strong> <span class="ml-chars">${title.length}/60</span><br>${esc(title)}</p>
+        <p class="ml-field"><strong>Brand</strong> <span class="ml-chars">${brand.length}/50</span><br>${esc(brand)}</p>
+        <p class="ml-field"><strong>Bullet 1</strong> <span class="ml-chars">${bullet1.length}/256</span><br>${esc(bullet1)}</p>
+        <p class="ml-field"><strong>Bullet 2</strong> <span class="ml-chars">${bullet2.length}/256</span><br>${esc(bullet2)}</p>
+        <p class="ml-field"><strong>Description</strong> <span class="ml-chars">${description.length}/500</span><br>${esc(description)}</p>
+      </div>
+      <div class="ml-card-actions">
+        ${copyBtn("Title", title)}
+        ${copyBtn("Brand", brand)}
+        ${copyBtn("Bullets", `${bullet1}\n${bullet2}`)}
+        ${copyBtn("All", allText)}
+        <button type="button" class="btn secondary btn-sm danger danger-btn" data-act="delete" title="Delete listing">
+          <i data-lucide="trash-2"></i>
+        </button>
+      </div>
+    </div>`;
+}
+
 async function renderLibrary() {
   const mount = viewMount("designs");
 
