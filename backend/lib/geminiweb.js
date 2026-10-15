@@ -64,9 +64,9 @@ async function dismissModals(page) {
   } catch {}
 }
 
-const PREVIEW_SELECTOR = ".file-preview, .uploaded-image, mat-chip, [aria-label*='Remove' i], img[src^='blob:'], img[src^='data:']";
+const PREVIEW_SELECTOR = ".file-preview, .uploaded-image, mat-chip, [aria-label*='Remove' i], [aria-label*='Supprimer' i], img[src^='blob:'], img[src^='data:'], input-area-v2 img, input-container img, .uploader-preview";
 
-async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 8000, expectedCount = 1) {
+async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 15000, expectedCount = 1) {
   const loc = page.locator(PREVIEW_SELECTOR);
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
@@ -384,25 +384,44 @@ async function ensureGeminiApp(page) {
   if (currentUrl.includes("accounts.google.com")) {
     throw new Error("SESSION_EXPIRED: Account redirected to Google login");
   }
+
+  const isBaseAppUrl = currentUrl.endsWith("/app") || currentUrl.endsWith("/app/");
+  const existingTurns = await page.locator("model-response, user-query").count().catch(() => 0);
+
   if (!currentUrl.includes("gemini.google.com/app")) {
     await page.goto(GEMINI_URL, { waitUntil: "commit", timeout: 20000 }).catch(() => {});
     if ((page.url() || "").includes("accounts.google.com")) {
       throw new Error("SESSION_EXPIRED: Account redirected to Google login");
     }
-  } else {
-    // Already on Gemini — click New Chat so the 2nd design starts a fresh conversation
+  } else if (!isBaseAppUrl || existingTurns > 0) {
+    // Already on Gemini but in a previous conversation — click New Chat and wait for turns to clear
     const newChatBtn = page.locator(
       'a[href="/app"], a[href="/app/"], button[aria-label*="New chat" i], button[aria-label*="Nouvelle discussion" i]'
     ).first();
-    if (await newChatBtn.isVisible().catch(() => false)) {
+
+    let resetOk = false;
+    if (await newChatBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
       await newChatBtn.click({ timeout: 2000 }).catch(() => {});
+      resetOk = await page.waitForFunction(() => {
+        return document.querySelectorAll("model-response, user-query").length === 0;
+      }, { timeout: 3500 }).then(() => true).catch(() => false);
+    }
+
+    if (!resetOk) {
+      await page.goto(GEMINI_URL, { waitUntil: "commit", timeout: 20000 }).catch(() => {});
+      if ((page.url() || "").includes("accounts.google.com")) {
+        throw new Error("SESSION_EXPIRED: Account redirected to Google login");
+      }
+      await page.waitForFunction(() => {
+        return document.querySelectorAll("model-response, user-query").length === 0;
+      }, { timeout: 4000 }).catch(() => {});
     }
   }
+
   // Wait until the composer editor is interactive before proceeding
-  await page.locator('rich-textarea div[contenteditable="true"], .ql-editor, div[role="textbox"]')
-    .first()
-    .waitFor({ state: "visible", timeout: 25000 })
-    .catch(() => {});
+  const editorLoc = page.locator('rich-textarea div[contenteditable="true"], .ql-editor, div[role="textbox"]').first();
+  await editorLoc.waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+  await page.waitForTimeout(400);
 }
 
 export async function checkSession(page, { navigate = true, fallbackEmail = null } = {}) {
@@ -478,6 +497,17 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
         const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
         text = (content.innerText || "").trim();
         hasCopyBtn = Boolean(last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]'));
+      } else if (turns.length > 0) {
+        // Fallback: If turn count did not strictly exceed prevCount (e.g. baseline counted stale DOM or reset occurred),
+        // inspect the last turn if it has active completion markers or content
+        const last = turns[turns.length - 1];
+        const copyBtn = last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]');
+        const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
+        const candidate = (content.innerText || "").trim();
+        if (copyBtn || isGenerating || candidate.length > 30) {
+          text = candidate;
+          hasCopyBtn = Boolean(copyBtn);
+        }
       }
 
       return { toastMsg, isGenerating, hasCopyBtn, text };
@@ -489,14 +519,19 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
 
     const trimmed = probe.text;
     if (trimmed.length > 0) {
-      // Fast-path: Copy button rendered = generation definitely complete
-      if (probe.hasCopyBtn && trimmed.length > 20) {
+      // Fast-path A: Copy button rendered = generation definitely complete (any non-empty text)
+      if (probe.hasCopyBtn && !probe.isGenerating) {
+        console.log(`[geminiweb] Text captured via Copy button + not-generating (${trimmed.length} chars).`);
+        return trimmed;
+      }
+      // Fast-path B: Copy button present even while still in streaming (text is already final for this turn)
+      if (probe.hasCopyBtn && trimmed.length > 5) {
         console.log(`[geminiweb] Text captured via Copy button detection (${trimmed.length} chars).`);
         return trimmed;
       }
       if (!probe.isGenerating) {
-        // Immediate JSON resolution: stable closed JSON for 1 tick
-        if (trimmed === lastText && trimmed.includes("{") && trimmed.includes("}") && trimmed.length > 40) {
+        // Immediate JSON resolution: stable closed JSON for 1 tick (relax length threshold)
+        if (trimmed === lastText && trimmed.includes("{") && trimmed.includes("}") && trimmed.length > 10) {
           console.log(`[geminiweb] JSON captured immediately (${trimmed.length} chars).`);
           return trimmed;
         }

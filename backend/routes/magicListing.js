@@ -463,7 +463,12 @@ router.post("/batch", async (req, res) => {
     const MAX_CONCURRENT = 4;
     const workerCount = Math.min(designs.length, MAX_CONCURRENT);
 
-    async function worker() {
+    async function worker(workerIndex) {
+      // Stagger concurrent workers to avoid simultaneous browser launches
+      // competing for bandwidth during attachment upload (4s gap each)
+      if (workerIndex > 0) {
+        await new Promise((r) => setTimeout(r, workerIndex * 4000));
+      }
       while (nextIndex < designs.length) {
         const currentIndex = nextIndex++;
         const design = designs[currentIndex];
@@ -496,7 +501,7 @@ router.post("/batch", async (req, res) => {
       }
     }
 
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    await Promise.all(Array.from({ length: workerCount }, (_, i) => worker(i)));
 
     results.sort((a, b) => (a.designIndex ?? 0) - (b.designIndex ?? 0));
     res.json({ success: true, results, failed, total: designs.length });
