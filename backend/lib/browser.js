@@ -7,22 +7,77 @@ import os from "os";
 import path from "path";
 import Database from "better-sqlite3";
 
+import { PROFILES_DIR } from "./paths.js";
+
 const LOCAL_APPDATA = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
 
-const CHROME_PATHS = [
+const WIN_CHROME_PATHS = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
   path.join(LOCAL_APPDATA, "Google", "Chrome", "Application", "chrome.exe"),
 ];
 
+const MAC_CHROME_PATHS = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  path.join(os.homedir(), "Applications", "Google Chrome.app", "Contents", "MacOS", "Google Chrome"),
+];
+
+const LINUX_CHROME_PATHS = [
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+];
+
+const WIN_BRAVE_PATHS = [
+  "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+  "C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+  path.join(LOCAL_APPDATA, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+];
+
+const MAC_BRAVE_PATHS = [
+  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+  path.join(os.homedir(), "Applications", "Brave Browser.app", "Contents", "MacOS", "Brave Browser"),
+];
+
+const LINUX_BRAVE_PATHS = [
+  "/usr/bin/brave-browser",
+  "/usr/bin/brave",
+];
+
+const WIN_EDGE_PATHS = [
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  path.join(LOCAL_APPDATA, "Microsoft", "Edge", "Application", "msedge.exe"),
+];
+
+const MAC_EDGE_PATHS = [
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  path.join(os.homedir(), "Applications", "Microsoft Edge.app", "Contents", "MacOS", "Microsoft Edge"),
+];
+
+const CHROME_PATHS = process.platform === "win32"
+  ? WIN_CHROME_PATHS
+  : process.platform === "darwin"
+  ? MAC_CHROME_PATHS
+  : [...LINUX_CHROME_PATHS, ...WIN_CHROME_PATHS];
+
+const BRAVE_PATHS = process.platform === "win32"
+  ? WIN_BRAVE_PATHS
+  : process.platform === "darwin"
+  ? MAC_BRAVE_PATHS
+  : [...LINUX_BRAVE_PATHS, ...WIN_BRAVE_PATHS];
+
+const EDGE_PATHS = process.platform === "win32"
+  ? WIN_EDGE_PATHS
+  : MAC_EDGE_PATHS;
+
 export const BROWSER_PATHS = {
   chrome: CHROME_PATHS,
   google: CHROME_PATHS,
-  brave: [
-    "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
-    "C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
-    path.join(LOCAL_APPDATA, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
-  ],
+  brave: BRAVE_PATHS,
+  edge: EDGE_PATHS,
+  msedge: EDGE_PATHS,
 };
 
 export function canLaunchBrowser(name = "chrome") {
@@ -98,14 +153,27 @@ function getLaunchArgs(opts = {}) {
 export async function killOrphanProcesses(profileDir) {
   // If an interactive sign-in session is active, EXIT IMMEDIATELY
   if (isInteractiveAuthActive) return;
-  if (process.platform !== "win32") return;
-  // Fast process termination without heavy WMI CIM queries that saturate CPU
-  const safe = profileDir.replace(/'/g, "''");
-  const script = `Get-Process chrome, brave -ErrorAction SilentlyContinue | Where-Object { \$_.Path } | ForEach-Object { \$id = \$_.Id; \$cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = \$id").CommandLine; if (\$cmd -and \$cmd.Contains('${safe}')) { Stop-Process -Id \$id -Force -ErrorAction SilentlyContinue } }`;
-  try {
-    const encoded = Buffer.from(script, "utf16le").toString("base64");
-    await execAsync(`powershell -NoProfile -EncodedCommand ${encoded}`, { stdio: "ignore", timeout: 4000 });
-  } catch {}
+  if (process.platform === "win32") {
+    // Fast process termination without heavy WMI CIM queries that saturate CPU
+    const safe = profileDir.replace(/'/g, "''");
+    const script = `Get-Process chrome, brave -ErrorAction SilentlyContinue | Where-Object { \$_.Path } | ForEach-Object { \$id = \$_.Id; \$cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = \$id").CommandLine; if (\$cmd -and \$cmd.Contains('${safe}')) { Stop-Process -Id \$id -Force -ErrorAction SilentlyContinue } }`;
+    try {
+      const encoded = Buffer.from(script, "utf16le").toString("base64");
+      await execAsync(`powershell -NoProfile -EncodedCommand ${encoded}`, { stdio: "ignore", timeout: 4000 });
+    } catch {}
+    return;
+  }
+  if (process.platform === "darwin" || process.platform === "linux") {
+    try {
+      const safe = profileDir.replace(/"/g, '\\"');
+      await execAsync(`pkill -9 -f "${safe}"`, { stdio: "ignore", timeout: 3000 });
+    } catch {}
+  }
+}
+
+export function resolveAccountProfileDir(account) {
+  const rawDir = account.profileDirAbs || account.profile_dir || path.join("profiles", account.id || "default");
+  return path.isAbsolute(rawDir) ? rawDir : path.resolve(PROFILES_DIR, path.basename(rawDir));
 }
 
 export async function purgeFleetBrowsers() {
@@ -127,8 +195,7 @@ export async function purgeFleetBrowsers() {
 }
 
 export async function launchProfile(account, opts = {}) {
-  const rawDir = account.profileDirAbs || account.profile_dir || path.join("profiles", account.id || "default");
-  const profileDir = path.isAbsolute(rawDir) ? rawDir : path.resolve(process.cwd(), rawDir);
+  const profileDir = resolveAccountProfileDir(account);
   fs.mkdirSync(profileDir, { recursive: true });
 
   const isVisible = Boolean(opts?.visible);
@@ -421,8 +488,7 @@ export function extractEmailFromProfile(profileDir) {
 }
 
 export async function launchExternalAuthSession(account, url, opts = {}) {
-  const rawDir = account.profileDirAbs || account.profile_dir || path.join("profiles", account.id || "default");
-  const profileDir = path.isAbsolute(rawDir) ? rawDir : path.resolve(process.cwd(), rawDir);
+  const profileDir = resolveAccountProfileDir(account);
   fs.mkdirSync(profileDir, { recursive: true });
 
   await killOrphanProcesses(profileDir);
@@ -517,8 +583,7 @@ async function ensureEntry(account, opts = {}) {
   const existing = sessions.get(account.id);
   if (existing) return existing;
 
-  const rawDir = account.profileDirAbs || account.profile_dir || path.join("profiles", account.id || "default");
-  const profileDir = path.isAbsolute(rawDir) ? rawDir : path.resolve(process.cwd(), rawDir);
+  const profileDir = resolveAccountProfileDir(account);
 
   const context = await launchProfile(account, opts);
 

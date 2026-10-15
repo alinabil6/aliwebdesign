@@ -37,16 +37,20 @@ import {
 import * as web from "./geminiweb.js";
 import { rankReadyByHeadroom } from "./usage.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const ROOT = path.resolve(__dirname, "..", ".."); // backend/lib → project root
-export const PROFILES_ROOT = path.resolve(ROOT, "profiles");
+import { PROJECT_ROOT, PROFILES_DIR, APP_DATA_DIR } from "./paths.js";
+
+export const ROOT = APP_DATA_DIR;
+export const PROFILES_ROOT = PROFILES_DIR;
 
 fs.mkdirSync(PROFILES_ROOT, { recursive: true });
 
 /** Attach the absolute profile dir path to an account row (DB stores relative). */
 export function withAbs(row) {
   if (!row) return row;
-  return { ...row, profileDirAbs: path.resolve(ROOT, row.profile_dir) };
+  const abs = path.isAbsolute(row.profile_dir)
+    ? row.profile_dir
+    : path.resolve(APP_DATA_DIR, row.profile_dir);
+  return { ...row, profileDirAbs: abs };
 }
 
 const READY = "ready";

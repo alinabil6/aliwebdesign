@@ -1,14 +1,13 @@
 import multer from "multer";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
+import { PROJECT_ROOT, LIBRARY_DIR, TMP_DIR } from "./paths.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const ROOT = path.join(__dirname, "..", ".."); // backend/lib → project root
-const TMP_DIR = path.join(ROOT, "tmp");
+export const ROOT = PROJECT_ROOT;
 
 fs.mkdirSync(TMP_DIR, { recursive: true });
+fs.mkdirSync(LIBRARY_DIR, { recursive: true });
 
 // Uploaded files land here first ("multer saves to a temp path"), then get
 // copied into /library at generation time.
@@ -33,7 +32,7 @@ export function libraryDir(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
-  return path.join(ROOT, "library", `${y}-${m}-${d}`);
+  return path.join(LIBRARY_DIR, `${y}-${m}-${d}`);
 }
 
 /**
@@ -75,8 +74,8 @@ export function resolveLibraryPath(relPath) {
   // Reject traversal/nulls/absolute roots up front.
   if (relPath.includes("\0") || relPath.split(/[\\/]+/).includes("..")) return null;
   if (path.isAbsolute(relPath)) return null;
-  const abs = path.resolve(ROOT, "library", relPath);
-  const libRoot = path.resolve(ROOT, "library");
+  const abs = path.resolve(LIBRARY_DIR, relPath);
+  const libRoot = path.resolve(LIBRARY_DIR);
   if (abs !== libRoot && !abs.startsWith(libRoot + path.sep)) return null;
   return abs;
 }

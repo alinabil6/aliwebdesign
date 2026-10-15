@@ -18,9 +18,9 @@ import listingsRouter from "./routes/listings.js";
 import cancelRouter from "./routes/cancel.js";
 import { closeAll } from "./lib/browser.js";
 import { reconcileAccountStates } from "./lib/db.js";
+import { PROJECT_ROOT, LIBRARY_DIR } from "./lib/paths.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dirname, "..");
+const ROOT = PROJECT_ROOT;
 
 const app = express();
 const PORT = process.env.APP_PORT || process.env.DEFAULT_APP_PORT || (process.env.PORT && process.env.PORT !== "8080" ? process.env.PORT : 3000);
@@ -43,7 +43,7 @@ app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 app.use(express.static(path.join(ROOT, "frontend")));
 
 // Generated images (stored under /library, served for the UI and downloads)
-app.use("/library", express.static(path.join(ROOT, "library")));
+app.use("/library", express.static(LIBRARY_DIR));
 
 // Lucide icon library (npm package served directly — localhost-only app, no bundler)
 app.use("/vendor/lucide", express.static(path.join(ROOT, "node_modules", "lucide", "dist")));
@@ -132,3 +132,5 @@ async function shutdown() {
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+export { app, server, shutdown };
