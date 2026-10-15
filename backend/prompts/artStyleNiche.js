@@ -12,10 +12,10 @@ export function buildPrompt({ bg_color = "#000000", variant = 0, styleCount = 1,
 
   if (styleCount > 1) {
     return [
-      `Generate a full-color 2D vector t-shirt graphic illustration directly fusing the subject matter of the attached final niche reference with the aesthetic style synthesized from the preceding ${styleCount} style images.`,
-      "Visual Subject: Recreate the subject matter, character, and visual elements from the final attached niche image as the central focal artwork, reframed cleanly for the chosen canvas aspect ratio.",
-      `Style Synthesis: Apply the unified artistic technique, linework, color palette, and textures from the style reference images directly onto the niche subject.`,
-      "Typography: If the niche image contains text, render that exact wording in the synthesized aesthetic style. If the niche image contains no text, render 100% graphic-only artwork with strictly zero letters, numbers, words, or text.",
+      `Generate a full-color 2D vector t-shirt graphic illustration directly fusing the subject matter of the first attached image (Primary Subject / Niche Reference) with the aesthetic style synthesized from the subsequent ${styleCount} attached images (Style References).`,
+      "Visual Subject: Faithfully recreate the core character, silhouette, typography, and thematic elements from the first attached image (Image 1 - Subject) as the central focal artwork, reframed cleanly for the chosen canvas aspect ratio.",
+      `Style Synthesis: Apply only the artistic rendering medium, line weight, textures (e.g., crochet stitches, embroidery loops, watercolor wash), and color palette synthesized from the subsequent attached style images (Images 2 through ${styleCount + 1} - Aesthetic Style) directly onto the subject from Image 1. Do NOT draw or copy the characters or subject matter from the style reference images.`,
+      "Typography: If the first attached image (Image 1 - Subject) contains text, render that exact wording in the synthesized aesthetic style. If the first attached image contains no text, render 100% graphic-only artwork with strictly zero letters, numbers, words, or text.",
       arDirective,
       bgBlock,
       UNIVERSAL_FOOTER
@@ -23,10 +23,10 @@ export function buildPrompt({ bg_color = "#000000", variant = 0, styleCount = 1,
   }
 
   return [
-    "Generate a full-color 2D vector t-shirt graphic illustration directly fusing the subject matter of the attached second niche reference with the aesthetic style of the attached first style reference.",
-    "Visual Subject: Recreate the core subject matter, character, and central elements from the attached niche reference, composed cleanly for the chosen canvas aspect ratio.",
-    "Artistic Style: Apply the linework, color palette, artistic texture, and rendering technique of the first attached image directly onto the subject.",
-    "Typography: If the second image contains text, render that exact wording in the new aesthetic style. If the second image contains no text, render 100% graphic-only artwork with strictly zero letters, numbers, words, or text.",
+    "Generate a full-color 2D vector t-shirt graphic illustration directly fusing the subject matter of the first attached image (Primary Subject / Niche Reference) with the aesthetic style of the second attached image (Aesthetic Style Reference).",
+    "Visual Subject: Faithfully recreate the core character, silhouette, typography, and thematic elements from the first attached image (Image 1 - Subject) as the central focal artwork, reframed cleanly for the chosen canvas aspect ratio.",
+    "Artistic Style: Apply only the artistic rendering medium, line weight, textures (e.g., crochet stitches, embroidery loops, watercolor wash), and color palette of the second attached image (Image 2 - Aesthetic Style) directly onto the subject from Image 1. Do NOT draw or copy the characters or subject matter from the second attached image.",
+    "Typography: If the first attached image (Image 1 - Subject) contains text, render that exact wording in the new aesthetic style. If the first attached image contains no text, render 100% graphic-only artwork with strictly zero letters, numbers, words, or text.",
     arDirective,
     bgBlock,
     UNIVERSAL_FOOTER

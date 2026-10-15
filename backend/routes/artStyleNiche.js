@@ -55,8 +55,8 @@ router.post(
       const bg_color = req.body.bg_color || req.body.background_color || "";
       const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
 
-      // All style references are fed together as the moodboard, followed by the niche image
-      const allImagePaths = styles.length > 0 ? [...styles.map((s) => s.abs), niche.abs] : [niche.abs];
+      // Niche Reference (Core Subject) is ALWAYS the first element (Image 1), followed by the Style Reference(s)
+      const allImagePaths = [niche.abs, ...styles.map((s) => s.abs)];
       const tasks = Array.from({ length: count }, (_, v) => ({
         prompt: buildPrompt({ variant: v, bg_color, styleCount: styles.length, aspectRatio }),
         imagePaths: allImagePaths,
