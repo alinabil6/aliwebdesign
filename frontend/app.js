@@ -5363,10 +5363,15 @@ async function startAddAccount(browser) {
 
 /* ── My Designs Library View (UI-UX Pro Max) ─────────────── */
 
+let libraryActiveTab = "designs";
 const libraryState = { folder: "", feature: "", page: 1, total: 0 };
+const listingsLibraryState = { platform: "", search: "", page: 1, total: 0 };
 const designById = new Map();
+const listingById = new Map();
 let isSelectMode = false;
+let isListingSelectMode = false;
 const selectedDesignIds = new Set();
+const selectedListingIds = new Set();
 
 function designCard(d) {
   const isSelected = selectedDesignIds.has(d.id);
