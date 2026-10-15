@@ -4149,7 +4149,7 @@ function renderArtStyleNiche() {
           </div>
 
           <div style="display:flex; justify-content:flex-end;">
-            <button type="button" class="btn secondary" id="asModeGuideGotIt" style="min-width: 90px; padding: 8px 18px; font-size: 0.85rem; border-radius: 8px;">Got it</button>
+            <button type="button" class="btn primary" id="asModeGuideGotIt" style="min-width: 90px; padding: 8px 18px; font-size: 0.85rem; border-radius: 8px; cursor: pointer;">Got it</button>
           </div>
         </div>
       </div>

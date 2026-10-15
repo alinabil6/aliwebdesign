@@ -6507,3 +6507,25 @@ body.light-mode .stage-actions .btn.secondary:hover {
   background: #f1f5f9 !important;
   border-color: #94a3b8 !important;
 }
+
+/* Mode Guide Modal "Got it" button in light mode — styled in webapp blue palette */
+:root[data-theme="light"] #asModeGuideGotIt,
+[data-theme="light"] #asModeGuideGotIt,
+body.light-mode #asModeGuideGotIt {
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%) !important;
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+  border: 1px solid #0284c7 !important;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3) !important;
+  font-weight: 600 !important;
+}
+
+:root[data-theme="light"] #asModeGuideGotIt:hover,
+[data-theme="light"] #asModeGuideGotIt:hover,
+body.light-mode #asModeGuideGotIt:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #1d4ed8 100%) !important;
+  background-color: #0369a1 !important;
+  border-color: #0369a1 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.45) !important;
+}
