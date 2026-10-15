@@ -18,7 +18,9 @@ import {
   claimNextReadyAccount,
   recordGeneration,
   setAccountStatus,
+  insertListing,
 } from "../lib/db.js";
+import { storeInLibrary } from "../lib/files.js";
 import {
   buildMagicListingPrompt,
   buildTeePublicPrompt,
@@ -302,6 +304,45 @@ async function acquireListingAccount(timeoutMs = 60000, excludeIds = []) {
   throw new Error("All Gemini accounts are busy — try again in a moment");
 }
 
+function persistListingToLibrary({ fileName, designIndex, platform, listing, imagePath }) {
+  let thumbnailRel = null;
+  if (imagePath && fs.existsSync(imagePath)) {
+    try {
+      const stored = storeInLibrary(imagePath, `${uuidv4()}-listing-thumb.jpg`);
+      thumbnailRel = stored.rel;
+    } catch (err) {
+      console.warn("[magicListing] Failed to store thumbnail in library:", err.message);
+    }
+  }
+
+  const plat = String(platform || "amazon").toLowerCase();
+  const l = listing || {};
+
+  try {
+    const saved = insertListing({
+      id: uuidv4(),
+      file_name: fileName || `Design #${designIndex}`,
+      platform: plat,
+      thumbnail_path: thumbnailRel,
+      title: l.title || null,
+      brand: l.brand || l.brand_name || l.brandName || null,
+      category: l.category || null,
+      bullet1: l.bullet1 || l.bullet_1 || null,
+      bullet2: l.bullet2 || l.bullet_2 || null,
+      description: l.description || l.desc || null,
+      main_tag: l.mainTag || l.main_tag || null,
+      tags: l.tags || l.supportingTags || l.supporting_tags || [],
+      attributes: l.attributes || {},
+      trademark_safe: l.trademark_safe !== false ? 1 : 0,
+      raw_listing: l,
+    });
+    return { id: saved.id, thumbnailRel };
+  } catch (err) {
+    console.error("[magicListing] Failed to persist listing row to DB:", err.message);
+    return { id: null, thumbnailRel };
+  }
+}
+
 async function processListingOnAccount(account, design, referenceData, platform, signal = null) {
   const plat = String(platform || "amazon").toLowerCase();
   const isTeePublic = plat === "teepublic";
@@ -343,13 +384,25 @@ async function processListingOnAccount(account, design, referenceData, platform,
           ? normalizeTeePublicListing(fallback)
           : normalizeListing(fallback);
 
-      console.log(`[magicListing] [Mock/Fallback] Generated listing for [${plat}], releasing account.`);
-      return {
-        success: true,
-        fileName: fileName || `Design #${designIndex}`,
+      const persisted = persistListingToLibrary({
+        fileName,
         designIndex,
         platform: plat,
         listing: normalized,
+        imagePath,
+      });
+
+      console.log(`[magicListing] [Mock/Fallback] Generated listing for [${plat}], releasing account.`);
+      return {
+        success: true,
+        id: persisted.id,
+        fileName: fileName || `Design #${designIndex}`,
+        designIndex,
+        platform: plat,
+        thumbnailPath: persisted.thumbnailRel,
+        thumbnailUrl: persisted.thumbnailRel ? `/library/${persisted.thumbnailRel}` : "",
+        listing: normalized,
+        savedToLibrary: true,
       };
     }
 
@@ -398,13 +451,25 @@ async function processListingOnAccount(account, design, referenceData, platform,
         ? normalizeTeePublicListing(parsed || buildFallbackTeePublicListing(fileName, referenceData))
         : normalizeListing(parsed || buildFallbackAmazonListing(fileName, referenceData));
 
-    console.log(`[magicListing] Successfully parsed JSON for [${plat}], releasing account.`);
-    return {
-      success: true,
-      fileName: fileName || `Design #${designIndex}`,
+    const persisted = persistListingToLibrary({
+      fileName,
       designIndex,
       platform: plat,
       listing: normalizedListing,
+      imagePath,
+    });
+
+    console.log(`[magicListing] Successfully parsed JSON for [${plat}], releasing account.`);
+    return {
+      success: true,
+      id: persisted.id,
+      fileName: fileName || `Design #${designIndex}`,
+      designIndex,
+      platform: plat,
+      thumbnailPath: persisted.thumbnailRel,
+      thumbnailUrl: persisted.thumbnailRel ? `/library/${persisted.thumbnailRel}` : "",
+      listing: normalizedListing,
+      savedToLibrary: true,
     };
   } finally {
     setAccountStatus(account.id, "ready");

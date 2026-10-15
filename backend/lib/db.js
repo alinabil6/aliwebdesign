@@ -66,6 +66,29 @@ CREATE TABLE IF NOT EXISTS generation_log (
 CREATE INDEX IF NOT EXISTS idx_generation_log_account_ts
   ON generation_log (account_id, ts);
 
+CREATE TABLE IF NOT EXISTS listings (
+  id TEXT PRIMARY KEY,
+  file_name TEXT,
+  platform TEXT NOT NULL,           -- 'amazon' | 'teepublic' | 'etsy'
+  thumbnail_path TEXT,              -- relative path under /library or data url
+  title TEXT,
+  brand TEXT,
+  category TEXT,
+  bullet1 TEXT,
+  bullet2 TEXT,
+  description TEXT,
+  main_tag TEXT,
+  tags TEXT,                        -- JSON array or string
+  attributes TEXT,                  -- JSON string for Etsy attributes
+  trademark_safe INTEGER DEFAULT 1,
+  raw_listing TEXT,                 -- full json string
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_listings_platform_created
+  ON listings (platform, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listings_created_at
+  ON listings (created_at DESC);
+
 DROP TABLE IF EXISTS gemini_accounts;
 DROP TABLE IF EXISTS gemini_connection;
 `);
@@ -416,3 +439,92 @@ export function touchAccount(id) {
     console.error("[DB] Failed to touch account timestamp:", err.message);
   }
 }
+
+// ────────────────────────────────────────────────
+// Listings (Magic Listing Library)
+// ────────────────────────────────────────────────
+const listingStmts = {
+  insert: db.prepare(`
+    INSERT INTO listings
+      (id, file_name, platform, thumbnail_path, title, brand, category,
+       bullet1, bullet2, description, main_tag, tags, attributes, trademark_safe, raw_listing)
+    VALUES
+      (@id, @file_name, @platform, @thumbnail_path, @title, @brand, @category,
+       @bullet1, @bullet2, @description, @main_tag, @tags, @attributes, @trademark_safe, @raw_listing)
+  `),
+  get: db.prepare(`SELECT * FROM listings WHERE id = ?`),
+  remove: db.prepare(`DELETE FROM listings WHERE id = ?`),
+  refCount: db.prepare(`SELECT COUNT(*) AS n FROM listings WHERE thumbnail_path = ?`),
+  countAll: db.prepare(`SELECT COUNT(*) AS n FROM listings`),
+};
+
+export function insertListing(data) {
+  listingStmts.insert.run({
+    id: data.id,
+    file_name: data.file_name ?? null,
+    platform: data.platform ?? "amazon",
+    thumbnail_path: data.thumbnail_path ?? null,
+    title: data.title ?? null,
+    brand: data.brand ?? null,
+    category: data.category ?? null,
+    bullet1: data.bullet1 ?? null,
+    bullet2: data.bullet2 ?? null,
+    description: data.description ?? null,
+    main_tag: data.main_tag ?? null,
+    tags: typeof data.tags === "object" ? JSON.stringify(data.tags) : (data.tags ?? null),
+    attributes: typeof data.attributes === "object" ? JSON.stringify(data.attributes) : (data.attributes ?? null),
+    trademark_safe: data.trademark_safe ? 1 : 0,
+    raw_listing: typeof data.raw_listing === "object" ? JSON.stringify(data.raw_listing) : (data.raw_listing ?? null),
+  });
+  return getListingById(data.id);
+}
+
+export function getListingById(id) {
+  return listingStmts.get.get(id) ?? null;
+}
+
+export function getListings({ platform = null, search = null, page = 1, pageSize = 100 } = {}) {
+  const offset = (page - 1) * pageSize;
+  const conditions = [];
+  const params = {};
+
+  if (platform && platform.trim() && platform !== "all") {
+    conditions.push("platform = @platform");
+    params.platform = platform.toLowerCase().trim();
+  }
+
+  if (search && search.trim()) {
+    conditions.push("(title LIKE @search OR file_name LIKE @search OR brand LIKE @search OR description LIKE @search OR tags LIKE @search)");
+    params.search = `%${search.trim()}%`;
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const listSql = `SELECT * FROM listings ${whereClause} ORDER BY created_at DESC, rowid DESC LIMIT @limit OFFSET @offset`;
+  const countSql = `SELECT COUNT(*) AS n FROM listings ${whereClause}`;
+
+  const rows = db.prepare(listSql).all({ ...params, limit: pageSize, offset });
+  const { n } = db.prepare(countSql).get(params);
+  return { rows, total: n, page, pageSize };
+}
+
+export function deleteListingRow(id) {
+  return listingStmts.remove.run(id);
+}
+
+export function deleteListingsBatch(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return 0;
+  const placeholders = ids.map(() => "?").join(",");
+  const stmt = db.prepare(`DELETE FROM listings WHERE id IN (${placeholders})`);
+  const info = stmt.run(...ids);
+  return info.changes;
+}
+
+export function countListingThumbnailRefs(relPath) {
+  if (!relPath) return 0;
+  return listingStmts.refCount.get(relPath)?.n ?? 0;
+}
+
+export function totalListingsCount() {
+  return listingStmts.countAll.get()?.n ?? 0;
+}
+

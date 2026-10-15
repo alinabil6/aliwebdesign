@@ -6485,3 +6485,178 @@ body.light-mode #asModeGuideGotIt:hover {
   color: #ffffff !important;
   box-shadow: 0 4px 14px rgba(2, 132, 199, 0.45) !important;
 }
+
+/* ── Library Nav Tabs ────────────────────────────────────────── */
+.library-header-group {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.library-nav-tabs {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+:root[data-theme="light"] .library-nav-tabs,
+body.light-mode .library-nav-tabs {
+  background: rgba(241, 245, 249, 0.9);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.lib-nav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink-60, #94a3b8);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lib-nav-tab svg {
+  width: 15px;
+  height: 15px;
+}
+
+.lib-nav-tab:hover {
+  color: var(--color-ink, #ffffff);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme="light"] .lib-nav-tab:hover,
+body.light-mode .lib-nav-tab:hover {
+  color: #0f172a;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.lib-nav-tab.active {
+  color: #ffffff;
+  background: #2563eb;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+}
+
+:root[data-theme="light"] .lib-nav-tab.active,
+body.light-mode .lib-nav-tab.active {
+  color: #ffffff;
+  background: #0284c7;
+}
+
+.lib-search-input {
+  background: var(--bg-surface, rgba(15, 23, 42, 0.6));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: var(--color-ink, #ffffff);
+  font-size: 13px;
+  padding: 8px 14px;
+  outline: none;
+  width: 220px;
+  transition: border-color 0.15s ease;
+}
+
+.lib-search-input:focus {
+  border-color: #38bdf8;
+}
+
+:root[data-theme="light"] .lib-search-input,
+body.light-mode .lib-search-input {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.15);
+  color: #0f172a;
+}
+
+/* ── Platform Badges ────────────────────────────────────────── */
+.platform-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.platform-badge svg {
+  width: 12px;
+  height: 12px;
+}
+.platform-badge.amazon {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.platform-badge.teepublic {
+  background: rgba(6, 182, 212, 0.15);
+  color: #06b6d4;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+.platform-badge.etsy {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+/* ── Listing Card in Library ─────────────────────────────────── */
+.listing-card {
+  position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.listing-card.selected {
+  border-color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.08) !important;
+  box-shadow: 0 0 0 1px #38bdf8;
+}
+
+.library-grid.selecting .listing-card {
+  cursor: pointer;
+}
+
+.listing-card-select-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.listing-card.selected .listing-card-select-overlay {
+  background: #38bdf8;
+  border-color: #38bdf8;
+  color: #000;
+}
+
+.listing-card-select-overlay svg {
+  width: 14px;
+  height: 14px;
+}
+
+.danger-btn {
+  color: #ef4444 !important;
+}
+.danger-btn:hover {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
