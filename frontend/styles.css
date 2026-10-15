@@ -3721,6 +3721,13 @@ kbd {
   font-size: 0.9rem;
 }
 
+:root[data-theme="light"] .ml-index-badge,
+[data-theme="light"] .ml-index-badge,
+body.light-mode .ml-index-badge {
+  color: #0284c7 !important;
+  font-weight: 700;
+}
+
 .ml-file-name {
   font-weight: 600;
   color: #E2E8F0;
@@ -3729,6 +3736,13 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
+}
+
+:root[data-theme="light"] .ml-file-name,
+[data-theme="light"] .ml-file-name,
+body.light-mode .ml-file-name {
+  color: #0f172a !important;
+  font-weight: 700;
 }
 
 .ml-card-safe {
@@ -6659,4 +6673,163 @@ body.light-mode .lib-search-input {
 .danger-btn:hover {
   background: rgba(239, 68, 68, 0.12) !important;
   border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+/* ── Magic Listing & Library Listing Cards in Light Mode ────── */
+:root[data-theme="light"] .ml-card,
+[data-theme="light"] .ml-card,
+body.light-mode .ml-card {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+}
+
+:root[data-theme="light"] .ml-card-header,
+[data-theme="light"] .ml-card-header,
+body.light-mode .ml-card-header {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+:root[data-theme="light"] .ml-card-thumb,
+[data-theme="light"] .ml-card-thumb,
+body.light-mode .ml-card-thumb {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+:root[data-theme="light"] .ml-field,
+[data-theme="light"] .ml-field,
+body.light-mode .ml-field {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-field strong,
+[data-theme="light"] .ml-field strong,
+body.light-mode .ml-field strong {
+  color: #000000 !important;
+  font-weight: 700;
+}
+
+:root[data-theme="light"] .ml-field span:not(.ml-tag-pill):not(.ml-chars),
+[data-theme="light"] .ml-field span:not(.ml-tag-pill):not(.ml-chars),
+body.light-mode .ml-field span:not(.ml-tag-pill):not(.ml-chars) {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-chars,
+[data-theme="light"] .ml-chars,
+body.light-mode .ml-chars {
+  color: #64748b !important;
+}
+
+:root[data-theme="light"] .ml-tag-pill,
+[data-theme="light"] .ml-tag-pill,
+body.light-mode .ml-tag-pill {
+  color: #0369a1 !important;
+  background: rgba(2, 132, 199, 0.08) !important;
+  border-color: rgba(2, 132, 199, 0.28) !important;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .ml-attribute-chip,
+[data-theme="light"] .ml-attribute-chip,
+body.light-mode .ml-attribute-chip {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+:root[data-theme="light"] .ml-attribute-chip span.attr-label,
+[data-theme="light"] .ml-attribute-chip span.attr-label,
+body.light-mode .ml-attribute-chip span.attr-label {
+  color: #475569 !important;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .ml-card-actions .btn.secondary,
+:root[data-theme="light"] .ml-copy,
+[data-theme="light"] .ml-card-actions .btn.secondary,
+[data-theme="light"] .ml-copy,
+body.light-mode .ml-card-actions .btn.secondary,
+body.light-mode .ml-copy {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+:root[data-theme="light"] .ml-card-actions .btn.secondary:hover,
+:root[data-theme="light"] .ml-copy:hover,
+[data-theme="light"] .ml-card-actions .btn.secondary:hover,
+[data-theme="light"] .ml-copy:hover,
+body.light-mode .ml-card-actions .btn.secondary:hover,
+body.light-mode .ml-copy:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #000000 !important;
+}
+
+:root[data-theme="light"] .ml-results-section .results-head,
+[data-theme="light"] .ml-results-section .results-head,
+body.light-mode .ml-results-section .results-head {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-results-section .results-head span,
+[data-theme="light"] .ml-results-section .results-head span,
+body.light-mode .ml-results-section .results-head span {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-results-section .results-count,
+[data-theme="light"] .ml-results-section .results-count,
+body.light-mode .ml-results-section .results-count {
+  color: #475569 !important;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] #btn-download-listings-csv,
+[data-theme="light"] #btn-download-listings-csv,
+body.light-mode #btn-download-listings-csv {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] #btn-download-listings-csv:hover,
+[data-theme="light"] #btn-download-listings-csv:hover,
+body.light-mode #btn-download-listings-csv:hover {
+  background: #f1f5f9 !important;
+  color: #000000 !important;
+}
+
+:root[data-theme="light"] #mlProgress,
+:root[data-theme="light"] #mlProgress span,
+[data-theme="light"] #mlProgress,
+[data-theme="light"] #mlProgress span,
+body.light-mode #mlProgress,
+body.light-mode #mlProgress span {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .listing-card-select-overlay,
+[data-theme="light"] .listing-card-select-overlay,
+body.light-mode .listing-card-select-overlay {
+  border-color: rgba(15, 23, 42, 0.25);
+  background: rgba(241, 245, 249, 0.9);
+}
+
+:root[data-theme="light"] .listing-card.selected .listing-card-select-overlay,
+[data-theme="light"] .listing-card.selected .listing-card-select-overlay,
+body.light-mode .listing-card.selected .listing-card-select-overlay {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .listing-card.selected,
+[data-theme="light"] .listing-card.selected,
+body.light-mode .listing-card.selected {
+  border-color: #0284c7 !important;
+  background: rgba(2, 132, 199, 0.05) !important;
+  box-shadow: 0 0 0 1.5px #0284c7 !important;
 }

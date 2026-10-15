@@ -6609,3 +6609,26 @@ body.light-mode #asModeGuideGotIt:hover {
   color: #ffffff !important;
   box-shadow: 0 4px 14px rgba(2, 132, 199, 0.45) !important;
 }
+
+:root[data-theme="light"] .listing-card-select-overlay,
+[data-theme="light"] .listing-card-select-overlay,
+body.light-mode .listing-card-select-overlay {
+  border-color: rgba(15, 23, 42, 0.25);
+  background: rgba(241, 245, 249, 0.9);
+}
+
+:root[data-theme="light"] .listing-card.selected .listing-card-select-overlay,
+[data-theme="light"] .listing-card.selected .listing-card-select-overlay,
+body.light-mode .listing-card.selected .listing-card-select-overlay {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .listing-card.selected,
+[data-theme="light"] .listing-card.selected,
+body.light-mode .listing-card.selected {
+  border-color: #0284c7 !important;
+  background: rgba(2, 132, 199, 0.05) !important;
+  box-shadow: 0 0 0 1.5px #0284c7 !important;
+}
