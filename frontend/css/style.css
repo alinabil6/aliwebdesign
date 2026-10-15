@@ -3496,7 +3496,7 @@ kbd {
 
 .ml-file-name {
   font-weight: 600;
-  color: #E2E8F0;
+  color: var(--color-ink, #E2E8F0);
   font-size: 0.92rem;
   white-space: nowrap;
   overflow: hidden;
@@ -5967,9 +5967,12 @@ section.ml-panel div:has(> button[class*="delete"]) button {
   color: var(--color-ink, #f8fafc);
   margin-top: 0.1rem;
 }
-:root[data-theme="light"] .ml-attribute-chip span.attr-val {
-  color: #0f172a;
+:root[data-theme="light"] .ml-attribute-chip span.attr-val,
+[data-theme="light"] .ml-attribute-chip span.attr-val,
+body.light-mode .ml-attribute-chip span.attr-val {
+  color: #000000 !important;
 }
+
 #btn-download-listings-csv {
   display: inline-flex;
   align-items: center;
@@ -5977,4 +5980,257 @@ section.ml-panel div:has(> button[class*="delete"]) button {
   border-radius: 9999px;
   padding: 0.4rem 0.9rem;
   font-size: 0.78rem;
+}
+
+/* ── Magic Listing White Mode (Light Theme) Contrast & Ink Rules ── */
+:root[data-theme="light"] .ml-workspace,
+[data-theme="light"] .ml-workspace,
+body.light-mode .ml-workspace,
+:root[data-theme="light"] .ml-results-section,
+[data-theme="light"] .ml-results-section,
+body.light-mode .ml-results-section {
+  color: #0f172a;
+}
+
+:root[data-theme="light"] #mlSubtitle,
+[data-theme="light"] #mlSubtitle,
+body.light-mode #mlSubtitle {
+  color: #334155 !important;
+}
+
+:root[data-theme="light"] .ml-panel,
+[data-theme="light"] .ml-panel,
+body.light-mode .ml-panel {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid rgba(203, 213, 225, 0.9) !important;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05) !important;
+}
+
+:root[data-theme="light"] .ml-panel .stage-title,
+[data-theme="light"] .ml-panel .stage-title,
+body.light-mode .ml-panel .stage-title {
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+:root[data-theme="light"] .ml-panel .stage-counter,
+[data-theme="light"] .ml-panel .stage-counter,
+body.light-mode .ml-panel .stage-counter {
+  color: #475569 !important;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .ml-panel .field-label,
+[data-theme="light"] .ml-panel .field-label,
+body.light-mode .ml-panel .field-label {
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .ml-panel .multi-dropzone,
+[data-theme="light"] .ml-panel .multi-dropzone,
+body.light-mode .ml-panel .multi-dropzone {
+  background: #ffffff !important;
+  border: 1.5px dashed #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-panel .multi-dropzone:hover,
+[data-theme="light"] .ml-panel .multi-dropzone:hover,
+body.light-mode .ml-panel .multi-dropzone:hover {
+  background: #f8fafc !important;
+  border-color: #0284c7 !important;
+}
+
+:root[data-theme="light"] .ml-panel .multi-dropzone p,
+:root[data-theme="light"] .ml-panel .multi-dropzone p strong,
+[data-theme="light"] .ml-panel .multi-dropzone p,
+[data-theme="light"] .ml-panel .multi-dropzone p strong,
+body.light-mode .ml-panel .multi-dropzone p,
+body.light-mode .ml-panel .multi-dropzone p strong {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-panel .multi-dropzone .dropzone-hint,
+[data-theme="light"] .ml-panel .multi-dropzone .dropzone-hint,
+body.light-mode .ml-panel .multi-dropzone .dropzone-hint {
+  color: #475569 !important;
+}
+
+:root[data-theme="light"] .ml-panel .multi-dropzone svg,
+[data-theme="light"] .ml-panel .multi-dropzone svg,
+body.light-mode .ml-panel .multi-dropzone svg {
+  color: #0284c7 !important;
+}
+
+:root[data-theme="light"] .ml-stage-actions .btn.secondary,
+[data-theme="light"] .ml-stage-actions .btn.secondary,
+body.light-mode .ml-stage-actions .btn.secondary {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+:root[data-theme="light"] .ml-stage-actions .btn.secondary:hover,
+[data-theme="light"] .ml-stage-actions .btn.secondary:hover,
+body.light-mode .ml-stage-actions .btn.secondary:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #000000 !important;
+}
+
+:root[data-theme="light"] .ml-stage-actions .btn.secondary#mlClearAll,
+[data-theme="light"] .ml-stage-actions .btn.secondary#mlClearAll,
+body.light-mode .ml-stage-actions .btn.secondary#mlClearAll {
+  color: #ef4444 !important;
+}
+
+/* Magic Listing Result Cards in Light Mode */
+:root[data-theme="light"] .ml-card,
+[data-theme="light"] .ml-card,
+body.light-mode .ml-card {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+}
+
+:root[data-theme="light"] .ml-card-header,
+[data-theme="light"] .ml-card-header,
+body.light-mode .ml-card-header {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+:root[data-theme="light"] .ml-card-thumb,
+[data-theme="light"] .ml-card-thumb,
+body.light-mode .ml-card-thumb {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+:root[data-theme="light"] .ml-index-badge,
+[data-theme="light"] .ml-index-badge,
+body.light-mode .ml-index-badge {
+  color: #0284c7 !important;
+}
+
+:root[data-theme="light"] .ml-file-name,
+[data-theme="light"] .ml-file-name,
+body.light-mode .ml-file-name {
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+:root[data-theme="light"] .ml-field,
+[data-theme="light"] .ml-field,
+body.light-mode .ml-field {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-field strong,
+[data-theme="light"] .ml-field strong,
+body.light-mode .ml-field strong {
+  color: #000000 !important;
+  font-weight: 700;
+}
+
+:root[data-theme="light"] .ml-field span:not(.ml-tag-pill):not(.ml-chars),
+[data-theme="light"] .ml-field span:not(.ml-tag-pill):not(.ml-chars),
+body.light-mode .ml-field span:not(.ml-tag-pill):not(.ml-chars) {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-chars,
+[data-theme="light"] .ml-chars,
+body.light-mode .ml-chars {
+  color: #64748b !important;
+}
+
+:root[data-theme="light"] .ml-tag-pill,
+[data-theme="light"] .ml-tag-pill,
+body.light-mode .ml-tag-pill {
+  color: #0369a1 !important;
+  background: rgba(2, 132, 199, 0.08) !important;
+  border-color: rgba(2, 132, 199, 0.28) !important;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .ml-attribute-chip,
+[data-theme="light"] .ml-attribute-chip,
+body.light-mode .ml-attribute-chip {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+:root[data-theme="light"] .ml-attribute-chip span.attr-label,
+[data-theme="light"] .ml-attribute-chip span.attr-label,
+body.light-mode .ml-attribute-chip span.attr-label {
+  color: #475569 !important;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .ml-card-actions .btn.secondary,
+:root[data-theme="light"] .ml-copy,
+[data-theme="light"] .ml-card-actions .btn.secondary,
+[data-theme="light"] .ml-copy,
+body.light-mode .ml-card-actions .btn.secondary,
+body.light-mode .ml-copy {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+:root[data-theme="light"] .ml-card-actions .btn.secondary:hover,
+:root[data-theme="light"] .ml-copy:hover,
+[data-theme="light"] .ml-card-actions .btn.secondary:hover,
+[data-theme="light"] .ml-copy:hover,
+body.light-mode .ml-card-actions .btn.secondary:hover,
+body.light-mode .ml-copy:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #000000 !important;
+}
+
+:root[data-theme="light"] .ml-results-section .results-head,
+[data-theme="light"] .ml-results-section .results-head,
+body.light-mode .ml-results-section .results-head {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-results-section .results-head span,
+[data-theme="light"] .ml-results-section .results-head span,
+body.light-mode .ml-results-section .results-head span {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .ml-results-section .results-count,
+[data-theme="light"] .ml-results-section .results-count,
+body.light-mode .ml-results-section .results-count {
+  color: #475569 !important;
+  font-weight: 600;
+}
+
+:root[data-theme="light"] #btn-download-listings-csv,
+[data-theme="light"] #btn-download-listings-csv,
+body.light-mode #btn-download-listings-csv {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] #btn-download-listings-csv:hover,
+[data-theme="light"] #btn-download-listings-csv:hover,
+body.light-mode #btn-download-listings-csv:hover {
+  background: #f1f5f9 !important;
+  color: #000000 !important;
+}
+
+:root[data-theme="light"] #mlProgress,
+:root[data-theme="light"] #mlProgress span,
+[data-theme="light"] #mlProgress,
+[data-theme="light"] #mlProgress span,
+body.light-mode #mlProgress,
+body.light-mode #mlProgress span {
+  color: #0f172a !important;
 }
