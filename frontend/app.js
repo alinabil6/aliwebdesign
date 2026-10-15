@@ -3996,17 +3996,22 @@ function renderArtStyleNiche() {
       </header>
 
       <div class="card panel feature-card as-card">
-        <div class="as-mode-row" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;padding:0.75rem 1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:8px;">
-          <div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
-            <span class="field-label" style="font-weight:600;font-size:0.85rem;margin:0;color:var(--text-main,#f8fafc);">Mode:</span>
-            <label id="lblModeFusion" title="Blends all style references into a single moodboard aesthetic." style="display:inline-flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.85rem;padding:0.25rem 0.5rem;border-radius:6px;transition:background 0.15s ease;">
-              <input type="radio" name="asMode" value="fusion" checked />
-              <span><strong>Fusion Mode</strong> (Moodboard blend)</span>
-            </label>
-            <label id="lblModePairwise" title="Tests each style reference independently against each niche." style="display:inline-flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.85rem;padding:0.25rem 0.5rem;border-radius:6px;transition:background 0.15s ease;">
-              <input type="radio" name="asMode" value="pairwise" />
-              <span><strong>Pairwise Mode</strong> (A/B test styles)</span>
-            </label>
+        <div class="as-mode-row" style="position:relative;display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;padding:0.75rem 1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;">
+              <span class="field-label" style="font-weight:600;font-size:0.85rem;margin:0;color:var(--text-main,#f8fafc);">Mode:</span>
+              <label id="lblModeFusion" title="Blends all style references into a single moodboard aesthetic." style="display:inline-flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.85rem;padding:0.25rem 0.5rem;border-radius:6px;transition:background 0.15s ease;">
+                <input type="radio" name="asMode" value="fusion" checked />
+                <span><strong>Fusion Mode</strong> (Moodboard blend)</span>
+              </label>
+              <label id="lblModePairwise" title="Tests each style reference independently against each niche." style="display:inline-flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.85rem;padding:0.25rem 0.5rem;border-radius:6px;transition:background 0.15s ease;">
+                <input type="radio" name="asMode" value="pairwise" />
+                <span><strong>Pairwise Mode</strong> (A/B test styles)</span>
+              </label>
+            </div>
+            <button type="button" id="asModeInfoBtn" class="as-mode-info-btn" title="Mode Guide — How It Works" aria-label="Mode Guide — How It Works">
+              <i data-lucide="info"></i>
+            </button>
           </div>
           <div id="asModeGuidance" style="display:flex;align-items:center;gap:0.45rem;font-size:0.78rem;color:#94a3b8;background:rgba(0,0,0,0.2);padding:0.4rem 0.65rem;border-radius:5px;border-left:3px solid #38bdf8;transition:all 0.2s ease;">
             <i data-lucide="info" style="width:14px;height:14px;color:#38bdf8;flex-shrink:0;"></i>
@@ -4075,9 +4080,112 @@ function renderArtStyleNiche() {
         <div class="progress-bar"><span class="progress-fill" id="asProgressFill" style="width:0%"></span></div>
       </div>
       <div class="results" id="asResults"></div>
+
+      <!-- Art Style Mode Guide Modal -->
+      <div class="modal-backdrop panel hidden" id="asModeGuideModal" role="dialog" aria-modal="true" aria-labelledby="asModeGuideTitle">
+        <div class="modal as-guide-modal" id="asModeGuideDialog" style="width: min(620px, 94vw); max-height: 88vh; overflow-y: auto; padding: 24px 28px; position: relative; border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+          <button type="button" class="modal-close" id="asModeGuideClose" title="Close" aria-label="Close mode guide" style="position: absolute; top: 18px; right: 18px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer;">
+            <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+          </button>
+
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom: 6px;">
+            <span style="display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:8px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3);">
+              <i data-lucide="book-open" style="width:16px; height:16px;"></i>
+            </span>
+            <h2 class="modal-title" id="asModeGuideTitle" style="margin:0; font-size:1.25rem; font-weight:700;">Mode Guide — How It Works</h2>
+          </div>
+          <p class="modal-sub" style="margin:0 0 20px 0; font-size:0.85rem; color:#94a3b8; line-height:1.4;">
+            Understand the difference between <strong>Fusion Mode</strong> and <strong>Pairwise Mode</strong> to get the exact design output you need.
+          </p>
+
+          <!-- Section 1: Fusion Mode -->
+          <div class="as-guide-section" style="margin-bottom: 16px; padding: 16px; border-radius: 12px; background: rgba(56,189,248,0.03); border: 1px solid rgba(56,189,248,0.18);">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
+              <span class="badge" style="background:#0284c7; color:#ffffff; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:0.5px;">Mode 1</span>
+              <h3 style="margin:0; font-size:1rem; font-weight:700; color:#38bdf8;">Fusion Mode (Moodboard Blend)</h3>
+            </div>
+            <p style="margin:0 0 10px 0; font-size:0.85rem; line-height:1.45;">
+              <strong>Summary:</strong> Combines all style images into a unified aesthetic moodboard applied to your niche subject.
+            </p>
+            <div class="as-guide-card" style="background: rgba(0,0,0,0.25); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem; line-height: 1.5;">
+              <div style="font-weight: 600; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.5px;">Example Walkthrough</div>
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <div>🎨 <strong>Style uploads:</strong> 3 style references (e.g., vintage, grunge, retro palette).</div>
+                <div>🎯 <strong>Niche upload:</strong> A cat.</div>
+                <div style="margin-top:4px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.1); color:#38bdf8; font-weight:600;">
+                  ✨ <strong>Result:</strong> A cat design combining all 3 styles into one unified aesthetic.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 2: Pairwise Mode -->
+          <div class="as-guide-section" style="margin-bottom: 20px; padding: 16px; border-radius: 12px; background: rgba(168,85,247,0.03); border: 1px solid rgba(168,85,247,0.18);">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
+              <span class="badge" style="background:#7c3aed; color:#ffffff; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:0.5px;">Mode 2</span>
+              <h3 style="margin:0; font-size:1rem; font-weight:700; color:#c084fc;">Pairwise Mode (A/B Testing)</h3>
+            </div>
+            <p style="margin:0 0 10px 0; font-size:0.85rem; line-height:1.45;">
+              <strong>Summary:</strong> Generates direct 1-to-1 pairings between style references and niche references.
+            </p>
+            <div class="as-guide-card" style="background: rgba(0,0,0,0.25); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem; line-height: 1.5;">
+              <div style="font-weight: 600; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.5px;">Example Walkthrough</div>
+              <div style="display:flex; flex-direction:column; gap:4px;">
+                <div>📊 <strong>2 styles + 2 niche images:</strong></div>
+                <div style="padding-left:12px;">• Style 1 + Cat 1 &rarr; <strong>Design 1</strong></div>
+                <div style="padding-left:12px;">• Style 2 + Dog 2 &rarr; <strong>Design 2</strong></div>
+                <div style="margin-top:4px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.1); color:#c084fc; font-weight:600;">
+                  ✨ <strong>Result:</strong> Separate designs using individual style–niche pairings.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="button" class="btn secondary" id="asModeGuideGotIt" style="min-width: 90px; padding: 8px 18px; font-size: 0.85rem; border-radius: 8px;">Got it</button>
+          </div>
+        </div>
+      </div>
     </div>`;
 
   renderIcons();
+
+  const modeInfoBtn = $("#asModeInfoBtn");
+  const modeGuideModal = $("#asModeGuideModal");
+  const modeGuideClose = $("#asModeGuideClose");
+  const modeGuideGotIt = $("#asModeGuideGotIt");
+
+  function openModeGuide() {
+    modeGuideModal?.classList.remove("hidden");
+    renderIcons();
+  }
+  function closeModeGuide() {
+    modeGuideModal?.classList.add("hidden");
+  }
+
+  modeInfoBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (modeGuideModal?.classList.contains("hidden")) {
+      openModeGuide();
+    } else {
+      closeModeGuide();
+    }
+  });
+
+  modeGuideClose?.addEventListener("click", closeModeGuide);
+  modeGuideGotIt?.addEventListener("click", closeModeGuide);
+
+  modeGuideModal?.addEventListener("click", (e) => {
+    if (e.target === modeGuideModal) {
+      closeModeGuide();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modeGuideModal && !modeGuideModal.classList.contains("hidden")) {
+      closeModeGuide();
+    }
+  });
 
   const getAsShape = bindShapeSelector("as");
 

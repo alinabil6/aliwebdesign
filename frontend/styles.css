@@ -6125,3 +6125,116 @@ section.ml-panel div:has(> button[class*="delete"]) button {
   padding: 0.4rem 0.9rem;
   font-size: 0.78rem;
 }
+
+/* ── Art Style + Niche Mode Info Button & Guide Modal ── */
+.as-mode-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.as-mode-info-btn:hover {
+  color: #38bdf8;
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+  transform: translateY(-1px);
+}
+
+.as-mode-info-btn:active {
+  transform: translateY(0);
+}
+
+.as-mode-info-btn i,
+.as-mode-info-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.as-guide-modal {
+  background: rgba(15, 20, 32, 0.96) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f8fafc !important;
+}
+
+.as-guide-modal .modal-close:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
+/* Light Theme Support */
+:root[data-theme="light"] .as-mode-info-btn,
+body.light-mode .as-mode-info-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+:root[data-theme="light"] .as-mode-info-btn:hover,
+body.light-mode .as-mode-info-btn:hover {
+  color: #0284c7;
+  border-color: #0284c7;
+  background: #e0f2fe;
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.25);
+}
+
+:root[data-theme="light"] .as-guide-modal,
+body.light-mode .as-guide-modal {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.15) !important;
+}
+
+:root[data-theme="light"] .as-guide-modal .modal-title,
+body.light-mode .as-guide-modal .modal-title {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .as-guide-modal .modal-sub,
+body.light-mode .as-guide-modal .modal-sub {
+  color: #64748b !important;
+}
+
+:root[data-theme="light"] .as-guide-modal .as-guide-section,
+body.light-mode .as-guide-modal .as-guide-section {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+:root[data-theme="light"] .as-guide-modal .as-guide-section p,
+body.light-mode .as-guide-modal .as-guide-section p {
+  color: #1e293b !important;
+}
+
+:root[data-theme="light"] .as-guide-modal .as-guide-card,
+body.light-mode .as-guide-modal .as-guide-card {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+:root[data-theme="light"] .as-guide-modal .modal-close,
+body.light-mode .as-guide-modal .modal-close {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #64748b !important;
+}
+
+:root[data-theme="light"] .as-guide-modal .modal-close:hover,
+body.light-mode .as-guide-modal .modal-close:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
