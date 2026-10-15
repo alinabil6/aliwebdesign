@@ -3752,6 +3752,23 @@ kbd {
   min-height: 160px;
 }
 
+.as-side.side-active-target .multi-dropzone,
+.multi-dropzone.dropzone-active-target,
+.app-dropzone.dropzone-active-target {
+  border-color: rgba(56, 189, 248, 0.75) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25) !important;
+}
+
+:root[data-theme="light"] .as-side.side-active-target .multi-dropzone,
+:root[data-theme="light"] .multi-dropzone.dropzone-active-target,
+:root[data-theme="light"] .app-dropzone.dropzone-active-target,
+body.light-mode .as-side.side-active-target .multi-dropzone,
+body.light-mode .multi-dropzone.dropzone-active-target,
+body.light-mode .app-dropzone.dropzone-active-target {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.25) !important;
+}
+
 .pair-warning {
   font-size: var(--text-caption);
   color: var(--color-caution);

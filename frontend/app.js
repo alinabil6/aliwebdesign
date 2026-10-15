@@ -468,13 +468,51 @@ function downscaleForStyleAnalysis(file, maxDimension = 512) {
 /* ── Global Unified Drop & Paste Intake System ──────────────── */
 
 let lastHoveredDropzone = null;
+let lastActiveDropzone = null;
+
+function setActiveDropzone(dz) {
+  if (!dz || !dz.isConnected || dz.closest(".hidden")) return;
+  lastActiveDropzone = dz;
+
+  // Visual outline on active dropzone target
+  document.querySelectorAll(".dropzone-active-target").forEach((el) => {
+    if (el !== dz) el.classList.remove("dropzone-active-target");
+  });
+  dz.classList.add("dropzone-active-target");
+
+  // If inside an as-side column, mark the side container too
+  const side = dz.closest(".as-side");
+  document.querySelectorAll(".as-side.side-active-target").forEach((el) => {
+    if (el !== side) el.classList.remove("side-active-target");
+  });
+  if (side) side.classList.add("side-active-target");
+}
 
 // Track dropzone hover state for mouse-targeted drop/paste operations
 document.addEventListener("mouseover", (e) => {
   const dz = e.target.closest?.(
     ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop"
   );
-  if (dz) lastHoveredDropzone = dz;
+  if (dz) {
+    lastHoveredDropzone = dz;
+    setActiveDropzone(dz);
+  }
+});
+
+// Track click/focus on dropzones or their parent stage cards so clipboard pastes go to the clicked slot
+document.addEventListener("mousedown", (e) => {
+  const dz = e.target.closest?.(
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop"
+  );
+  if (dz) {
+    setActiveDropzone(dz);
+  } else {
+    const asSide = e.target.closest?.(".as-side");
+    if (asSide) {
+      const sideDz = asSide.querySelector(".multi-dropzone");
+      if (sideDz) setActiveDropzone(sideDz);
+    }
+  }
 });
 
 /**
@@ -518,17 +556,39 @@ function extractImagesFromClipboard(clipboardData) {
 
 /**
  * Resolve the appropriate dropzone for an incoming paste:
- * 1. Currently hovered dropzone (if active and not hidden)
- * 2. Dropzone in currently visible section
+ * 1. Currently hovered dropzone (if active and inside current section)
+ * 2. Last active/clicked dropzone in current section (persists across OS clipboard popups)
+ * 3. Element inside dropzone or side column that currently has focus
+ * 4. First visible dropzone in currently active section
  */
 function resolvePasteDropzone() {
-  if (lastHoveredDropzone && lastHoveredDropzone.isConnected) {
-    const isHidden = lastHoveredDropzone.closest(".hidden");
-    if (!isHidden) return lastHoveredDropzone;
+  const activeSection = document.querySelector("#view > .app-section:not(.hidden)");
+
+  // 1. If currently hovering a connected, visible dropzone inside active section
+  if (lastHoveredDropzone && lastHoveredDropzone.isConnected && !lastHoveredDropzone.closest(".hidden")) {
+    if (!activeSection || activeSection.contains(lastHoveredDropzone)) {
+      return lastHoveredDropzone;
+    }
   }
 
-  // Look in the currently active section first
-  const activeSection = document.querySelector("#view > .app-section:not(.hidden)");
+  // 2. If the user previously clicked or hovered a dropzone in this section
+  if (lastActiveDropzone && lastActiveDropzone.isConnected && !lastActiveDropzone.closest(".hidden")) {
+    if (!activeSection || activeSection.contains(lastActiveDropzone)) {
+      return lastActiveDropzone;
+    }
+  }
+
+  // 3. If an element inside a dropzone or its side-wrapper has focus
+  if (document.activeElement) {
+    const focusedDz = document.activeElement.closest?.(
+      ".app-dropzone, .multi-dropzone, .prepare-drop-area, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop"
+    );
+    if (focusedDz && focusedDz.isConnected && !focusedDz.closest(".hidden")) {
+      return focusedDz;
+    }
+  }
+
+  // 4. Default to the first dropzone in currently visible section
   if (activeSection) {
     const dz = activeSection.querySelector(
       ".app-dropzone, .multi-dropzone, .prepare-drop-area, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop"
@@ -601,12 +661,16 @@ function bindDropAndPasteZone({
   dropzoneEl._onFileReceived = onFileReceived;
   dropzoneEl._inputEl = inputEl;
 
-  // Track hover state for targeted pasting
+  // Track hover and active state for targeted pasting
   dropzoneEl.addEventListener("mouseenter", () => {
     lastHoveredDropzone = dropzoneEl;
+    setActiveDropzone(dropzoneEl);
   });
   dropzoneEl.addEventListener("mouseleave", () => {
     if (lastHoveredDropzone === dropzoneEl) lastHoveredDropzone = null;
+  });
+  dropzoneEl.addEventListener("mousedown", () => {
+    setActiveDropzone(dropzoneEl);
   });
 
   // Click-to-browse
@@ -1827,6 +1891,10 @@ let currentView = "home";
 window.currentView = currentView;
 
 function showView(name) {
+  lastHoveredDropzone = null;
+  lastActiveDropzone = null;
+  document.querySelectorAll(".dropzone-active-target").forEach((el) => el.classList.remove("dropzone-active-target"));
+  document.querySelectorAll(".side-active-target").forEach((el) => el.classList.remove("side-active-target"));
   if (!views[name]) name = "home";
   currentView = name;
   window.currentView = name;
@@ -4175,15 +4243,36 @@ function renderArtStyleNiche() {
       inputEl: inp,
       onFileReceived: (files) => {
         if (files?.length) {
-          side.files.push(...Array.from(files));
+          const combined = [...side.files, ...Array.from(files)].slice(0, 100);
+          side.files = combined;
           renderSide(side);
           updatePairing();
         }
       },
     });
 
-    side.addMore.addEventListener("click", () => inp.click());
+    // Clicking or hovering anywhere in this column (dropzone, buttons, thumbs)
+    // explicitly designates this slot as the active paste target
+    const sideContainer = d.closest(".as-side");
+    if (sideContainer) {
+      sideContainer.addEventListener("mousedown", () => {
+        setActiveDropzone(d);
+      });
+      sideContainer.addEventListener("mouseenter", () => {
+        setActiveDropzone(d);
+      });
+    }
+
+    d.addEventListener("click", () => {
+      setActiveDropzone(d);
+    });
+
+    side.addMore.addEventListener("click", () => {
+      setActiveDropzone(d);
+      inp.click();
+    });
     side.replace.addEventListener("click", () => {
+      setActiveDropzone(d);
       side.files = [];
       inp.value = "";
       inp.click();
@@ -4191,7 +4280,9 @@ function renderArtStyleNiche() {
     side.sideClearAll = side.drop.parentElement.querySelector('button[id$="ClearAll"]');
     if (side.sideClearAll) {
       side.sideClearAll.addEventListener("click", () => {
+        setActiveDropzone(d);
         side.files = [];
+        inp.value = "";
         renderSide(side);
         updatePairing();
       });
@@ -4201,26 +4292,8 @@ function renderArtStyleNiche() {
   setupDrop(sides.style);
   setupDrop(sides.niche);
 
-  window.addEventListener("paste", (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.startsWith("image/")) {
-        const file = items[i].getAsFile();
-        if (file) {
-          if (sides.style.files.length <= sides.niche.files.length) {
-            sides.style.files.push(file);
-            renderSide(sides.style);
-          } else {
-            sides.niche.files.push(file);
-            renderSide(sides.niche);
-          }
-          updatePairing();
-          break;
-        }
-      }
-    }
-  });
+  // Set style reference dropzone as initial active target
+  setActiveDropzone(sides.style.drop);
 
   generateBtn.addEventListener("click", async () => {
     const mode = getMode();
