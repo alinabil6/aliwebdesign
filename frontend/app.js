@@ -495,7 +495,15 @@ document.addEventListener("mouseover", (e) => {
   );
   if (dz) {
     lastHoveredDropzone = dz;
-    setActiveDropzone(dz);
+  }
+});
+
+document.addEventListener("mouseout", (e) => {
+  const dz = e.target.closest?.(
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop"
+  );
+  if (dz && (!e.relatedTarget || !dz.contains(e.relatedTarget))) {
+    if (lastHoveredDropzone === dz) lastHoveredDropzone = null;
   }
 });
 
@@ -664,7 +672,6 @@ function bindDropAndPasteZone({
   // Track hover and active state for targeted pasting
   dropzoneEl.addEventListener("mouseenter", () => {
     lastHoveredDropzone = dropzoneEl;
-    setActiveDropzone(dropzoneEl);
   });
   dropzoneEl.addEventListener("mouseleave", () => {
     if (lastHoveredDropzone === dropzoneEl) lastHoveredDropzone = null;
@@ -3999,7 +4006,7 @@ function renderArtStyleNiche() {
         <div class="as-mode-row" style="position:relative;display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;padding:0.75rem 1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:8px;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;">
-              <span class="field-label" style="font-weight:600;font-size:0.85rem;margin:0;color:var(--text-main,#f8fafc);">Mode:</span>
+              <span class="field-label as-mode-label" id="asModeLabel" style="font-weight:700;font-size:0.85rem;margin:0;">Mode:</span>
               <label id="lblModeFusion" title="Blends all style references into a single moodboard aesthetic." style="display:inline-flex;align-items:center;gap:0.45rem;cursor:pointer;font-size:0.85rem;padding:0.25rem 0.5rem;border-radius:6px;transition:background 0.15s ease;">
                 <input type="radio" name="asMode" value="fusion" checked />
                 <span><strong>Fusion Mode</strong> (Moodboard blend)</span>
@@ -4359,14 +4366,11 @@ function renderArtStyleNiche() {
       },
     });
 
-    // Clicking or hovering anywhere in this column (dropzone, buttons, thumbs)
+    // Clicking anywhere in this column (dropzone, buttons, thumbs)
     // explicitly designates this slot as the active paste target
     const sideContainer = d.closest(".as-side");
     if (sideContainer) {
       sideContainer.addEventListener("mousedown", () => {
-        setActiveDropzone(d);
-      });
-      sideContainer.addEventListener("mouseenter", () => {
         setActiveDropzone(d);
       });
     }
@@ -4400,8 +4404,8 @@ function renderArtStyleNiche() {
   setupDrop(sides.style);
   setupDrop(sides.niche);
 
-  // Set style reference dropzone as initial active target
-  setActiveDropzone(sides.style.drop);
+  // Set style reference dropzone as initial active target for paste routing (without forced visual stroke)
+  lastActiveDropzone = sides.style.drop;
 
   generateBtn.addEventListener("click", async () => {
     const mode = getMode();

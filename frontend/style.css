@@ -6238,3 +6238,148 @@ body.light-mode .as-guide-modal .modal-close:hover {
   background: #e2e8f0 !important;
   color: #0f172a !important;
 }
+
+/* ── Art Style + Niche Mode Word / Label ── */
+.as-mode-label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin: 0;
+  color: var(--color-ion, #38bdf8);
+  letter-spacing: 0.3px;
+}
+
+:root[data-theme="light"] .as-mode-label,
+[data-theme="light"] .as-mode-label,
+body.light-mode .as-mode-label {
+  color: #0284c7 !important; /* bleu ciel / sky blue from web app palette */
+}
+
+:root[data-theme="light"] .as-mode-row label,
+[data-theme="light"] .as-mode-row label,
+body.light-mode .as-mode-row label {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .as-mode-row label:hover,
+[data-theme="light"] .as-mode-row label:hover,
+body.light-mode .as-mode-row label:hover {
+  background: rgba(2, 132, 199, 0.08) !important;
+}
+
+/* ── Universal Dropzone Light Mode Styling ──
+   Ensures dropzones in Art Style + Niche, Magic Listing, Design to Design,
+   Niche Variation, and all other sections have a crisp, visible dashed stroke
+   in light mode (never appearing blank before hover or scroll). */
+:root[data-theme="light"] .multi-dropzone,
+:root[data-theme="light"] .dropzone,
+:root[data-theme="light"] .prepare-drop-area,
+:root[data-theme="light"] .app-dropzone,
+:root[data-theme="light"] .as-card .multi-dropzone,
+:root[data-theme="light"] .ml-panel .multi-dropzone,
+:root[data-theme="light"] .d2d-card .multi-dropzone,
+:root[data-theme="light"] .nv-card .multi-dropzone,
+[data-theme="light"] .multi-dropzone,
+[data-theme="light"] .dropzone,
+[data-theme="light"] .prepare-drop-area,
+[data-theme="light"] .app-dropzone,
+[data-theme="light"] .as-card .multi-dropzone,
+[data-theme="light"] .ml-panel .multi-dropzone,
+[data-theme="light"] .d2d-card .multi-dropzone,
+[data-theme="light"] .nv-card .multi-dropzone,
+body.light-mode .multi-dropzone,
+body.light-mode .dropzone,
+body.light-mode .prepare-drop-area,
+body.light-mode .app-dropzone,
+body.light-mode .as-card .multi-dropzone,
+body.light-mode .ml-panel .multi-dropzone,
+body.light-mode .d2d-card .multi-dropzone,
+body.light-mode .nv-card .multi-dropzone {
+  background: #ffffff !important;
+  border: 1.5px dashed #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+:root[data-theme="light"] .multi-dropzone:hover,
+:root[data-theme="light"] .dropzone:hover,
+:root[data-theme="light"] .prepare-drop-area:hover,
+:root[data-theme="light"] .app-dropzone:hover,
+[data-theme="light"] .multi-dropzone:hover,
+[data-theme="light"] .dropzone:hover,
+[data-theme="light"] .prepare-drop-area:hover,
+[data-theme="light"] .app-dropzone:hover,
+body.light-mode .multi-dropzone:hover,
+body.light-mode .dropzone:hover,
+body.light-mode .prepare-drop-area:hover,
+body.light-mode .app-dropzone:hover {
+  background: #f8fafc !important;
+  border-color: #0284c7 !important;
+}
+
+:root[data-theme="light"] .multi-dropzone p,
+:root[data-theme="light"] .multi-dropzone p strong,
+:root[data-theme="light"] .dropzone p,
+:root[data-theme="light"] .dropzone p strong,
+:root[data-theme="light"] .prepare-drop-area p,
+:root[data-theme="light"] .prepare-drop-area p strong,
+[data-theme="light"] .multi-dropzone p,
+[data-theme="light"] .multi-dropzone p strong,
+body.light-mode .multi-dropzone p,
+body.light-mode .multi-dropzone p strong {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .multi-dropzone .dropzone-hint,
+:root[data-theme="light"] .dropzone .dropzone-hint,
+:root[data-theme="light"] .prepare-meta-hint,
+[data-theme="light"] .multi-dropzone .dropzone-hint,
+body.light-mode .multi-dropzone .dropzone-hint {
+  color: #475569 !important;
+}
+
+:root[data-theme="light"] .multi-dropzone svg,
+:root[data-theme="light"] .dropzone svg,
+:root[data-theme="light"] .prepare-drop-area svg,
+[data-theme="light"] .multi-dropzone svg,
+body.light-mode .multi-dropzone svg {
+  color: #0284c7 !important;
+}
+
+:root[data-theme="light"] .multi-dropzone kbd,
+:root[data-theme="light"] .prepare-drop-area kbd,
+body.light-mode .multi-dropzone kbd,
+body.light-mode .prepare-drop-area kbd {
+  background: #e0f2fe !important;
+  border: 1px solid #bae6fd !important;
+  color: #0284c7 !important;
+}
+
+:root[data-theme="light"] .stage-title,
+[data-theme="light"] .stage-title,
+body.light-mode .stage-title {
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+:root[data-theme="light"] .stage-counter,
+[data-theme="light"] .stage-counter,
+body.light-mode .stage-counter {
+  color: #64748b !important;
+}
+
+:root[data-theme="light"] .stage-actions .btn.secondary,
+[data-theme="light"] .stage-actions .btn.secondary,
+body.light-mode .stage-actions .btn.secondary {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+:root[data-theme="light"] .stage-actions .btn.secondary:hover,
+[data-theme="light"] .stage-actions .btn.secondary:hover,
+body.light-mode .stage-actions .btn.secondary:hover {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+}
