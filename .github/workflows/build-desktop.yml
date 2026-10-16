@@ -35,10 +35,10 @@ jobs:
         run: npm ci --ignore-scripts
 
       # On macOS, install the Intel x64 sharp prebuilt alongside the Apple Silicon arm64 one
-      # so electron-builder can package both architectures without compiling from source.
+      # using --force to bypass npm's CPU architecture check on the arm64 runner.
       - name: Install macOS x64 sharp prebuilt (macOS only)
         if: runner.os == 'macOS'
-        run: npm install --os=darwin --cpu=x64 @img/sharp-darwin-x64 --no-save
+        run: npm install --force --os=darwin --cpu=x64 @img/sharp-darwin-x64 --no-save
 
       # electron-builder packages using bundled prebuilt binaries (better-sqlite3 & sharp)
       # without invoking @electron/rebuild or node-gyp, then publishes directly to GitHub Releases.
