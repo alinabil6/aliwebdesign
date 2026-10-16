@@ -15,7 +15,7 @@ export const IS_PACKAGED = process.env.MF_PACKAGED === "1";
 // - Packaged: %APPDATA%\magic-fabrica (Windows) or ~/Library/Application Support/magic-fabrica (macOS)
 // - Local/Dev: PROJECT_ROOT (F:\busine$$\aliwebdesign)
 export const APP_DATA_DIR = IS_PACKAGED
-  ? (process.env.MF_DATA_DIR || (
+  ? (process.env.USER_DATA_PATH || process.env.MF_DATA_DIR || (
       process.platform === "win32"
         ? path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "magic-fabrica")
         : process.platform === "darwin"

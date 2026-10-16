@@ -1,9 +1,37 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, shell, dialog } from "electron";
 import path from "path";
 import net from "net";
 import http from "http";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { initAutoUpdater } from "./updater.js";
+
+// Global crash handlers as requested by user
+process.on("uncaughtException", (err) => {
+  const msg = err?.stack || String(err);
+  console.error("[FATAL uncaughtException]", msg);
+  try {
+    const dir = app?.isReady && app.isReady() ? app.getPath("userData") : (process.env.APPDATA || process.cwd());
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "startup-crash.log"), msg);
+  } catch (_) {}
+  try {
+    dialog.showErrorBox("Startup Crash", msg);
+  } catch (_) {}
+});
+
+process.on("unhandledRejection", (err) => {
+  const msg = err?.stack || String(err);
+  console.error("[FATAL unhandledRejection]", msg);
+  try {
+    const dir = app?.isReady && app.isReady() ? app.getPath("userData") : (process.env.APPDATA || process.cwd());
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "startup-rejection.log"), msg);
+  } catch (_) {}
+  try {
+    dialog.showErrorBox("Unhandled Rejection", msg);
+  } catch (_) {}
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -13,12 +41,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 process.env.MF_PACKAGED = app.isPackaged ? "1" : "0";
 process.env.HOST = "127.0.0.1";
 
+if (app.isPackaged) {
+  const userDataPath = app.getPath("userData");
+  process.env.MF_DATA_DIR = userDataPath;
+  process.env.USER_DATA_PATH = userDataPath;
+  try {
+    fs.mkdirSync(userDataPath, { recursive: true });
+    process.chdir(userDataPath);
+  } catch (err) {
+    console.error("Failed to chdir to userData:", err);
+  }
+}
+
 let mainWindow = null;
 let backendServer = null;
 
 // Enforce single-instance application lock
 const gotTheLock = app.requestSingleInstanceLock();
+console.log("[electron] requestSingleInstanceLock:", gotTheLock);
 if (!gotTheLock) {
+  console.log("Single instance lock: another instance is running. Exiting.");
   app.quit();
 } else {
   app.on("second-instance", () => {
@@ -110,20 +152,32 @@ async function createWindow(port) {
 }
 
 async function startApplication() {
+  console.log("[electron] startApplication() triggered");
   try {
     const port = await findFreePort(3000);
+    console.log("[electron] Port selected:", port);
     process.env.APP_PORT = String(port);
 
-    // Dynamically boot the Express backend
+    console.log("[electron] Dynamically importing backend...");
     const backend = await import("../backend/index.js");
     backendServer = backend;
+    console.log("[electron] Backend imported successfully!");
 
-    // Confirm local loopback is healthy before presenting UI
+    console.log("[electron] Waiting for health endpoint...");
     await waitForServer(`http://127.0.0.1:${port}/api/health`);
+    console.log("[electron] Health endpoint responded! Creating window...");
 
     await createWindow(port);
+    console.log("[electron] Window created!");
   } catch (err) {
-    console.error("[electron] Failed to launch application:", err);
+    const msg = err?.stack || String(err);
+    console.error("[electron] Failed to launch application:", msg);
+    try {
+      fs.writeFileSync(path.join(process.cwd(), "startup-launch-error.log"), msg);
+    } catch (_) {}
+    try {
+      dialog.showErrorBox("Startup Launch Error", msg);
+    } catch (_) {}
     app.quit();
   }
 }

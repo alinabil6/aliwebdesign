@@ -1,6 +1,6 @@
 {
   "name": "aliwebdesign",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Magic Fabrica Studio — AI Design Automation",
   "main": "electron/main.js",
   "scripts": {
@@ -37,7 +37,7 @@
     "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "electron": "^33.2.1",
+    "electron": "^41.0.0",
     "electron-builder": "^25.1.8"
   }
-}
+}
