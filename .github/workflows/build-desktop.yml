@@ -44,25 +44,33 @@ jobs:
       - name: Install Dependencies
         run: npm ci --ignore-scripts
 
-      # Nuclear fix: force-replace EVERY copy of node-gyp in the entire
-      # node_modules tree with the latest version that can detect VS2022.
-      # The old node-gyp 9.x nested inside @electron/rebuild cannot find
-      # Visual Studio on GitHub's windows-latest runners.
-      - name: Force-upgrade all node-gyp copies (Windows only)
+      # Fix: replace only ACTUAL node-gyp npm packages (those that contain
+      # a package.json with "name":"node-gyp") with the latest version.
+      # Previous attempt broke @electron/rebuild by replacing its internal
+      # lib/module-type/node-gyp/ source directory which is NOT an npm package.
+      - name: Upgrade nested node-gyp packages (Windows only)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Write-Host "Installing latest node-gyp..."
+          Write-Host "Installing latest node-gyp to a temp location..."
           npm install node-gyp@latest --no-save
-          $latestGyp = Join-Path (Get-Location) "node_modules/node-gyp"
+          $latestGyp = Resolve-Path "node_modules\node-gyp"
+          Write-Host "Latest node-gyp at: $latestGyp"
+          # Find all node-gyp dirs that are ACTUAL npm packages (have package.json with name=node-gyp)
           Get-ChildItem -Path "node_modules" -Recurse -Directory -Filter "node-gyp" |
-            Where-Object { $_.FullName -ne (Resolve-Path $latestGyp).Path } |
+            Where-Object { $_.FullName -ne $latestGyp.Path } |
+            Where-Object { Test-Path (Join-Path $_.FullName "package.json") } |
             ForEach-Object {
-              Write-Host "  Replacing: $($_.FullName)"
-              Remove-Item $_.FullName -Recurse -Force
-              Copy-Item $latestGyp $_.FullName -Recurse
+              $pkg = Get-Content (Join-Path $_.FullName "package.json") -Raw | ConvertFrom-Json
+              if ($pkg.name -eq "node-gyp") {
+                Write-Host "  Replacing node-gyp $($pkg.version) at: $($_.FullName)"
+                Remove-Item $_.FullName -Recurse -Force
+                Copy-Item $latestGyp.Path $_.FullName -Recurse
+              } else {
+                Write-Host "  Skipping non-package dir: $($_.FullName)"
+              }
             }
-          Write-Host "All node-gyp copies upgraded."
+          Write-Host "Done."
 
       - name: Rebuild Native Modules for Electron
         run: npx electron-builder install-app-deps
