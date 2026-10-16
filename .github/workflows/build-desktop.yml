@@ -22,7 +22,7 @@ jobs:
     env:
       # Playwright downloads ~300MB of browsers during npm install.
       # The packaged desktop app uses the system Chrome/Brave, not Playwright's
-      # bundled browsers, so skip the download entirely to save time and bandwidth.
+      # bundled browsers, so skip the download entirely.
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 
     steps:
@@ -35,27 +35,32 @@ jobs:
           node-version: 20
           cache: "npm"
 
-      # Setup Python (required by node-gyp for compiling native C++ addons
-      # like better-sqlite3 against Electron's specific ABI)
-      - name: Setup Python
+      # Python 3.11 is required (not 3.12+) because the bundled node-gyp 9.x
+      # depends on distutils which was removed in Python 3.12.
+      # better-sqlite3 compiles from C++ source via node-gyp for Electron's ABI.
+      - name: Setup Python 3.11 (for node-gyp native compilation)
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
+
+      # On Windows: configure the MSVC compiler toolchain so node-gyp can find
+      # Visual Studio Build Tools for compiling better-sqlite3's C++ addon.
+      - name: Setup MSVC Developer Environment (Windows only)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       # Install dependencies but SKIP postinstall hook.
-      # The postinstall runs electron-builder install-app-deps which can
-      # fail in some environments. We handle native module rebuild explicitly
-      # in the next step instead.
+      # The postinstall runs electron-builder install-app-deps which we handle
+      # explicitly in the next step for clearer error output.
       - name: Install Dependencies
         run: npm ci --ignore-scripts
 
-      # Explicitly rebuild native C++ modules (better-sqlite3, sharp)
-      # against Electron's exact Node ABI version.
+      # Rebuild native C++ modules (better-sqlite3, sharp) against
+      # Electron's exact Node ABI version.
       - name: Rebuild Native Modules for Electron
         run: npx electron-builder install-app-deps
 
       # electron-builder handles packaging + GitHub Release upload.
-      # npmRebuild:true in electron-builder.yml provides a safety-net rebuild.
       - name: Build & Publish Release to GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
