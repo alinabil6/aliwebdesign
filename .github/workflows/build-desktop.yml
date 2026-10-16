@@ -20,7 +20,6 @@ jobs:
 
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      GYP_MSVS_VERSION: "2022"
 
     steps:
       - name: Checkout Source Code
@@ -32,49 +31,17 @@ jobs:
           node-version: 20
           cache: "npm"
 
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Setup MSVC (Windows only)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: Install Dependencies
         run: npm ci --ignore-scripts
 
-      # Fix: replace only ACTUAL node-gyp npm packages (those that contain
-      # a package.json with "name":"node-gyp") with the latest version.
-      # Previous attempt broke @electron/rebuild by replacing its internal
-      # lib/module-type/node-gyp/ source directory which is NOT an npm package.
-      - name: Upgrade nested node-gyp packages (Windows only)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Write-Host "Installing latest node-gyp to a temp location..."
-          npm install node-gyp@latest --no-save
-          $latestGyp = Resolve-Path "node_modules\node-gyp"
-          Write-Host "Latest node-gyp at: $latestGyp"
-          # Find all node-gyp dirs that are ACTUAL npm packages (have package.json with name=node-gyp)
-          Get-ChildItem -Path "node_modules" -Recurse -Directory -Filter "node-gyp" |
-            Where-Object { $_.FullName -ne $latestGyp.Path } |
-            Where-Object { Test-Path (Join-Path $_.FullName "package.json") } |
-            ForEach-Object {
-              $pkg = Get-Content (Join-Path $_.FullName "package.json") -Raw | ConvertFrom-Json
-              if ($pkg.name -eq "node-gyp") {
-                Write-Host "  Replacing node-gyp $($pkg.version) at: $($_.FullName)"
-                Remove-Item $_.FullName -Recurse -Force
-                Copy-Item $latestGyp.Path $_.FullName -Recurse
-              } else {
-                Write-Host "  Skipping non-package dir: $($_.FullName)"
-              }
-            }
-          Write-Host "Done."
+      # On macOS, install the Intel x64 sharp prebuilt alongside the Apple Silicon arm64 one
+      # so electron-builder can package both architectures without compiling from source.
+      - name: Install macOS x64 sharp prebuilt (macOS only)
+        if: runner.os == 'macOS'
+        run: npm install --os=darwin --cpu=x64 @img/sharp-darwin-x64 --no-save
 
-      - name: Rebuild Native Modules for Electron
-        run: npx electron-builder install-app-deps
-
+      # electron-builder packages using bundled prebuilt binaries (better-sqlite3 & sharp)
+      # without invoking @electron/rebuild or node-gyp, then publishes directly to GitHub Releases.
       - name: Build & Publish Release to GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

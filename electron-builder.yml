@@ -6,12 +6,10 @@ directories:
   output: dist
   buildResources: build
 
-# Rebuild native C++ addons (.node files) against Electron's exact ABI during packaging.
-# electron-builder runs `electron-builder install-app-deps` automatically when this is true.
-npmRebuild: true
-
-# Use prebuilt binaries where available; only compile from source as a fallback.
-# This prevents build failures when Visual Studio / Xcode headers are unavailable.
+# Native modules (better-sqlite3 v13 and sharp) use Node-API (N-API) and ship
+# with prebuilt binaries for win32-x64, darwin-x64, darwin-arm64, etc.
+# Disabling npmRebuild avoids compiling from source via node-gyp/MSBuild in CI.
+npmRebuild: false
 buildDependenciesFromSource: false
 
 files:
