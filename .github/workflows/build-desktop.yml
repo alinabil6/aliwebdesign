@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  # Allow manual trigger from GitHub Actions tab for testing
   workflow_dispatch:
 
 permissions:
@@ -20,11 +19,7 @@ jobs:
         os: [windows-latest, macos-latest]
 
     env:
-      # Playwright downloads ~300MB of browsers during npm install.
-      # The packaged desktop app uses the system Chrome/Brave, not Playwright's
-      # bundled browsers, so skip the download entirely.
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      # Tell node-gyp which Visual Studio version to target on Windows.
       GYP_MSVS_VERSION: "2022"
 
     steps:
@@ -37,66 +32,41 @@ jobs:
           node-version: 20
           cache: "npm"
 
-      # Python 3.11 is required (not 3.12+) because the bundled node-gyp 9.x
-      # depends on distutils which was removed in Python 3.12.
-      - name: Setup Python 3.11 (for node-gyp native compilation)
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # On Windows: configure the MSVC compiler toolchain.
-      - name: Setup MSVC Developer Environment (Windows only)
+      - name: Setup MSVC (Windows only)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      # Install dependencies but SKIP postinstall hook.
       - name: Install Dependencies
         run: npm ci --ignore-scripts
 
-      # CRITICAL: Replace the outdated node-gyp 9.4.1 inside node_modules
-      # with the latest version that can actually detect VS2022 Build Tools.
-      # @electron/rebuild invokes the LOCAL node-gyp, not a global one.
-      - name: Upgrade local node-gyp (Windows only)
+      # Nuclear fix: force-replace EVERY copy of node-gyp in the entire
+      # node_modules tree with the latest version that can detect VS2022.
+      # The old node-gyp 9.x nested inside @electron/rebuild cannot find
+      # Visual Studio on GitHub's windows-latest runners.
+      - name: Force-upgrade all node-gyp copies (Windows only)
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          # Replace the old node-gyp 9.x bundled in node_modules with latest
+          Write-Host "Installing latest node-gyp..."
           npm install node-gyp@latest --no-save
-          # Also copy into better-sqlite3's own node_modules if it vendors node-gyp
-          if [ -d "node_modules/better-sqlite3/node_modules/node-gyp" ]; then
-            rm -rf node_modules/better-sqlite3/node_modules/node-gyp
-            cp -r node_modules/node-gyp node_modules/better-sqlite3/node_modules/node-gyp
-          fi
+          $latestGyp = Join-Path (Get-Location) "node_modules/node-gyp"
+          Get-ChildItem -Path "node_modules" -Recurse -Directory -Filter "node-gyp" |
+            Where-Object { $_.FullName -ne (Resolve-Path $latestGyp).Path } |
+            ForEach-Object {
+              Write-Host "  Replacing: $($_.FullName)"
+              Remove-Item $_.FullName -Recurse -Force
+              Copy-Item $latestGyp $_.FullName -Recurse
+            }
+          Write-Host "All node-gyp copies upgraded."
 
-      # Rebuild native C++ modules (better-sqlite3, sharp) against
-      # Electron's exact Node ABI version.
       - name: Rebuild Native Modules for Electron
         run: npx electron-builder install-app-deps
 
-      # Delete existing release assets before uploading to avoid 422 conflicts
-      # when re-running the workflow for the same tag.
-      - name: Clean Existing Release Assets
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          echo "Cleaning assets for release tag: $TAG"
-          # Get the release ID; if no release exists yet, skip
-          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq '.id' 2>/dev/null || echo "")
-          if [ -n "$RELEASE_ID" ]; then
-            echo "Found release ID: $RELEASE_ID — deleting existing assets..."
-            gh api "repos/${{ github.repository }}/releases/$RELEASE_ID/assets" --jq '.[].id' | while read ASSET_ID; do
-              echo "  Deleting asset $ASSET_ID"
-              gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$ASSET_ID" || true
-            done
-            echo "All existing assets deleted."
-          else
-            echo "No existing release found for $TAG — nothing to clean."
-          fi
-
-      # electron-builder handles packaging + GitHub Release upload.
       - name: Build & Publish Release to GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
