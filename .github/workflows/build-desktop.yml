@@ -4,17 +4,23 @@ on:
   push:
     tags:
       - "v*"
+  # Allow manual trigger from GitHub Actions tab for testing
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   release:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js 20
@@ -23,13 +29,16 @@ jobs:
           node-version: 20
           cache: "npm"
 
-      - name: Install Dependencies
-        run: npm install --save-dev @electron/rebuild
+      # CI install: respects package-lock.json for reproducible builds.
+      # The postinstall hook in package.json automatically runs
+      # `electron-builder install-app-deps` which rebuilds better-sqlite3
+      # and sharp against Electron's exact ABI — no separate step required.
+      - name: Install Dependencies (with native module rebuild)
+        run: npm ci
 
-      - name: Rebuild Native Modules for Electron
-        run: npx electron-rebuild -f -w better-sqlite3,sharp
-
-      - name: Build & Publish Release via electron-builder
+      # electron-builder handles packaging + GitHub Release upload in one command.
+      # It also internally re-runs install-app-deps before packaging as a safety net.
+      - name: Build & Publish Release to GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --publish always

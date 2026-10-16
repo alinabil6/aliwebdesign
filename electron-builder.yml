@@ -6,6 +6,14 @@ directories:
   output: dist
   buildResources: build
 
+# Rebuild native C++ addons (.node files) against Electron's exact ABI during packaging.
+# electron-builder runs `electron-builder install-app-deps` automatically when this is true.
+npmRebuild: true
+
+# Use prebuilt binaries where available; only compile from source as a fallback.
+# This prevents build failures when Visual Studio / Xcode headers are unavailable.
+buildDependenciesFromSource: false
+
 files:
   - "**/*"
   - "!dist/**"
@@ -30,6 +38,8 @@ asarUnpack:
   - "node_modules/sharp/**/*"
   - "node_modules/@img/**/*"
 
+# electron/main.js is the desktop entry point;
+# server.js remains the local development entry (untouched by packaging).
 extraMetadata:
   main: "electron/main.js"
 

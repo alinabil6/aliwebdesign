@@ -1,8 +1,8 @@
 {
   "name": "aliwebdesign",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
+  "description": "Magic Fabrica Studio — AI Design Automation",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "node server.js",
     "build": "echo 'Build complete'",
@@ -11,6 +11,7 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
+    "postinstall": "electron-builder install-app-deps",
     "lint": "echo 'No lint errors'",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:inspect": "node scripts/inspect.mjs",
@@ -40,4 +41,4 @@
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8"
   }
-}
+}

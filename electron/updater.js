@@ -1,36 +1,39 @@
 import { app, dialog, ipcMain } from "electron";
 import { createRequire } from "module";
 
+// Use createRequire to load electron-updater (CJS-only package, no ESM exports field)
+// from inside the ESM Electron main process context.
 const require = createRequire(import.meta.url);
 
 /**
  * Initializes automatic background updates via GitHub Releases.
- * Only runs in packaged production builds.
+ * Only activates in the packaged production build — never in local development.
  */
 export function initAutoUpdater(mainWindow) {
   if (!app.isPackaged) {
-    console.log("[updater] Running in development mode — auto-update check skipped.");
+    console.log("[updater] Development mode — auto-update check skipped.");
     return;
   }
 
   let autoUpdater;
   try {
-    const updaterModule = require("electron-updater");
-    autoUpdater = updaterModule.autoUpdater;
+    const { autoUpdater: au } = require("electron-updater");
+    autoUpdater = au;
   } catch (err) {
-    console.warn("[updater] electron-updater module not available:", err.message);
+    console.warn("[updater] electron-updater not available:", err.message);
     return;
   }
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
 
   autoUpdater.on("checking-for-update", () => {
-    console.log("[updater] Checking for new release on GitHub...");
+    console.log("[updater] Checking GitHub Releases for updates...");
   });
 
   autoUpdater.on("update-available", (info) => {
-    console.log(`[updater] New update available: v${info.version}`);
+    console.log(`[updater] New version available: v${info.version}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("update-available", {
         version: info.version,
@@ -44,34 +47,32 @@ export function initAutoUpdater(mainWindow) {
   });
 
   autoUpdater.on("error", (err) => {
-    console.error("[updater] Auto-updater encountered an error:", err.message);
+    // Non-fatal — log silently, never crash the app for an update check failure
+    console.error("[updater] Update check error:", err.message);
   });
 
   autoUpdater.on("download-progress", (progress) => {
-    console.log(`[updater] Download progress: ${Math.round(progress.percent)}%`);
+    const pct = Math.round(progress.percent);
+    if (pct % 10 === 0) console.log(`[updater] Downloading update: ${pct}%`);
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    console.log(`[updater] Update v${info.version} downloaded and ready to install.`);
+    console.log(`[updater] Update v${info.version} ready to install.`);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("update-downloaded", {
-        version: info.version,
-      });
+      mainWindow.webContents.send("update-downloaded", { version: info.version });
 
       dialog
         .showMessageBox(mainWindow, {
           type: "info",
           title: "Update Ready",
-          message: `Magic Fabrica v${info.version} is downloaded and ready to install.`,
-          detail: "Restart now to apply the update, or install automatically when closing the app.",
+          message: `Magic Fabrica v${info.version} is ready to install.`,
+          detail: "Restart now to apply the update, or it will be applied automatically when you close the app.",
           buttons: ["Restart Now", "Later"],
           defaultId: 0,
           cancelId: 1,
         })
         .then(({ response }) => {
-          if (response === 0) {
-            autoUpdater.quitAndInstall(false, true);
-          }
+          if (response === 0) autoUpdater.quitAndInstall(false, true);
         })
         .catch(() => {});
     }
@@ -81,10 +82,10 @@ export function initAutoUpdater(mainWindow) {
     autoUpdater.quitAndInstall(false, true);
   });
 
-  // Check on boot after 5 seconds, then check every 4 hours
+  // Check on launch (after a short delay to let the UI settle), then every 4 hours
   setTimeout(() => {
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.warn("[updater] Initial update check failed:", err.message);
+      console.warn("[updater] Initial check failed:", err.message);
     });
   }, 5000);
 
