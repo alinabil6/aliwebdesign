@@ -24,6 +24,10 @@ jobs:
       # The packaged desktop app uses the system Chrome/Brave, not Playwright's
       # bundled browsers, so skip the download entirely.
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # Tell the bundled node-gyp 9.x which Visual Studio version to use.
+      # Without this, the old VS finder fails to detect VS2022 Build Tools
+      # on GitHub's windows-latest runners.
+      GYP_MSVS_VERSION: "2022"
 
     steps:
       - name: Checkout Source Code
@@ -44,10 +48,17 @@ jobs:
           python-version: "3.11"
 
       # On Windows: configure the MSVC compiler toolchain so node-gyp can find
-      # Visual Studio Build Tools for compiling better-sqlite3's C++ addon.
+      # cl.exe, link.exe, and the Windows SDK headers/libs.
       - name: Setup MSVC Developer Environment (Windows only)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+
+      # Upgrade the global node-gyp so @electron/rebuild uses a version
+      # that properly detects VS2022 on windows-latest runners.
+      # The bundled node-gyp 9.4.1 inside better-sqlite3 is too old.
+      - name: Upgrade node-gyp globally (Windows only)
+        if: runner.os == 'Windows'
+        run: npm install -g node-gyp@latest
 
       # Install dependencies but SKIP postinstall hook.
       # The postinstall runs electron-builder install-app-deps which we handle
