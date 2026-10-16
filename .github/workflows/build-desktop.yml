@@ -19,6 +19,12 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
 
+    env:
+      # Playwright downloads ~300MB of browsers during npm install.
+      # The packaged desktop app uses the system Chrome/Brave, not Playwright's
+      # bundled browsers, so skip the download entirely to save time and bandwidth.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -29,15 +35,27 @@ jobs:
           node-version: 20
           cache: "npm"
 
-      # CI install: respects package-lock.json for reproducible builds.
-      # The postinstall hook in package.json automatically runs
-      # `electron-builder install-app-deps` which rebuilds better-sqlite3
-      # and sharp against Electron's exact ABI — no separate step required.
-      - name: Install Dependencies (with native module rebuild)
-        run: npm ci
+      # Setup Python (required by node-gyp for compiling native C++ addons
+      # like better-sqlite3 against Electron's specific ABI)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      # electron-builder handles packaging + GitHub Release upload in one command.
-      # It also internally re-runs install-app-deps before packaging as a safety net.
+      # Install dependencies but SKIP postinstall hook.
+      # The postinstall runs electron-builder install-app-deps which can
+      # fail in some environments. We handle native module rebuild explicitly
+      # in the next step instead.
+      - name: Install Dependencies
+        run: npm ci --ignore-scripts
+
+      # Explicitly rebuild native C++ modules (better-sqlite3, sharp)
+      # against Electron's exact Node ABI version.
+      - name: Rebuild Native Modules for Electron
+        run: npx electron-builder install-app-deps
+
+      # electron-builder handles packaging + GitHub Release upload.
+      # npmRebuild:true in electron-builder.yml provides a safety-net rebuild.
       - name: Build & Publish Release to GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
