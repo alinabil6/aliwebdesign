@@ -237,14 +237,14 @@ class GenerationProgressTracker {
 
 let placeholderTicker = null;
 
-function renderPlaceholders(containerEl, count, prefix = "slot") {
+function renderPlaceholders(containerEl, count, prefix = "slot", labelText = "Generating design…") {
   if (!containerEl) return;
   const startTime = Date.now();
   const cardsHtml = Array.from({ length: count }, (_, i) => `
     <div class="card-placeholder" id="${prefix}-${i}" data-slot-index="${i}" data-start-time="${startTime}">
       <div class="placeholder-spinner-wrap">
         <i data-lucide="refresh-cw" class="placeholder-spinner"></i>
-        <span class="placeholder-label">Generating design…</span>
+        <span class="placeholder-label">${esc(labelText)}</span>
         <div style="display:inline-flex;align-items:center;gap:6px;margin-top:2px;">
           <span class="placeholder-slot-badge">#${i + 1} of ${count}</span>
           <span class="placeholder-timer-badge" style="font-size:0.72rem;background:rgba(56,189,248,0.12);color:#38bdf8;padding:2px 8px;border-radius:9999px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:600;">⏱ 00:00</span>
@@ -3574,17 +3574,8 @@ function renderMagicListing() {
     downloadCsvBtn?.classList.add("hidden");
     progressArea.classList.remove("hidden");
     const labelEl = progressLine.querySelector("span");
-    // Continuous progress engine — text-mode curve (~8s) for the single
-    // batch request. Replaces the frozen "Generating listings…" spinner.
-    tracker = new GenerationProgressTracker({
-      barEl: $("#mlProgressFill"),
-      labelEl,
-      totalItems: 1,
-      isTextMode: true,
-    });
-    tracker.stop();
-    tracker.startItem("batch");
     labelEl.textContent = "Preparing designs…";
+    labelEl.style.color = "";
     $("#mlResultsSection").classList.remove("hidden");
     $("#mlResults").innerHTML = "";
     $("#mlOutCount").textContent = "0 listings";
@@ -3611,96 +3602,93 @@ function renderMagicListing() {
           imageBase64: visionBase64,
           fileName: file.name,
           designIndex: i + 1,
+          thumbnailUrl,
         });
-        // Keep the thumbnail paired with the design index for the result cards.
-        designs[i].thumbnailUrl = thumbnailUrl;
       }
       if (designs.length === 0) return;
 
-      labelEl.textContent =
-        `Fleet distribution: processing ${designs.length} design(s) across all ready accounts in parallel...`;
+      // Render instant skeleton placeholders with live stopwatch timer badges
+      renderPlaceholders($("#mlResults"), designs.length, "ml-slot", "Crafting listing…");
+      $("#mlOutCount").textContent = `0 of ${designs.length} listings`;
 
-      // FIX: Scale the client timeout with the batch size instead of a fixed
-            // 3 minutes. The backend runs up to 4 accounts in parallel, each listing
-            // taking up to ~110s worst-case, so a fixed 180s cap aborted healthy
-            // batches of 4+ designs and surfaced as a bogus "delay/failure".
-            const mlTimeoutMs = Math.max(180000, Math.ceil(designs.length / 4) * 120000 + 60000);
-            const res = await fetch("/api/magic-listing/batch", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                designs,
-                referenceData,
-                platform: currentPlatform,
-              }),
-              signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(mlTimeoutMs)]),
-            });
+      tracker = new GenerationProgressTracker({
+        barEl: $("#mlProgressFill"),
+        labelEl,
+        totalItems: designs.length,
+      });
+      // Start tracker for each design
+      designs.forEach((_, idx) => tracker.startItem(idx));
 
-      if (!res.ok) {
-        let errMsg = `Request failed (${res.status})`;
-        try {
-          const errJson = await res.json();
-          errMsg = errJson.error || errMsg;
-        } catch (_) { /* non-JSON error body */ }
-        throw new Error(errMsg);
-      }
-      const data = await res.json();
-      if (tracker) {
-        tracker.finishItem("batch");
-        tracker.completeAll();
-      }
+      // Stream each finished listing back as it completes on the fleet
+      await fetchStreamNDJSON(
+        "/api/magic-listing/batch",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            designs,
+            referenceData,
+            platform: currentPlatform,
+          }),
+          signal: abortController.signal,
+        },
+        (payload) => {
+          if (payload.event === "listing" && payload.result) {
+            const r = payload.result;
+            const slotIdx = (r.designIndex ?? 1) - 1;
+            const slotId = `ml-slot-${slotIdx}`;
+            const placeholder = document.getElementById(slotId);
+            const startTime = placeholder ? Number(placeholder.dataset.startTime) : null;
+            let generationTime = "";
+            if (startTime) {
+              const totalSec = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+              const mins = String(Math.floor(totalSec / 60)).padStart(2, "0");
+              const secs = String(totalSec % 60).padStart(2, "0");
+              generationTime = `${mins}:${secs}`;
+            }
+
+            const item = {
+              designIndex: r.designIndex,
+              fileName: r.fileName,
+              thumbnailUrl: r.thumbnailUrl || designs.find((d) => d.designIndex === r.designIndex)?.thumbnailUrl || "",
+              platform: r.platform || currentPlatform,
+              listing: r.listing,
+              generation_time: generationTime,
+            };
+            allListings.push(item);
+            tracker.finishItem(slotIdx);
+
+            const temp = document.createElement("div");
+            temp.innerHTML = magicListingCard(item);
+            const cardEl = temp.firstElementChild;
+            if (placeholder && cardEl) {
+              cardEl.classList.add("card-fade-in");
+              placeholder.replaceWith(cardEl);
+            } else {
+              $("#mlResults")?.insertAdjacentHTML("beforeend", magicListingCard(item));
+            }
+            renderIcons();
+            $("#mlOutCount").textContent = `${allListings.length} listing${allListings.length === 1 ? "" : "s"}`;
+            if (downloadCsvBtn) downloadCsvBtn.classList.remove("hidden");
+          } else if (payload.event === "listing_failed") {
+            const f = payload.failed || {};
+            const slotIdx = (f.designIndex ?? 1) - 1;
+            const slotId = `ml-slot-${slotIdx}`;
+            failPlaceholder(slotId, f.error || "Could not generate listing");
+            tracker.finishItem(slotIdx);
+          } else if (payload.event === "error") {
+            console.warn("Magic listing stream error:", payload.error);
+          }
+        }
+      );
+
+      tracker.completeAll();
       const fillBar = $("#mlProgressFill");
       if (fillBar) fillBar.style.width = "100%";
       labelEl.style.color = "";
-      labelEl.textContent = `Completed: ${data.results?.length || 0} listing(s) generated.`;
+      labelEl.textContent = `Completed: ${allListings.length} listing(s) generated. • ⏱ ${tracker.finalElapsed}`;
 
-      // Render successful listings — map back to the prepped thumbnail by index.
-      const grid = $("#mlResults");
-      (data.results || []).forEach((r) => {
-        const item = {
-          designIndex: r.designIndex,
-          fileName: r.fileName,
-          thumbnailUrl: r.thumbnailUrl || designs.find((d) => d.designIndex === r.designIndex)?.thumbnailUrl || "",
-          platform: r.platform || currentPlatform,
-          listing: r.listing,
-        };
-        allListings.push(item);
-        if (grid) {
-          grid.insertAdjacentHTML("beforeend", magicListingCard(item));
-          renderIcons();
-        }
-        $("#mlOutCount").textContent = `${allListings.length} listing${allListings.length === 1 ? "" : "s"}`;
-      });
-
-      if (allListings.length > 0 && downloadCsvBtn) {
-        downloadCsvBtn.classList.remove("hidden");
-      }
-
-      // Failed designs get an inline card so the user sees exactly which ones
-      // were refused/skipped instead of a silent partial batch.
-      const failedCount = (data.failed || []).length;
-      if (failedCount > 0) {
-        (data.failed || []).forEach((f) => {
-          if (grid) {
-            grid.insertAdjacentHTML("beforeend", `
-              <div class="ml-card" style="border-color:rgba(245,158,11,0.4);">
-                <div class="ml-card-header">
-                  <div class="ml-card-title-group">
-                    <span class="ml-index-badge">#${esc(f.designIndex ?? "?")}</span>
-                    <span class="ml-file-name">${esc(f.fileName || `Design #${f.designIndex}`)}</span>
-                  </div>
-                  <span class="ml-card-safe badge-warn"><i data-lucide="alert-triangle"></i> Skipped</span>
-                </div>
-                <div class="ml-card-body">
-                  <p class="ml-field"><strong>Could not process this design</strong><br>${esc(f.error || "Safety refusal or timeout — the rest of the batch completed.")}</p>
-                </div>
-              </div>`);
-          }
-        });
-        renderIcons();
-      }
-
-      if (allListings.length === 0 && failedCount === 0) {
+      if (allListings.length === 0) {
         labelEl.textContent = "No listings were generated. Please try again.";
       }
     } catch (err) {
@@ -3893,6 +3881,7 @@ function magicListingCard(item) {
             <img src="${esc(item.thumbnailUrl || "")}" class="ml-card-thumb" alt="${esc(item.fileName || "")}" />
             <div class="ml-card-meta">
               <span class="ml-index-badge">#${esc(item.designIndex)}</span>
+              ${item.generation_time ? `<span class="placeholder-timer-badge" style="font-size:0.72rem;background:rgba(56,189,248,0.12);color:#38bdf8;padding:2px 8px;border-radius:9999px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:600;">⏱ ${esc(item.generation_time)}</span>` : ""}
               <span class="ml-file-name" title="${esc(item.fileName || "")}">${esc(item.fileName || `Design #${item.designIndex}`)}</span>
             </div>
           </div>
@@ -3955,6 +3944,7 @@ function magicListingCard(item) {
             <img src="${esc(item.thumbnailUrl || "")}" class="ml-card-thumb" alt="${esc(item.fileName || "")}" />
             <div class="ml-card-meta">
               <span class="ml-index-badge">#${esc(item.designIndex)}</span>
+              ${item.generation_time ? `<span class="placeholder-timer-badge" style="font-size:0.72rem;background:rgba(56,189,248,0.12);color:#38bdf8;padding:2px 8px;border-radius:9999px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:600;">⏱ ${esc(item.generation_time)}</span>` : ""}
               <span class="ml-file-name" title="${esc(item.fileName || "")}">${esc(item.fileName || `Design #${item.designIndex}`)}</span>
             </div>
           </div>
@@ -3997,6 +3987,7 @@ function magicListingCard(item) {
           <img src="${esc(item.thumbnailUrl || "")}" class="ml-card-thumb" alt="${esc(item.fileName || "")}" />
           <div class="ml-card-meta">
             <span class="ml-index-badge">#${esc(item.designIndex)}</span>
+            ${item.generation_time ? `<span class="placeholder-timer-badge" style="font-size:0.72rem;background:rgba(56,189,248,0.12);color:#38bdf8;padding:2px 8px;border-radius:9999px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:600;">⏱ ${esc(item.generation_time)}</span>` : ""}
             <span class="ml-file-name" title="${esc(item.fileName || "")}">${esc(item.fileName || `Design #${item.designIndex}`)}</span>
           </div>
         </div>

@@ -494,20 +494,39 @@ router.post("/generate", async (req, res) => {
 
 // POST /api/magic-listing/batch
 router.post("/batch", async (req, res) => {
+  const wantsStream = req.headers.accept?.includes("application/x-ndjson") || req.query.stream === "true";
+  let heartbeatInterval = null;
+
   try {
     const { designs = [], referenceData = "", platform = "amazon" } = req.body || {};
     if (!Array.isArray(designs) || designs.length === 0) {
       return res.status(400).json({ error: "designs array is required" });
     }
 
-    console.log(`[magicListing] Incoming batch request: Platform = [${platform}], Files = [${designs.length}]`);
+    console.log(`[magicListing] Incoming batch request: Platform = [${platform}], Files = [${designs.length}], stream = ${wantsStream}`);
     const sanitizedReference = sanitizeReference(referenceData);
+
+    if (wantsStream) {
+      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+      res.setHeader("Transfer-Encoding", "chunked");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+
+      heartbeatInterval = setInterval(() => {
+        if (!res.writableEnded) {
+          try {
+            res.write(JSON.stringify({ event: "heartbeat" }) + "\n");
+          } catch (_) {}
+        }
+      }, 15000);
+    }
 
     const results = [];
     const failed = [];
     const pending = designs.map((design, idx) => ({
       design,
-      designIndex: design?.designIndex ?? idx,
+      designIndex: design?.designIndex ?? (idx + 1),
       retries: 0,
       failedAccountIds: [],
     }));
@@ -517,11 +536,16 @@ router.post("/batch", async (req, res) => {
     let activeInFlight = 0;
     let poolDone = false;
 
+    req.on("close", () => {
+      poolDone = true;
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
+    });
+
     async function worker(workerIndex) {
       // Stagger concurrent workers to avoid simultaneous browser launches
-      // competing for bandwidth during attachment upload (3s gap each)
+      // competing for bandwidth during attachment upload (2s gap each)
       if (workerIndex > 0) {
-        await new Promise((r) => setTimeout(r, workerIndex * 3000));
+        await new Promise((r) => setTimeout(r, workerIndex * 2000));
       }
       while (!poolDone) {
         if (pending.length === 0) {
@@ -548,6 +572,11 @@ router.post("/batch", async (req, res) => {
             platform
           );
           results.push(result);
+          if (wantsStream && !res.writableEnded) {
+            try {
+              res.write(JSON.stringify({ event: "listing", result, designIndex }) + "\n");
+            } catch (_) {}
+          }
         } catch (err) {
           const isTimeout = err?.name === "GenerationTimeoutError" || err?.isTimeout || err?.message === "MAGIC_LISTING_TIMEOUT" || (err?.message || "").includes("timed out");
           const msg = (err?.message || "").toLowerCase();
@@ -563,13 +592,19 @@ router.post("/batch", async (req, res) => {
             console.log(`[MagicListing] Re-routing design ${designIndex} (${design?.fileName}) (attempt ${item.retries + 1}/3) to alternate account...`);
             pending.push(item);
           } else {
-            failed.push({
+            const failedItem = {
               designIndex,
-              fileName: design?.fileName || `Design #${designIndex + 1}`,
+              fileName: design?.fileName || `Design #${designIndex}`,
               error: isTimeout
                 ? "Listing generation timed out. Browser released."
                 : (err.message || "This design could not be processed."),
-            });
+            };
+            failed.push(failedItem);
+            if (wantsStream && !res.writableEnded) {
+              try {
+                res.write(JSON.stringify({ event: "listing_failed", failed: failedItem, designIndex }) + "\n");
+              } catch (_) {}
+            }
           }
         } finally {
           activeInFlight--;
@@ -582,10 +617,27 @@ router.post("/batch", async (req, res) => {
 
     await Promise.all(Array.from({ length: workerCount }, (_, i) => worker(i)));
 
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    if (wantsStream) {
+      if (!res.writableEnded) {
+        res.write(JSON.stringify({ event: "done", total: designs.length, successCount: results.length, failedCount: failed.length }) + "\n");
+        res.end();
+      }
+      return;
+    }
+
     results.sort((a, b) => (a.designIndex ?? 0) - (b.designIndex ?? 0));
     res.json({ success: true, results, failed, total: designs.length });
   } catch (err) {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
     console.error("[MagicListing Batch Error]:", err);
+    if (wantsStream && !res.writableEnded) {
+      try {
+        res.write(JSON.stringify({ event: "error", error: err.message || "Magic Listing batch processing failed" }) + "\n");
+        res.end();
+      } catch (_) {}
+      return;
+    }
     res.status(500).json({ error: err.message || "Magic Listing batch processing failed" });
   }
 });
