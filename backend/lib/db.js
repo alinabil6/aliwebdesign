@@ -349,13 +349,22 @@ const _stuckAccountWatchdog = db.prepare(
       SET status = 'ready'
     WHERE active = 1
       AND status IN ('running', 'generating')
-      AND last_used_at < datetime('now', '-15 minutes')`
+      AND last_used_at < datetime('now', '-15 minutes')
+   RETURNING id`
 );
-setInterval(() => {
+setInterval(async () => {
   try {
-    const info = _stuckAccountWatchdog.run();
-    if (info.changes > 0) {
-      console.log(`[db] Watchdog: reset ${info.changes} stuck account(s) back to ready.`);
+    const rescued = _stuckAccountWatchdog.all();
+    if (rescued.length > 0) {
+      console.log(`[db] Watchdog: reset ${rescued.length} stuck account(s) back to ready.`);
+      try {
+        const { release } = await import("./fleetLease.js");
+        for (const row of rescued) {
+          if (row.id) release(row.id);
+        }
+      } catch (leaseErr) {
+        console.warn("[db] Watchdog lease release warning:", leaseErr.message);
+      }
       notifyAccountChanged(null, "watchdog_reset");
     }
   } catch (err) {

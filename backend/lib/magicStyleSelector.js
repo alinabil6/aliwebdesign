@@ -18,7 +18,8 @@ function withTimeout(promise, ms) {
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { acquire, release } from "./accountPool.js";
+import { acquireFleetAccount, release } from "./fleetLease.js";
+import { getProfilePage } from "./browser.js";
 import * as web from "./geminiweb.js";
 import {
     DEFAULT_STYLE_ID,
@@ -91,10 +92,11 @@ function parseSelection(text) {
  * @returns {Promise<{id,name,category,directive,confidence?,reasoning?}>}
  */
 export async function pickMagicStyle({ prompt = "", imageBuffer = null, feature = "" } = {}) {
-    // Acquire an authenticated slot from the pool — never create an ad-hoc
+    // Acquire an authenticated slot from the fleet lease — never create an ad-hoc
     // or unauthenticated browser instance for style analysis.
-    const slot = await acquire();
+    const account = await acquireFleetAccount({ timeoutMs: SELECTOR_TIMEOUT_MS });
     try {
+        const page = await getProfilePage(account);
         // The web pipeline consumes files from disk, so stage the optional image.
         let imagePath = null;
         if (Buffer.isBuffer(imageBuffer) && imageBuffer.length > 0) {
@@ -108,13 +110,14 @@ export async function pickMagicStyle({ prompt = "", imageBuffer = null, feature 
               reply = await withTimeout(web.generateText({
                   prompt: buildUserTurn({ prompt, imageBuffer, feature }),
                   imagePaths: imagePath ? [imagePath] : [],
-                  page: slot.page,
+                  page,
+                  accountId: account.id,
               }), SELECTOR_TIMEOUT_MS);
             } catch {
               reply = null;
             }
-            if (reply === null && slot?.page && !slot.page.isClosed?.()) {
-              try { await slot.page.goto?.("about:blank"); } catch (_) {}
+            if (reply === null && page && !page.isClosed?.()) {
+              try { await page.goto?.("about:blank"); } catch (_) {}
             }
 
             const parsed = parseSelection(reply);
@@ -131,7 +134,7 @@ export async function pickMagicStyle({ prompt = "", imageBuffer = null, feature 
             if (imagePath) await fs.promises.unlink(imagePath).catch(() => { });
         }
     } finally {
-        // Always release the slot back so the fleet's ready status stays accurate.
-        await release(slot);
+        // Always release the account back so the fleet's ready status stays accurate.
+        if (account) release(account.id);
     }
 }

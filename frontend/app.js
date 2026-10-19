@@ -381,6 +381,36 @@ async function fetchStreamNDJSON(url, options, onChunk) {
   refreshAccountsData();
 }
 
+function showToast(message) {
+  const toastEl = $("#toast");
+  if (!toastEl) return;
+  toastEl.textContent = message;
+  toastEl.classList.remove("hidden");
+  toastEl.style.display = "block";
+  toastEl.style.position = "fixed";
+  toastEl.style.bottom = "24px";
+  toastEl.style.right = "24px";
+  toastEl.style.zIndex = "9999";
+  toastEl.style.background = "rgba(15, 23, 42, 0.95)";
+  toastEl.style.color = "#f8fafc";
+  toastEl.style.padding = "10px 18px";
+  toastEl.style.borderRadius = "8px";
+  toastEl.style.border = "1px solid rgba(56, 189, 248, 0.35)";
+  toastEl.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.4)";
+  toastEl.style.fontSize = "13px";
+  toastEl.style.fontWeight = "500";
+  toastEl.style.transition = "opacity 0.3s ease";
+  toastEl.style.opacity = "1";
+  clearTimeout(toastEl._timer);
+  toastEl._timer = setTimeout(() => {
+    toastEl.style.opacity = "0";
+    setTimeout(() => {
+      toastEl.classList.add("hidden");
+      toastEl.style.display = "";
+    }, 300);
+  }, 4000);
+}
+
 /** Resolve a File to a base64 data URL. readAsDataURL returns void — the
  *  bytes land on reader.result via onload, so the Promise wrapper is what
  *  actually waits for the read to finish. */
@@ -1821,19 +1851,13 @@ function renderPrepareDesigns() {
     preparedResults = [];
     downloadAllBtn.classList.add("hidden");
     clearResultsBtn.classList.add("hidden");
+    $("#prepOutCount").textContent = "0";
 
-    let currentPct = 10;
-    progressFill.style.width = currentPct + "%";
-    progressPercent.textContent = currentPct + "%";
+    // Clean any previous status badges on the thumbsRow
+    thumbsRow.querySelectorAll(".prep-thumb-status").forEach((el) => el.remove());
 
-    const progressTimer = setInterval(() => {
-      if (currentPct < 90) {
-        currentPct += 10;
-        progressFill.style.width = currentPct + "%";
-        progressPercent.textContent = currentPct + "%";
-        progressText.textContent = "Compositing safe print area (" + currentPct + "%)...";
-      }
-    }, 250);
+    // Render skeleton placeholders in resultsGrid (same as generation views)
+    renderPlaceholders(resultsGrid, sourceFiles.length, "prep-slot", "Compositing print canvas…");
 
     const fd = new FormData();
     sourceFiles.forEach(f => fd.append("sources", f));
@@ -1844,40 +1868,99 @@ function renderPrepareDesigns() {
     fd.append("resize", chkResize ? (chkResize.checked ? "true" : "false") : "true");
     fd.append("compress", chkCompress ? (chkCompress.checked ? "true" : "false") : "true");
 
+    let processedCount = 0;
+    const totalFiles = sourceFiles.length;
+
     try {
-      const res = await fetch("/api/prepare-designs", {
-        method: "POST",
-        body: fd
-      });
+      await fetchStreamNDJSON(
+        "/api/prepare-designs",
+        {
+          method: "POST",
+          body: fd,
+        },
+        (payload) => {
+          if (payload.status === "done") {
+            processedCount++;
+            const pct = Math.round((processedCount / totalFiles) * 100);
+            progressFill.style.width = pct + "%";
+            progressPercent.textContent = pct + "%";
+            progressText.textContent = `Preparing ${processedCount} of ${totalFiles} designs...`;
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Preparation failed");
+            if (payload.design) {
+              preparedResults.push(payload.design);
+              resolvePlaceholder(`prep-slot-${payload.index}`, payload.design);
+            }
 
-      clearInterval(progressTimer);
+            // Mark that file's thumb card with a green checkmark + show its output thumbnail
+            const thumb = thumbsRow.querySelector(`.prepare-thumb-item[data-idx="${payload.index}"]`);
+            if (thumb) {
+              if (payload.url) {
+                const img = thumb.querySelector("img");
+                if (img) img.src = payload.url;
+              }
+              let check = thumb.querySelector(".prep-thumb-status");
+              if (!check) {
+                check = document.createElement("div");
+                check.className = "prep-thumb-status";
+                check.style.cssText = "position:absolute;bottom:2px;right:2px;background:#10b981;color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.5);";
+                check.innerHTML = '<i data-lucide="check" style="width:11px;height:11px;stroke-width:3;"></i>';
+                thumb.appendChild(check);
+              }
+            }
 
-      progressFill.style.width = "100%";
-      progressPercent.textContent = "100%";
-      progressText.textContent = "Done! " + data.designs.length + " designs ready for print.";
+            if (preparedResults.length > 0) {
+              downloadAllBtn.classList.remove("hidden");
+              clearResultsBtn.classList.remove("hidden");
+              $("#prepOutCount").textContent = preparedResults.length;
+            }
+            renderIcons();
+          } else if (payload.status === "error") {
+            processedCount++;
+            const pct = Math.round((processedCount / totalFiles) * 100);
+            progressFill.style.width = pct + "%";
+            progressPercent.textContent = pct + "%";
+            progressText.textContent = `Preparing ${processedCount} of ${totalFiles} designs...`;
 
-      const batch = data.designs || [];
-      preparedResults.push(...batch);
+            failPlaceholder(`prep-slot-${payload.index}`, payload.error || "Preparation failed");
 
-      batch.forEach(d => {
-        resultsGrid.insertAdjacentHTML("beforeend", resultCard(d));
-      });
-      renderIcons();
-
-      downloadAllBtn.classList.remove("hidden");
-      clearResultsBtn.classList.remove("hidden");
-      $("#prepOutCount").textContent = preparedResults.length;
+            // Mark that file's thumb card with a red error badge + show err.message as tooltip
+            const thumb = thumbsRow.querySelector(`.prepare-thumb-item[data-idx="${payload.index}"]`);
+            if (thumb) {
+              let errBadge = thumb.querySelector(".prep-thumb-status");
+              if (!errBadge) {
+                errBadge = document.createElement("div");
+                errBadge.className = "prep-thumb-status";
+                errBadge.style.cssText = "position:absolute;bottom:2px;right:2px;background:#ef4444;color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.5);";
+                errBadge.title = payload.error || "Preparation failed";
+                errBadge.innerHTML = '<i data-lucide="alert-circle" style="width:11px;height:11px;stroke-width:2.5;"></i>';
+                thumb.appendChild(errBadge);
+              }
+            }
+            renderIcons();
+          } else if (payload.status === "complete") {
+            // Hide the progress bar, show final toast: "Prepared X / Y files successfully."
+            progressBox.classList.add("hidden");
+            const succeeded = payload.succeeded ?? preparedResults.length;
+            const total = payload.total ?? totalFiles;
+            showToast(`Prepared ${succeeded} / ${total} files successfully.`);
+            if (preparedResults.length > 0) {
+              downloadAllBtn.classList.remove("hidden");
+              clearResultsBtn.classList.remove("hidden");
+              $("#prepOutCount").textContent = preparedResults.length;
+            }
+          }
+        }
+      );
     } catch (err) {
-      clearInterval(progressTimer);
-      console.error(err);
-      alert("Error: " + err.message);
+      console.error("Prepare designs failed:", err);
       progressBox.classList.add("hidden");
+      showToast("Preparation failed: " + (err.message || "Unknown error"));
+      for (let i = 0; i < totalFiles; i++) {
+        failPlaceholder(`prep-slot-${i}`, err.message || "Failed");
+      }
     } finally {
       executeBtn.disabled = false;
-      setTimeout(() => progressBox.classList.add("hidden"), 3000);
+      progressBox.classList.add("hidden");
     }
   });
 
@@ -1885,7 +1968,8 @@ function renderPrepareDesigns() {
     preparedResults.forEach((d, i) => {
       setTimeout(() => {
         const a = document.createElement("a");
-        a.href = d.output_image_path || d.path;
+        const rel = d.output_image_path || d.path || "";
+        a.href = rel.startsWith("/") || rel.startsWith("http") ? rel : `/library/${rel}`;
         a.download = "prepared-print-4500x5400-" + (i + 1) + ".png";
         a.click();
       }, i * 200);
@@ -2314,7 +2398,7 @@ function openLibraryPicker({ currentCount = 0, onConfirm = null } = {}) {
     confirmBtn.addEventListener("click", async () => {
       const s = activePickerSession;
       if (!s) return;
-      const chosen = s.rows.filter((d) => s.selected.has(d.id));
+      const chosen = [...s.rows.filter((d) => s.selected.has(d.id))];
       if (!chosen.length) return;
 
       const sessionCallback = s.onConfirm;
@@ -3593,8 +3677,8 @@ function renderMagicListing() {
         labelEl.textContent = `Preparing design ${i + 1} of ${listingFiles.length}…`;
 
         const file = listingFiles[i];
-        // Full-res data URL for the UI thumbnail…
-        const thumbnailUrl = await fileToBase64(file);
+        // Instant object URL for the UI thumbnail (avoids sending huge base64 strings)
+        const thumbnailUrl = URL.createObjectURL(file);
         // …but a downscaled JPEG for the AI vision payload, so high-res print
         // files (>15MB) never blow past the server body limit (HTTP 413).
         const visionBase64 = await optimizeImageForVision(file);

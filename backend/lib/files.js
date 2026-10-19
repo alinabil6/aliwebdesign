@@ -9,6 +9,27 @@ export const ROOT = PROJECT_ROOT;
 fs.mkdirSync(TMP_DIR, { recursive: true });
 fs.mkdirSync(LIBRARY_DIR, { recursive: true });
 
+// Boot-time sweeper: remove orphaned tmp files older than 2 hours
+try {
+  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+  const now = Date.now();
+  let removedCount = 0;
+  const entries = fs.readdirSync(TMP_DIR);
+  for (const entry of entries) {
+    try {
+      const fullPath = path.join(TMP_DIR, entry);
+      const stat = fs.statSync(fullPath);
+      if (stat.isFile() && (now - stat.mtimeMs) > TWO_HOURS_MS) {
+        fs.unlinkSync(fullPath);
+        removedCount++;
+      }
+    } catch (_) {}
+  }
+  console.log(`[files] Boot cleanup: removed ${removedCount} stale tmp files.`);
+} catch (err) {
+  console.warn(`[files] Boot cleanup error: ${err.message}`);
+}
+
 // Uploaded files land here first ("multer saves to a temp path"), then get
 // copied into /library at generation time.
 const storage = multer.diskStorage({

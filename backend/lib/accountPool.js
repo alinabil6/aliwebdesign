@@ -1,3 +1,4 @@
+// DEPRECATED — no longer imported. Safe to delete after v-next QA.
 import { pickReadyAccount } from "./accounts.js";
 import { updateAccountStatus, getAccountById } from "./db.js";
 import { getProfilePage, closeProfile, canLaunchBrowser } from "./browser.js";

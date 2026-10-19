@@ -463,6 +463,13 @@ async function processListingOnAccount(account, design, referenceData, platform,
 // POST /api/magic-listing/generate
 router.post("/generate", async (req, res) => {
   let account = null;
+  const routeAbort = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      routeAbort.abort();
+    }
+  });
+
   try {
     const { imageBase64 = "", referenceData = "", designIndex = 0, fileName = "", platform = "amazon" } = req.body || {};
     if (!imageBase64) {
@@ -476,7 +483,8 @@ router.post("/generate", async (req, res) => {
       account,
       { imageBase64, fileName, designIndex },
       sanitizeReference(referenceData),
-      platform
+      platform,
+      routeAbort.signal
     );
     res.json(result);
   } catch (err) {
@@ -535,10 +543,12 @@ router.post("/batch", async (req, res) => {
     const workerCount = Math.min(designs.length, MAX_CONCURRENT);
     let activeInFlight = 0;
     let poolDone = false;
+    const routeAbort = new AbortController();
 
     res.on("close", () => {
       if (!res.writableEnded) {
         poolDone = true;
+        routeAbort.abort();
         if (heartbeatInterval) clearInterval(heartbeatInterval);
       }
     });
@@ -566,7 +576,8 @@ router.post("/batch", async (req, res) => {
             account,
             design,
             sanitizedReference,
-            platform
+            platform,
+            routeAbort.signal
           );
           results.push(result);
           if (wantsStream && !res.writableEnded) {

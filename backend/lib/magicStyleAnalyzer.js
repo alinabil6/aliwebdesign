@@ -23,7 +23,8 @@ async function runConcurrentPool(items, limit, iteratorFn) {
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { acquire, release } from "./accountPool.js";
+import { acquireFleetAccount, release } from "./fleetLease.js";
+import { getProfilePage } from "./browser.js";
 import * as web from "./geminiweb.js";
 import {
     DEFAULT_STYLE_ID,
@@ -133,10 +134,11 @@ function normalizeAnalysis(parsed, index) {
  * @returns {Promise<object>} normalized analysis record
  */
 export async function analyzeDesignStyle({ imageBuffer, index = 0, feature = "" }) {
-    // Acquire an authenticated slot from the pool — never create an ad-hoc
+    // Acquire an authenticated slot from the fleet lease — never create an ad-hoc
     // or unauthenticated browser instance for style analysis.
-    const slot = await acquire();
+    const account = await acquireFleetAccount({ timeoutMs: SLOT_TIMEOUT_MS });
     try {
+        const page = await getProfilePage(account);
         let imagePath = null;
         if (Buffer.isBuffer(imageBuffer) && imageBuffer.length > 0) {
             imagePath = path.join(os.tmpdir(), `magic-style-${Date.now()}-${index}.png`);
@@ -150,7 +152,8 @@ export async function analyzeDesignStyle({ imageBuffer, index = 0, feature = "" 
                     web.generateText({
                         prompt: buildUserTurn({ index, feature }),
                         imagePaths: imagePath ? [imagePath] : [],
-                        page: slot.page,
+                        page,
+                        accountId: account.id,
                     }),
                     SLOT_TIMEOUT_MS
                 );
@@ -158,8 +161,8 @@ export async function analyzeDesignStyle({ imageBuffer, index = 0, feature = "" 
                 reply = null;
             }
             if (reply === null) {
-                if (slot?.page && !slot.page.isClosed?.()) {
-                  try { await slot.page.goto?.("about:blank"); } catch (_) {}
+                if (page && !page.isClosed?.()) {
+                  try { await page.goto?.("about:blank"); } catch (_) {}
                 }
                 // Timeout or failure — do NOT fail the request. Fall back to a random
                 // high-converting style so the UI stays smooth and unblocked.
@@ -174,8 +177,8 @@ export async function analyzeDesignStyle({ imageBuffer, index = 0, feature = "" 
             if (imagePath) await fs.promises.unlink(imagePath).catch(() => { });
         }
     } finally {
-        // Always release the slot back so the fleet's ready status stays accurate.
-        await release(slot);
+        // Always release the account back so the fleet's ready status stays accurate.
+        if (account) release(account.id);
     }
 }
 
