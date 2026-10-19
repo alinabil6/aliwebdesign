@@ -536,17 +536,14 @@ router.post("/batch", async (req, res) => {
     let activeInFlight = 0;
     let poolDone = false;
 
-    req.on("close", () => {
-      poolDone = true;
-      if (heartbeatInterval) clearInterval(heartbeatInterval);
+    res.on("close", () => {
+      if (!res.writableEnded) {
+        poolDone = true;
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+      }
     });
 
     async function worker(workerIndex) {
-      // Stagger concurrent workers to avoid simultaneous browser launches
-      // competing for bandwidth during attachment upload (2s gap each)
-      if (workerIndex > 0) {
-        await new Promise((r) => setTimeout(r, workerIndex * 2000));
-      }
       while (!poolDone) {
         if (pending.length === 0) {
           if (activeInFlight === 0) {

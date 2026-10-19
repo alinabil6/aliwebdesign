@@ -3854,6 +3854,11 @@ function magicListingCard(item) {
   const isTeePublic = item.platform === "teepublic";
   const isEtsy = item.platform === "etsy";
 
+  const timeBadge = item.generation_time ? `
+    <span class="timer-pill" title="Generated in ${esc(item.generation_time)}" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#38bdf8;background:rgba(56,189,248,0.12);padding:3px 10px;border-radius:9999px;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;margin-left:auto;">
+      <i data-lucide="timer" style="width:12px;height:12px;"></i> ${esc(item.generation_time)}
+    </span>` : "";
+
   const copyBtn = (label, text) => `
     <button type="button" class="btn secondary btn-sm ml-copy" data-copy="${esc(text)}" title="Copy ${label}">
       <i data-lucide="copy"></i> ${label}
@@ -3881,7 +3886,6 @@ function magicListingCard(item) {
             <img src="${esc(item.thumbnailUrl || "")}" class="ml-card-thumb" alt="${esc(item.fileName || "")}" />
             <div class="ml-card-meta">
               <span class="ml-index-badge">#${esc(item.designIndex)}</span>
-              ${item.generation_time ? `<span class="placeholder-timer-badge" style="font-size:0.72rem;background:rgba(56,189,248,0.12);color:#38bdf8;padding:2px 8px;border-radius:9999px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:600;">⏱ ${esc(item.generation_time)}</span>` : ""}
               <span class="ml-file-name" title="${esc(item.fileName || "")}">${esc(item.fileName || `Design #${item.designIndex}`)}</span>
             </div>
           </div>
@@ -3916,6 +3920,7 @@ function magicListingCard(item) {
           ${copyBtn("Tags", tagsCsv)}
           ${copyBtn("Description", description)}
           ${copyBtn("All", allText)}
+          ${timeBadge}
         </div>
       </div>`;
   }
@@ -3944,7 +3949,6 @@ function magicListingCard(item) {
             <img src="${esc(item.thumbnailUrl || "")}" class="ml-card-thumb" alt="${esc(item.fileName || "")}" />
             <div class="ml-card-meta">
               <span class="ml-index-badge">#${esc(item.designIndex)}</span>
-              ${item.generation_time ? `<span class="placeholder-timer-badge" style="font-size:0.72rem;background:rgba(56,189,248,0.12);color:#38bdf8;padding:2px 8px;border-radius:9999px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:600;">⏱ ${esc(item.generation_time)}</span>` : ""}
               <span class="ml-file-name" title="${esc(item.fileName || "")}">${esc(item.fileName || `Design #${item.designIndex}`)}</span>
             </div>
           </div>
@@ -3967,6 +3971,7 @@ function magicListingCard(item) {
           ${copyBtn("Main Tag", mainTag)}
           ${copyBtn("All Tags", allTagsCsv)}
           ${copyBtn("All", allText)}
+          ${timeBadge}
         </div>
       </div>`;
   }
@@ -3987,7 +3992,6 @@ function magicListingCard(item) {
           <img src="${esc(item.thumbnailUrl || "")}" class="ml-card-thumb" alt="${esc(item.fileName || "")}" />
           <div class="ml-card-meta">
             <span class="ml-index-badge">#${esc(item.designIndex)}</span>
-            ${item.generation_time ? `<span class="placeholder-timer-badge" style="font-size:0.72rem;background:rgba(56,189,248,0.12);color:#38bdf8;padding:2px 8px;border-radius:9999px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:600;">⏱ ${esc(item.generation_time)}</span>` : ""}
             <span class="ml-file-name" title="${esc(item.fileName || "")}">${esc(item.fileName || `Design #${item.designIndex}`)}</span>
           </div>
         </div>
@@ -4008,6 +4012,7 @@ function magicListingCard(item) {
         ${copyBtn("Bullets", `${bullet1}\n${bullet2}`)}
         ${copyBtn("Description", description)}
         ${copyBtn("All", allText)}
+        ${timeBadge}
       </div>
     </div>`;
 }
