@@ -3,6 +3,23 @@ import { generateImage, generateImageOnAccount } from "./gemini.js";
 import { listReadyAccountsWithAbs, listAccountsWithAbs, withAbs } from "./accounts.js";
 import { setAccountStatus, getAccountById, claimNextReadyAccount } from "./db.js";
 import { getProfilePage, closeProfile, canLaunchBrowser, isInteractiveAuthActive, purgeFleetBrowsers as purgeFleetBrowsersBrowser } from "./browser.js";
+import {
+  isLeased,
+  tryLease,
+  release as releaseLease,
+  isQuarantined,
+  quarantine,
+  clearQuarantine,
+  clearAllQuarantines,
+  isRecycling,
+  startRecycling,
+  stopRecycling,
+  clearAllRecycling,
+  getActiveExcludes,
+  acquireFleetAccount,
+  getLeasedAccountIds,
+  releaseAll as releaseAllLeases,
+} from "./fleetLease.js";
 
 async function checkTabHeartbeat(account, timeoutMs = 8000) {
   if (!canLaunchBrowser()) return true; // mock / headless environment
@@ -31,10 +48,7 @@ async function checkTabHeartbeat(account, timeoutMs = 8000) {
 
 export const MAX_CONCURRENT = parseInt(process.env.MAX_FLEET_CONCURRENT || "4", 10);
 const limit = pLimit(MAX_CONCURRENT);
-const leasedAccountIds = new Set();
-const quarantinedAccountIds = new Map();
 const accountSessionGenerations = new Map();
-const recyclingAccountIds = new Set();
 
 const activeBatchSignals = new Set();
 const activeAccountPages = new Map();
@@ -59,61 +73,18 @@ export function unregisterAccountPage(accountId) {
   if (accountId) activeAccountPages.delete(accountId);
 }
 
-export function isAccountLeased(id) { return leasedAccountIds.has(id); }
-export function leaseAccount(account) {
-  leasedAccountIds.add(account.id);
-  setAccountStatus(account.id, "running");
-}
-export function unleaseAccount(accountId) {
-  leasedAccountIds.delete(accountId);
-  const acc = getAccountById(accountId);
-  if (acc && !["signed_out", "error", "disabled", "needs_reauth"].includes(acc.status)) {
-    setAccountStatus(accountId, "ready", true);
-  }
-}
+export function isAccountLeased(id) { return isLeased(id); }
+export function leaseAccount(account) { return tryLease(account?.id || account); }
+export function unleaseAccount(accountId) { return releaseLease(accountId); }
 
 export function getAvailableFleetAccounts(excludeIds = []) {
   const ready = listReadyAccountsWithAbs();
-  const now = Date.now();
-  return ready.filter((acc) => {
-    if (leasedAccountIds.has(acc.id)) return false;
-    if (recyclingAccountIds.has(acc.id)) return false;
-    if (excludeIds.includes(acc.id)) return false;
-    const qUntil = quarantinedAccountIds.get(acc.id);
-    if (qUntil && qUntil > now) return false;
-    return true;
-  });
+  const activeExcludes = new Set(getActiveExcludes(excludeIds));
+  return ready.filter((acc) => !activeExcludes.has(acc.id));
 }
 
 async function acquireAccount(timeoutMs = 60000, excludeIds = []) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const activeExcludes = Array.isArray(excludeIds) ? [...excludeIds] : [];
-    const now = Date.now();
-    for (const [qId, qUntil] of quarantinedAccountIds.entries()) {
-      if (qUntil > now && !activeExcludes.includes(qId)) {
-        activeExcludes.push(qId);
-      }
-    }
-    for (const leasedId of leasedAccountIds) {
-      if (!activeExcludes.includes(leasedId)) {
-        activeExcludes.push(leasedId);
-      }
-    }
-    for (const recId of recyclingAccountIds) {
-      if (!activeExcludes.includes(recId)) {
-        activeExcludes.push(recId);
-      }
-    }
-
-    const claimed = claimNextReadyAccount(activeExcludes);
-    if (claimed) {
-      leasedAccountIds.add(claimed.id);
-      return withAbs(claimed);
-    }
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-  throw new Error("All Gemini accounts are busy — try again in a moment");
+  return acquireFleetAccount({ timeoutMs, excludeIds });
 }
 
 export async function runBatch(tasks) {
@@ -148,11 +119,23 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
   const workerCount = Math.max(1, Math.min(tasks.length, allUsable.length, MAX_CONCURRENT));
   if (signal) activeBatchSignals.add(signal);
 
+  let activeInFlight = 0;
+  let fleetDone = false;
+
   async function fleetWorker() {
-    while (pending.length > 0) {
+    while (!fleetDone) {
       if (signal?.aborted) { break; }
+      if (pending.length === 0) {
+        if (activeInFlight === 0) {
+          fleetDone = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
       const item = pending.shift();
-      if (!item) break;
+      if (!item) continue;
+      activeInFlight++;
       const { task, taskIndex } = item;
 
       let account = null;
@@ -170,7 +153,7 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           const isAlive = await checkTabHeartbeat(account, 8000);
           if (!isAlive) {
             unleaseAccount(account.id);
-            quarantinedAccountIds.set(account.id, Date.now() + 5000);
+            quarantine(account.id, 5000);
             pending.unshift(item); // Re-queue item immediately without penalty
             continue;
           }
@@ -205,12 +188,12 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
               console.log(`[fleet] Interactive auth active, deferring browser context recycling for ${account.id}...`);
             } else {
               console.log(`[fleet] Account ${account.id} completed ${genCount} designs in current session. Recycling browser context to flush Chromium RAM bloat...`);
-              recyclingAccountIds.add(account.id);
+              startRecycling(account.id);
               pendingTeardown = (async () => {
                 try {
                   await closeProfile(account.id);
                 } catch (_) {} finally {
-                  recyclingAccountIds.delete(account.id);
+                  stopRecycling(account.id);
                   accountSessionGenerations.set(account.id, 0);
                 }
               })();
@@ -234,7 +217,7 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
         const isAuthDrop = msg.includes("session_expired") || msg.includes("login");
         const isHardQuota = msg.includes("daily limit") || msg.includes("reached your limit") || msg.includes("quota exceeded");
         const isHardPolicy = msg.includes("third-party content providers") || msg.includes("interests of third-party");
-        const isTimeout = msg.includes("timed out");
+        const isTimeout = msg.includes("timed out") || Boolean(err?.isTimeout) || err?.name === "GenerationTimeoutError";
 
         if (account && (isTimeout || isAuthDrop)) {
           console.log(`[fleet] Closing profile context for ${account.id} due to ${isTimeout ? "timeout" : "auth drop"}...`);
@@ -246,10 +229,10 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           item.failedAccountIds.push(account.id);
 
           if (isHardQuota) {
-            quarantinedAccountIds.set(account.id, Date.now() + 15 * 60 * 1000);
+            quarantine(account.id, 15 * 60 * 1000);
             console.warn(`[fleet] Account ${account.id} hit daily limit. Benched for 15 minutes.`);
-          } else if (!isHardPolicy && !isAuthDrop) {
-            quarantinedAccountIds.set(account.id, Date.now() + 10 * 1000);
+          } else if (!isHardPolicy && !isAuthDrop && !isTimeout) {
+            quarantine(account.id, 10 * 1000);
             console.warn(`[fleet] Account ${account.id} soft-cooldown (10s).`);
           }
         }
@@ -265,6 +248,7 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           }
         }
       } finally {
+        activeInFlight--;
         if (pendingTeardown) {
           try {
             await pendingTeardown;
@@ -312,22 +296,18 @@ function raceWithSignal(promise, signal, onAbort) {
 }
 
 export function cancelAllRunningFleetTasks() {
-  quarantinedAccountIds.clear();
   accountSessionGenerations.clear();
-  recyclingAccountIds.clear();
   for (const sig of activeBatchSignals) {
     try { sig.abort(); } catch (_) {}
   }
   activeBatchSignals.clear();
 
-  const released = leasedAccountIds.size;
-  for (const accountId of Array.from(leasedAccountIds)) {
+  for (const accountId of getLeasedAccountIds()) {
     try {
-      unleaseAccount(accountId);
       unregisterAccountPage(accountId);
     } catch (_) {}
   }
-  return { success: true, released };
+  return releaseAllLeases();
 }
 
 export async function purgeFleetBrowsers() {

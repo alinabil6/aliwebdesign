@@ -15,11 +15,10 @@ import { getProfilePage, canLaunchBrowser } from "../lib/browser.js";
 import { MOCK_GEMINI } from "../lib/gemini.js";
 import * as web from "../lib/geminiweb.js";
 import {
-  claimNextReadyAccount,
   recordGeneration,
-  setAccountStatus,
   insertListing,
 } from "../lib/db.js";
+import { acquireFleetAccount, release } from "../lib/fleetLease.js";
 import { storeInLibrary } from "../lib/files.js";
 import {
   buildMagicListingPrompt,
@@ -292,18 +291,6 @@ function normalizeEtsyListing(raw) {
   };
 }
 
-async function acquireListingAccount(timeoutMs = 60000, excludeIds = []) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const claimed = claimNextReadyAccount(excludeIds);
-    if (claimed) {
-      return withAbs(claimed);
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error("All Gemini accounts are busy — try again in a moment");
-}
-
 function persistListingToLibrary({ fileName, designIndex, platform, listing, imagePath }) {
   let thumbnailRel = null;
   if (imagePath && fs.existsSync(imagePath)) {
@@ -426,19 +413,14 @@ async function processListingOnAccount(account, design, referenceData, platform,
 
     console.log(`[magicListing] Sending Vision prompt + image attachment to ${account.id}...`);
 
-    const TIMEOUT_MS = 110000;
-    const reply = await Promise.race([
-      web.generateText({
-        prompt,
-        imagePaths: [imagePath],
-        page,
-        signal,
-        timeoutMs: 90000,
-      }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("MAGIC_LISTING_TIMEOUT")), TIMEOUT_MS)
-      ),
-    ]);
+    const reply = await web.generateText({
+      prompt,
+      imagePaths: [imagePath],
+      page,
+      signal,
+      timeoutMs: 90000,
+      accountId: account.id,
+    });
 
     console.log(`[magicListing] Received response from model (Length: ${reply?.length || 0})`);
     recordGeneration(account.id);
@@ -472,7 +454,6 @@ async function processListingOnAccount(account, design, referenceData, platform,
       savedToLibrary: true,
     };
   } finally {
-    setAccountStatus(account.id, "ready");
     try {
       fs.rmSync(imagePath, { force: true });
     } catch {}
@@ -489,7 +470,7 @@ router.post("/generate", async (req, res) => {
     }
 
     console.log(`[magicListing] Incoming request: Platform = [${platform}], Files = 1`);
-    account = await acquireListingAccount(45000);
+    account = await acquireFleetAccount({ timeoutMs: 45000 });
 
     const result = await processListingOnAccount(
       account,
@@ -500,13 +481,13 @@ router.post("/generate", async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error("[MagicListing Error]:", err);
-    if (err.message === "MAGIC_LISTING_TIMEOUT") {
+    if (err?.name === "GenerationTimeoutError" || err?.isTimeout || err?.message === "MAGIC_LISTING_TIMEOUT") {
       return res.status(504).json({ error: "Listing generation timed out. Browser released." });
     }
     res.status(500).json({ error: err.message || "Magic Listing backend processing failed" });
   } finally {
     if (account) {
-      setAccountStatus(account.id, "ready");
+      release(account.id);
     }
   }
 });
@@ -522,24 +503,44 @@ router.post("/batch", async (req, res) => {
     console.log(`[magicListing] Incoming batch request: Platform = [${platform}], Files = [${designs.length}]`);
     const sanitizedReference = sanitizeReference(referenceData);
 
-    let nextIndex = 0;
     const results = [];
     const failed = [];
+    const pending = designs.map((design, idx) => ({
+      design,
+      designIndex: design?.designIndex ?? idx,
+      retries: 0,
+      failedAccountIds: [],
+    }));
+
     const MAX_CONCURRENT = 4;
     const workerCount = Math.min(designs.length, MAX_CONCURRENT);
+    let activeInFlight = 0;
+    let poolDone = false;
 
     async function worker(workerIndex) {
       // Stagger concurrent workers to avoid simultaneous browser launches
-      // competing for bandwidth during attachment upload (4s gap each)
+      // competing for bandwidth during attachment upload (3s gap each)
       if (workerIndex > 0) {
-        await new Promise((r) => setTimeout(r, workerIndex * 4000));
+        await new Promise((r) => setTimeout(r, workerIndex * 3000));
       }
-      while (nextIndex < designs.length) {
-        const currentIndex = nextIndex++;
-        const design = designs[currentIndex];
+      while (!poolDone) {
+        if (pending.length === 0) {
+          if (activeInFlight === 0) {
+            poolDone = true;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
+        }
+
+        const item = pending.shift();
+        if (!item) continue;
+
+        activeInFlight++;
+        const { design, designIndex } = item;
         let account = null;
         try {
-          account = await acquireListingAccount(60000);
+          account = await acquireFleetAccount({ timeoutMs: 60000, excludeIds: item.failedAccountIds || [] });
           const result = await processListingOnAccount(
             account,
             design,
@@ -548,19 +549,32 @@ router.post("/batch", async (req, res) => {
           );
           results.push(result);
         } catch (err) {
-          console.error(`[MagicListing] Failed for design ${currentIndex} (${design?.fileName}):`, err.message);
-          failed.push({
-            designIndex: design?.designIndex ?? currentIndex,
-            fileName: design?.fileName || `Design #${currentIndex + 1}`,
-            error: err.message === "MAGIC_LISTING_TIMEOUT"
-              ? "Listing generation timed out. Browser released."
-              : (err.message || "This design could not be processed."),
-          });
+          const isTimeout = err?.name === "GenerationTimeoutError" || err?.isTimeout || err?.message === "MAGIC_LISTING_TIMEOUT" || (err?.message || "").includes("timed out");
+          const msg = (err?.message || "").toLowerCase();
+          console.error(`[MagicListing] Failed for design ${designIndex} (${design?.fileName}) on ${account ? account.id : "unassigned"}:`, err.message);
+
+          if (account) {
+            item.failedAccountIds = item.failedAccountIds || [];
+            item.failedAccountIds.push(account.id);
+          }
+
+          if (item.retries < 2 && !msg.includes("invalid image") && !msg.includes("bad request")) {
+            item.retries++;
+            console.log(`[MagicListing] Re-routing design ${designIndex} (${design?.fileName}) (attempt ${item.retries + 1}/3) to alternate account...`);
+            pending.push(item);
+          } else {
+            failed.push({
+              designIndex,
+              fileName: design?.fileName || `Design #${designIndex + 1}`,
+              error: isTimeout
+                ? "Listing generation timed out. Browser released."
+                : (err.message || "This design could not be processed."),
+            });
+          }
         } finally {
-          // NOTE: processListingOnAccount already calls setAccountStatus("ready") in its own finally block.
-          // We only need to call it here if the account was acquired but processListingOnAccount was never called.
-          if (account && !results.find(r => r.designIndex === (design?.designIndex ?? currentIndex))) {
-            setAccountStatus(account.id, "ready");
+          activeInFlight--;
+          if (account) {
+            release(account.id);
           }
         }
       }

@@ -667,6 +667,36 @@ export async function closeProfile(accountId) {
   }
 }
 
+export function getAccountIdForPage(page) {
+  if (!page) return null;
+  for (const [id, p] of mainPages.entries()) {
+    if (p === page) return id;
+  }
+  for (const [id, entry] of sessions.entries()) {
+    if (entry.context && typeof entry.context.pages === "function") {
+      try {
+        if (entry.context.pages().includes(page)) return id;
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+
+export async function closeProfileForPage(page) {
+  const accountId = getAccountIdForPage(page);
+  if (accountId) {
+    await closeProfile(accountId);
+    return accountId;
+  } else if (page) {
+    try {
+      const ctx = typeof page.context === "function" ? page.context() : null;
+      if (ctx) await ctx.close();
+      else if (typeof page.close === "function") await page.close();
+    } catch (_) {}
+  }
+  return null;
+}
+
 export async function closeAll() {
   const entries = [...sessions.entries()];
   sessions.clear();

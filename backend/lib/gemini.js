@@ -4,6 +4,7 @@ import { getProfilePage, closeProfile, canLaunchBrowser } from "./browser.js";
 import * as web from "./geminiweb.js";
 import { updateAccountStatus, recordGeneration, setAccountStatus } from "./db.js";
 import { registerAccountPage, unregisterAccountPage } from "./queue.js";
+import { acquireFleetAccount, release } from "./fleetLease.js";
 
 export const MOCK_GEMINI = process.env.MOCK_GEMINI === "1" || !canLaunchBrowser();
 
@@ -14,15 +15,14 @@ export async function generateImage({ prompt, imagePaths = [] }) {
     return mockPng(prompt, imagePaths.length);
   }
 
-  const account = pickReadyAccount();
+  const account = await acquireFleetAccount({ timeoutMs: 30000 });
   if (!account) throw new Error("No Gemini account is ready");
 
   updateAccountStatus(account.id, { status: "generating" });
   const page = await getProfilePage(account);
   try {
-    const result = await web.generateImage({ prompt, imagePaths, page });
+    const result = await web.generateImage({ prompt, imagePaths, page, accountId: account.id });
     recordGeneration(account.id);
-    updateAccountStatus(account.id, { status: "ready" });
     return result;
   } catch (err) {
     if ((err?.message || "").includes("SESSION_EXPIRED")) {
@@ -32,6 +32,8 @@ export async function generateImage({ prompt, imagePaths = [] }) {
     }
     await page.goto("about:blank", { timeout: 3000 }).catch(() => {});
     throw err;
+  } finally {
+    release(account.id);
   }
 }
 
@@ -55,12 +57,12 @@ export async function generateImageOnAccount(account, { prompt, imagePaths = [] 
   });
 
   try {
-    const result = await web.generateImage({ prompt, imagePaths, page, signal });
+    const result = await web.generateImage({ prompt, imagePaths, page, signal, accountId: account.id });
     recordGeneration(account.id);
     return result;
   } catch (err) {
     const isCancelled = signal?.aborted || err?.name === "AbortError" || (err?.message || "").includes("cancelled by user");
-    const isTimeout = (err?.message || "").includes("timed out");
+    const isTimeout = (err?.message || "").includes("timed out") || err?.isTimeout;
     if (isCancelled || isTimeout) {
       console.log(`[gemini] Closing profile context for ${account.id} (${isCancelled ? "cancelled" : "timeout"})...`);
       try { await closeProfile(account.id); } catch (_) {}
@@ -76,11 +78,6 @@ export async function generateImageOnAccount(account, { prompt, imagePaths = [] 
     await page.goto("about:blank", { timeout: 3000 }).catch(() => {});
     throw err;
   } finally {
-    const { getAccountById } = await import("./db.js");
-    const current = getAccountById(account.id);
-    if (current && current.status === "running") {
-      setAccountStatus(account.id, "ready");
-    }
     unregisterAccountPage(account.id);
   }
 }

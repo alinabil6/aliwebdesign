@@ -1,4 +1,42 @@
 import fs from "fs";
+import { closeProfile, closeProfileForPage, getAccountIdForPage } from "./browser.js";
+
+export class GenerationTimeoutError extends Error {
+  constructor(message = "Per-account generation ceiling exceeded (150s)") {
+    super(message);
+    this.name = "GenerationTimeoutError";
+    this.code = "GENERATION_TIMEOUT";
+    this.isTimeout = true;
+  }
+}
+
+export const HARD_GENERATION_CEILING_MS = 150000; // 150s absolute per-account ceiling
+
+export async function withGenerationCeiling(fn, { page = null, accountId = null, ceilingMs = HARD_GENERATION_CEILING_MS, signal = null } = {}) {
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(async () => {
+      const targetId = accountId || getAccountIdForPage(page);
+      console.warn(`[geminiweb] Hard generation ceiling breached (${Math.round(ceilingMs / 1000)}s) for ${targetId || "unknown account"}. Closing profile context...`);
+      try {
+        if (targetId) {
+          await closeProfile(targetId);
+        } else if (page) {
+          await closeProfileForPage(page);
+        }
+      } catch (closeErr) {
+        console.warn("[geminiweb] Error closing profile context on ceiling breach:", closeErr.message);
+      }
+      reject(new GenerationTimeoutError(`Per-account generation ceiling exceeded (${Math.round(ceilingMs / 1000)}s)${targetId ? ` on ${targetId}` : ""}`));
+    }, ceilingMs);
+  });
+
+  try {
+    return await Promise.race([fn(), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export const GEMINI_URL = "https://gemini.google.com/app";
 const GEMINI_HOST = "gemini.google.com";
@@ -354,74 +392,80 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 120000, outp
   throw new Error("timed out waiting for Gemini image render (120s)");
 }
 
-export async function generateImage({ prompt, imagePaths, page, outputPath = null, signal = null }) {
-  try {
-    if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-    await ensureGeminiApp(page);
-    await dismissModals(page);
-    await page.waitForTimeout(200);
+export async function generateImage({ prompt, imagePaths, page, outputPath = null, signal = null, accountId = null }) {
+  const resolvedAccountId = accountId || getAccountIdForPage(page);
+  return withGenerationCeiling(
+    async () => {
+      try {
+        if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+        await ensureGeminiApp(page);
+        await dismissModals(page);
+        await page.waitForTimeout(200);
 
-    const beforeCount = await page.locator("model-response img, .response-container img, [data-test-id*='response'] img").count().catch(() => 0);
+        const beforeCount = await page.locator("model-response img, .response-container img, [data-test-id*='response'] img").count().catch(() => 0);
 
-    if (imagePaths?.length) {
-      await attachReferenceImages(page, imagePaths, signal);
-    }
-
-    if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-
-    const editor = await fillPrompt(page, prompt);
-    if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-    await submitPrompt(page, editor);
-
-    try {
-          return await monitorAndExtractOutput(page, beforeCount, 120000, outputPath, signal);
-    } catch (err) {
-      if (signal?.aborted || err?.name === "AbortError" || (err?.message || "").includes("cancelled by user")) {
-        throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-      }
-
-      const isTextRefusal = (err?.message || "").includes("GEMINI_REFUSED_OR_TEXT");
-      const isHardQuota = /daily limit|reached your limit|quota exceeded|limit reached/i.test(err?.message || "");
-
-      // Fix 3: Two progressive nudges instead of one for text refusals
-      if (isTextRefusal && !isHardQuota && !page.isClosed() && !signal?.aborted) {
-        console.log("[geminiweb] Gemini replied with text. Executing progressive 2-step in-session nudges...");
-        const MAX_NUDGES = 2;
-        for (let nudge = 0; nudge < MAX_NUDGES; nudge++) {
-          if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-          const nudgePrompt = nudge === 0
-            ? "Generate the image as requested above."
-            : "Please output only the graphic design image, no text response.";
-          console.log(`[geminiweb] In-session nudge ${nudge + 1}/${MAX_NUDGES}: "${nudgePrompt}"`);
-          try {
-            const countBeforeNudge = await page.locator("model-response img, .response-container img, [data-test-id*='response'] img").count().catch(() => 0);
-            const nudgeEditor = await fillPrompt(page, nudgePrompt);
-            if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-            await submitPrompt(page, nudgeEditor);
-            const result = await monitorAndExtractOutput(page, countBeforeNudge, 45000, outputPath, signal);
-            if (result) {
-              console.log(`[geminiweb] In-session nudge ${nudge + 1} succeeded! Image captured on the same account.`);
-              return result;
-            }
-          } catch (nudgeErr) {
-            if (signal?.aborted || nudgeErr?.name === "AbortError") throw nudgeErr;
-            console.warn(`[geminiweb] In-session nudge ${nudge + 1} failed:`, nudgeErr.message.slice(0, 80));
-          }
+        if (imagePaths?.length) {
+          await attachReferenceImages(page, imagePaths, signal);
         }
-        throw new Error("GEMINI_REFUSED_OR_TEXT: Both in-session nudges failed to generate an image");
+
+        if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+
+        const editor = await fillPrompt(page, prompt);
+        if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+        await submitPrompt(page, editor);
+
+        try {
+          return await monitorAndExtractOutput(page, beforeCount, 120000, outputPath, signal);
+        } catch (err) {
+          if (signal?.aborted || err?.name === "AbortError" || (err?.message || "").includes("cancelled by user")) {
+            throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+          }
+
+          const isTextRefusal = (err?.message || "").includes("GEMINI_REFUSED_OR_TEXT");
+          const isHardQuota = /daily limit|reached your limit|quota exceeded|limit reached/i.test(err?.message || "");
+
+          // Fix 3: Two progressive nudges instead of one for text refusals
+          if (isTextRefusal && !isHardQuota && !page.isClosed() && !signal?.aborted) {
+            console.log("[geminiweb] Gemini replied with text. Executing progressive 2-step in-session nudges...");
+            const MAX_NUDGES = 2;
+            for (let nudge = 0; nudge < MAX_NUDGES; nudge++) {
+              if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+              const nudgePrompt = nudge === 0
+                ? "Generate the image as requested above."
+                : "Please output only the graphic design image, no text response.";
+              console.log(`[geminiweb] In-session nudge ${nudge + 1}/${MAX_NUDGES}: "${nudgePrompt}"`);
+              try {
+                const countBeforeNudge = await page.locator("model-response img, .response-container img, [data-test-id*='response'] img").count().catch(() => 0);
+                const nudgeEditor = await fillPrompt(page, nudgePrompt);
+                if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+                await submitPrompt(page, nudgeEditor);
+                const result = await monitorAndExtractOutput(page, countBeforeNudge, 45000, outputPath, signal);
+                if (result) {
+                  console.log(`[geminiweb] In-session nudge ${nudge + 1} succeeded! Image captured on the same account.`);
+                  return result;
+                }
+              } catch (nudgeErr) {
+                if (signal?.aborted || nudgeErr?.name === "AbortError") throw nudgeErr;
+                console.warn(`[geminiweb] In-session nudge ${nudge + 1} failed:`, nudgeErr.message.slice(0, 80));
+              }
+            }
+            throw new Error("GEMINI_REFUSED_OR_TEXT: Both in-session nudges failed to generate an image");
+          }
+          throw err;
+        }
+      } finally {
+        // Guarantees context detachment and cleans up references even on uncaught selector timeouts
+        try {
+          if (page && !page.isClosed()) {
+            await page.evaluate(() => {
+              window.stop?.();
+            }).catch(() => {});
+          }
+        } catch (_) {}
       }
-      throw err;
-    }
-  } finally {
-    // Guarantees context detachment and cleans up references even on uncaught selector timeouts
-    try {
-      if (page && !page.isClosed()) {
-        await page.evaluate(() => {
-          window.stop?.();
-        }).catch(() => {});
-      }
-    } catch (_) {}
-  }
+    },
+    { page, accountId: resolvedAccountId, signal, ceilingMs: HARD_GENERATION_CEILING_MS }
+  );
 }
 
 export async function ensureGeminiApp(page) {
@@ -498,137 +542,153 @@ export async function checkSession(page, { navigate = true, fallbackEmail = null
   }
 }
 
-export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 90000 }) {
-  if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-  await ensureGeminiApp(page);
-  await dismissModals(page);
+export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 90000, accountId = null }) {
+  const resolvedAccountId = accountId || getAccountIdForPage(page);
+  return withGenerationCeiling(
+    async () => {
+      try {
+        if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+        await ensureGeminiApp(page);
+        await dismissModals(page);
 
-  if (imagePaths?.length) {
-    await attachReferenceImages(page, imagePaths, signal);
-  }
+        if (imagePaths?.length) {
+          await attachReferenceImages(page, imagePaths, signal);
+        }
 
-  if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+        if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-  // Baseline: count model-response turns BEFORE submission
-  const countBefore = await page.locator("model-response").count().catch(() => 0);
+        // Baseline: count model-response turns BEFORE submission
+        const countBefore = await page.locator("model-response").count().catch(() => 0);
 
-  const editor = await fillPrompt(page, prompt);
-  if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-  await submitPrompt(page, editor);
+        const editor = await fillPrompt(page, prompt);
+        if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+        await submitPrompt(page, editor);
 
-  console.log(`[geminiweb] Monitoring Gemini text response (baseline turns: ${countBefore})...`);
-  const start = Date.now();
-  let lastText = "";
-  let stableTicks = 0;
-  let retriggered = false;
+        console.log(`[geminiweb] Monitoring Gemini text response (baseline turns: ${countBefore})...`);
+        const start = Date.now();
+        let lastText = "";
+        let stableTicks = 0;
+        let retriggered = false;
 
-  while (Date.now() - start < timeoutMs) {
-    if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+        while (Date.now() - start < timeoutMs) {
+          if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-    // Proactive dispatch retry: If 10s elapsed with 0 turns and not generating, nudge send/enter once
-    if (!retriggered && Date.now() - start > 10000) {
-      retriggered = true;
-      const needsNudge = await page.evaluate((prevCount) => {
-        const turns = document.querySelectorAll("model-response").length;
-        const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i]');
-        return turns <= prevCount && (!stopBtn || stopBtn.offsetWidth === 0);
-      }, countBefore).catch(() => false);
+          // Proactive dispatch retry: If 10s elapsed with 0 turns and not generating, nudge send/enter once
+          if (!retriggered && Date.now() - start > 10000) {
+            retriggered = true;
+            const needsNudge = await page.evaluate((prevCount) => {
+              const turns = document.querySelectorAll("model-response").length;
+              const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i]');
+              return turns <= prevCount && (!stopBtn || stopBtn.offsetWidth === 0);
+            }, countBefore).catch(() => false);
 
-      if (needsNudge) {
-        console.warn("[geminiweb] Turn not detected after 10s, attempting proactive prompt submission nudge...");
+            if (needsNudge) {
+              console.warn("[geminiweb] Turn not detected after 10s, attempting proactive prompt submission nudge...");
+              try {
+                const send = page.locator(SELECTORS.sendButton.join(", ")).first();
+                if (await send.isVisible({ timeout: 1000 }).catch(() => false)) {
+                  await send.click({ timeout: 2000 }).catch(() => {});
+                } else {
+                  await editor.focus().catch(() => {});
+                  await page.keyboard.press("Enter").catch(() => {});
+                }
+              } catch (_) {}
+            }
+          }
+
+          const probe = await page.evaluate((prevCount) => {
+            const toastEl = document.querySelector('mat-snack-bar-container, [role="alert"]');
+            const toastMsg = toastEl ? (toastEl.innerText || "").trim() : null;
+
+            const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
+            const isGenerating = Boolean(
+              stopBtn &&
+              window.getComputedStyle(stopBtn).display !== "none" &&
+              window.getComputedStyle(stopBtn).visibility !== "hidden" &&
+              stopBtn.offsetWidth > 0
+            );
+
+            const turns = document.querySelectorAll("model-response");
+            let text = "";
+            let hasCopyBtn = false;
+            if (turns.length > prevCount) {
+              const last = turns[turns.length - 1];
+              const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
+              text = (content.innerText || "").trim();
+              hasCopyBtn = Boolean(last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]'));
+            } else if (turns.length > 0) {
+              // Fallback: If turn count did not strictly exceed prevCount (e.g. baseline counted stale DOM or reset occurred),
+              // inspect the last turn if it has active completion markers or content
+              const last = turns[turns.length - 1];
+              const copyBtn = last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]');
+              const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
+              const candidate = (content.innerText || "").trim();
+              if (copyBtn || isGenerating || candidate.length > 30) {
+                text = candidate;
+                hasCopyBtn = Boolean(copyBtn);
+              }
+            }
+
+            return { toastMsg, isGenerating, hasCopyBtn, text };
+          }, countBefore).catch(() => ({ toastMsg: null, isGenerating: false, hasCopyBtn: false, text: "" }));
+
+          if (probe.toastMsg && /limit|quota|error|try again|failed|unable/i.test(probe.toastMsg)) {
+            throw new Error(`GEMINI_ERROR: ${probe.toastMsg}`);
+          }
+
+          const trimmed = probe.text;
+          if (trimmed.length > 0) {
+            // Fast-path A: Copy button rendered = generation definitely complete (any non-empty text)
+            if (probe.hasCopyBtn && !probe.isGenerating) {
+              console.log(`[geminiweb] Text captured via Copy button + not-generating (${trimmed.length} chars).`);
+              return trimmed;
+            }
+            // Fast-path B: Copy button present even while still in streaming (text is already final for this turn)
+            if (probe.hasCopyBtn && trimmed.length > 5) {
+              console.log(`[geminiweb] Text captured via Copy button detection (${trimmed.length} chars).`);
+              return trimmed;
+            }
+            if (!probe.isGenerating) {
+              // Immediate JSON resolution: stable closed JSON for 1 tick (relax length threshold)
+              if (trimmed === lastText && trimmed.includes("{") && trimmed.includes("}") && trimmed.length > 10) {
+                console.log(`[geminiweb] JSON captured immediately (${trimmed.length} chars).`);
+                return trimmed;
+              }
+              // Stability fallback: same text for 2 consecutive ticks (~800ms)
+              if (trimmed === lastText) {
+                if (++stableTicks >= 2) {
+                  console.log(`[geminiweb] Text captured via stability (${trimmed.length} chars).`);
+                  return trimmed;
+                }
+              } else {
+                stableTicks = 0;
+              }
+            } else {
+              stableTicks = 0;
+            }
+            lastText = trimmed;
+          }
+
+          await page.waitForTimeout(400);
+        }
+
+        if (lastText.length > 0) {
+          console.log(`[geminiweb] Returning last captured text at deadline (${lastText.length} chars).`);
+          return lastText;
+        }
+        throw new Error(`Timed out waiting for Gemini text response (${Math.round(timeoutMs / 1000)}s)`);
+      } finally {
         try {
-          const send = page.locator(SELECTORS.sendButton.join(", ")).first();
-          if (await send.isVisible({ timeout: 1000 }).catch(() => false)) {
-            await send.click({ timeout: 2000 }).catch(() => {});
-          } else {
-            await editor.focus().catch(() => {});
-            await page.keyboard.press("Enter").catch(() => {});
+          if (page && !page.isClosed()) {
+            await page.evaluate(() => {
+              window.stop?.();
+            }).catch(() => {});
           }
         } catch (_) {}
       }
-    }
-
-    const probe = await page.evaluate((prevCount) => {
-      const toastEl = document.querySelector('mat-snack-bar-container, [role="alert"]');
-      const toastMsg = toastEl ? (toastEl.innerText || "").trim() : null;
-
-      const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
-      const isGenerating = Boolean(
-        stopBtn &&
-        window.getComputedStyle(stopBtn).display !== "none" &&
-        window.getComputedStyle(stopBtn).visibility !== "hidden" &&
-        stopBtn.offsetWidth > 0
-      );
-
-      const turns = document.querySelectorAll("model-response");
-      let text = "";
-      let hasCopyBtn = false;
-      if (turns.length > prevCount) {
-        const last = turns[turns.length - 1];
-        const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
-        text = (content.innerText || "").trim();
-        hasCopyBtn = Boolean(last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]'));
-      } else if (turns.length > 0) {
-        // Fallback: If turn count did not strictly exceed prevCount (e.g. baseline counted stale DOM or reset occurred),
-        // inspect the last turn if it has active completion markers or content
-        const last = turns[turns.length - 1];
-        const copyBtn = last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]');
-        const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
-        const candidate = (content.innerText || "").trim();
-        if (copyBtn || isGenerating || candidate.length > 30) {
-          text = candidate;
-          hasCopyBtn = Boolean(copyBtn);
-        }
-      }
-
-      return { toastMsg, isGenerating, hasCopyBtn, text };
-    }, countBefore).catch(() => ({ toastMsg: null, isGenerating: false, hasCopyBtn: false, text: "" }));
-
-    if (probe.toastMsg && /limit|quota|error|try again|failed|unable/i.test(probe.toastMsg)) {
-      throw new Error(`GEMINI_ERROR: ${probe.toastMsg}`);
-    }
-
-    const trimmed = probe.text;
-    if (trimmed.length > 0) {
-      // Fast-path A: Copy button rendered = generation definitely complete (any non-empty text)
-      if (probe.hasCopyBtn && !probe.isGenerating) {
-        console.log(`[geminiweb] Text captured via Copy button + not-generating (${trimmed.length} chars).`);
-        return trimmed;
-      }
-      // Fast-path B: Copy button present even while still in streaming (text is already final for this turn)
-      if (probe.hasCopyBtn && trimmed.length > 5) {
-        console.log(`[geminiweb] Text captured via Copy button detection (${trimmed.length} chars).`);
-        return trimmed;
-      }
-      if (!probe.isGenerating) {
-        // Immediate JSON resolution: stable closed JSON for 1 tick (relax length threshold)
-        if (trimmed === lastText && trimmed.includes("{") && trimmed.includes("}") && trimmed.length > 10) {
-          console.log(`[geminiweb] JSON captured immediately (${trimmed.length} chars).`);
-          return trimmed;
-        }
-        // Stability fallback: same text for 2 consecutive ticks (~800ms)
-        if (trimmed === lastText) {
-          if (++stableTicks >= 2) {
-            console.log(`[geminiweb] Text captured via stability (${trimmed.length} chars).`);
-            return trimmed;
-          }
-        } else {
-          stableTicks = 0;
-        }
-      } else {
-        stableTicks = 0;
-      }
-      lastText = trimmed;
-    }
-
-    await page.waitForTimeout(400);
-  }
-
-  if (lastText.length > 0) {
-    console.log(`[geminiweb] Returning last captured text at deadline (${lastText.length} chars).`);
-    return lastText;
-  }
-  throw new Error(`Timed out waiting for Gemini text response (${Math.round(timeoutMs / 1000)}s)`);
+    },
+    { page, accountId: resolvedAccountId, signal, ceilingMs: HARD_GENERATION_CEILING_MS }
+  );
 }
 
 export async function debugPage(page) {
