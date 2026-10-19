@@ -14,8 +14,11 @@ export const HARD_GENERATION_CEILING_MS = 150000; // 150s absolute per-account c
 
 export async function withGenerationCeiling(fn, { page = null, accountId = null, ceilingMs = HARD_GENERATION_CEILING_MS, signal = null } = {}) {
   let timer = null;
+  let settled = false;
   const timeoutPromise = new Promise((_, reject) => {
     timer = setTimeout(async () => {
+      if (settled) return;
+      settled = true;
       const targetId = accountId || getAccountIdForPage(page);
       console.warn(`[geminiweb] Hard generation ceiling breached (${Math.round(ceilingMs / 1000)}s) for ${targetId || "unknown account"}. Closing profile context...`);
       try {
@@ -31,9 +34,17 @@ export async function withGenerationCeiling(fn, { page = null, accountId = null,
     }, ceilingMs);
   });
 
+  const fnPromise = (async () => fn())();
+  // Absorb background rejection from fnPromise if timeoutPromise wins and tears down the browser,
+  // preventing unhandledRejection from crashing the Node.js server.
+  fnPromise.catch(() => {});
+
   try {
-    return await Promise.race([fn(), timeoutPromise]);
+    const result = await Promise.race([fnPromise, timeoutPromise]);
+    settled = true;
+    return result;
   } finally {
+    settled = true;
     if (timer) clearTimeout(timer);
   }
 }
@@ -58,12 +69,16 @@ export const SELECTORS = {
   ],
   fileInput: ['input[type="file"][accept*="image"]', 'input[type="file"]'],
   attachButton: [
-    'mat-icon.upload-icon',
-    'button[aria-label*="Upload and tools" i]',
     'button[aria-label*="Upload & tools" i]',
+    'button[aria-label*="Upload and tools" i]',
+    'button[aria-label*="Add files" i]',
+    'button.menu-placeholder-button',
     'button[aria-label*="Upload" i]:not(nav *):not(aside *)',
+    'button[aria-label*="Add" i]:not(nav *):not(aside *)',
+    'button:has(mat-icon.upload-icon)',
     'button:has(mat-icon[data-mat-icon-name*="add"]):not(nav *):not(aside *)',
     '[aria-label*="Upload" i]:not(nav *):not(aside *)',
+    'mat-icon.upload-icon',
     'mat-icon:has-text("plus")',
   ],
   uploadMenuItem: [
@@ -81,6 +96,34 @@ export const SELECTORS = {
   signedInAvatar: ['[aria-label*="Google Account"]', '[aria-label*="@"]', '.gb_A'],
   signInButton: ['a[href*="accounts.google.com"]', 'button:has-text("Sign in")'],
 };
+
+async function getVisibleAttachButton(page) {
+  for (const sel of SELECTORS.attachButton) {
+    const loc = page.locator(sel);
+    const count = await loc.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      const el = loc.nth(i);
+      if (await el.isVisible().catch(() => false)) {
+        return el;
+      }
+    }
+  }
+  return null;
+}
+
+async function getVisibleUploadItem(page) {
+  for (const sel of SELECTORS.uploadMenuItem) {
+    const loc = page.locator(sel);
+    const count = await loc.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      const el = loc.nth(i);
+      if (await el.isVisible().catch(() => false)) {
+        return el;
+      }
+    }
+  }
+  return null;
+}
 
 async function firstVisible(page, candidates, { timeout = 5000 } = {}) {
   const list = [].concat(candidates);
@@ -164,33 +207,47 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
   // 3. Strategy B (UI fallback clicking): Fast 8s failover timeout
-  const attachSelector = SELECTORS.attachButton.join(", ");
-  const attachLoc = page.locator(attachSelector).first();
-  await attachLoc.waitFor({ state: "visible", timeout: 10000 });
+  let uploadItem = await getVisibleUploadItem(page);
 
-  const uploadMenuSelector = SELECTORS.uploadMenuItem.join(", ");
-  const uploadItem = page.locator(uploadMenuSelector).first();
-
-  let isMenuOpen = await uploadItem.isVisible().catch(() => false);
-  if (!isMenuOpen) {
+  if (!uploadItem) {
     console.log("[geminiweb] Clicking attach button...");
-    await attachLoc.click({ timeout: 4000 }).catch(() => {});
-    // Wait for composer idle state & Angular dropdown animation
-    isMenuOpen = await uploadItem.waitFor({ state: "visible", timeout: 4000 }).then(() => true).catch(() => false);
-    if (!isMenuOpen) {
-      await page.waitForTimeout(300);
-      await attachLoc.click({ force: true, timeout: 3000 }).catch(() => {});
-      isMenuOpen = await uploadItem.waitFor({ state: "visible", timeout: 4000 }).then(() => true).catch(() => false);
+    let attachBtn = await getVisibleAttachButton(page);
+    if (!attachBtn) {
+      await page.waitForTimeout(500);
+      attachBtn = await getVisibleAttachButton(page);
+    }
+
+    if (attachBtn) {
+      await attachBtn.click({ timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(500);
+      uploadItem = await getVisibleUploadItem(page);
+      if (!uploadItem) {
+        await page.waitForTimeout(300);
+        await attachBtn.click({ force: true, timeout: 3000 }).catch(() => {});
+        await page.waitForTimeout(500);
+        uploadItem = await getVisibleUploadItem(page);
+      }
     }
   }
 
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
   console.log("[geminiweb] Binding files via filechooser...");
-  const [fileChooser] = await Promise.all([
-    page.waitForEvent("filechooser", { timeout: 6000 }).catch(() => null),
-    uploadItem.click({ timeout: 4000 }).catch(() => {})
-  ]);
+  let fileChooser = null;
+  if (uploadItem) {
+    const res = await Promise.all([
+      page.waitForEvent("filechooser", { timeout: 6000 }).catch(() => null),
+      uploadItem.click({ timeout: 4000 }).catch(() => {})
+    ]);
+    fileChooser = res[0];
+  } else {
+    const fallbackItem = page.locator(SELECTORS.uploadMenuItem.join(", ")).first();
+    const res = await Promise.all([
+      page.waitForEvent("filechooser", { timeout: 6000 }).catch(() => null),
+      fallbackItem.click({ timeout: 4000 }).catch(() => {})
+    ]);
+    fileChooser = res[0];
+  }
 
   if (fileChooser) {
     await fileChooser.setFiles(imagePaths);

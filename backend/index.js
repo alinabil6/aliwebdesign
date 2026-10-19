@@ -133,4 +133,13 @@ async function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
+// Safeguard long-running fleet operations against abrupt process exits
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] Unhandled Rejection (intercepted to keep server alive):", reason?.message || reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[process] Uncaught Exception (intercepted to keep server alive):", err?.message || err);
+});
+
+
 export { app, server, shutdown };
