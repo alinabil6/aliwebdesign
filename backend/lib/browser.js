@@ -156,7 +156,8 @@ export async function killOrphanProcesses(profileDir) {
   if (process.platform === "win32") {
     // Fast process termination without heavy WMI CIM queries that saturate CPU
     const safe = profileDir.replace(/'/g, "''");
-    const script = `Get-Process chrome, brave -ErrorAction SilentlyContinue | Where-Object { \$_.Path } | ForEach-Object { \$id = \$_.Id; \$cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = \$id").CommandLine; if (\$cmd -and \$cmd.Contains('${safe}')) { Stop-Process -Id \$id -Force -ErrorAction SilentlyContinue } }`;
+    const base = path.basename(profileDir).replace(/'/g, "''");
+    const script = `Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'brave.exe'" -ErrorAction SilentlyContinue | Where-Object { \$_.CommandLine -and (\$_.CommandLine.Contains('${safe}') -or \$_.CommandLine.Contains('${base}')) } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }`;
     try {
       const encoded = Buffer.from(script, "utf16le").toString("base64");
       await execAsync(`powershell -NoProfile -EncodedCommand ${encoded}`, { stdio: "ignore", timeout: 4000 });

@@ -2225,24 +2225,25 @@ function openLibraryPicker({ currentCount = 0, onConfirm = null } = {}) {
   const subEl = $("#prepLibSub");
   if (!modal || !grid || !countEl || !confirmBtn || !subEl) return;
 
-  // Always bind the active caller session cleanly on every open
-  activePickerSession = {
+  // Each open builds a fresh session object that OWNS all mutable state and
+  // render logic. The once-wired DOM handlers below always delegate to
+  // `activePickerSession`, so a second open (e.g. Magic Listing after Prepare
+  // Designs) can never re-render with a stale first-call closure — the bug
+  // that made freshly generated designs disappear the moment they were clicked.
+  const session = {
     currentCount: Math.max(0, currentCount),
     onConfirm: typeof onConfirm === "function" ? onConfirm : null,
+    rows: [],
+    selected: new Set(),
   };
 
-  let rows = [];
-  const selected = new Set();
+  session.getRemaining = () => Math.max(0, 100 - session.currentCount);
 
-  function getRemaining() {
-    return Math.max(0, 100 - (activePickerSession ? activePickerSession.currentCount : 0));
-  }
-
-  function render() {
-    const remaining = getRemaining();
-    grid.innerHTML = rows.map((d) => {
-      const disabled = remaining <= 0 && !selected.has(d.id);
-      const checked = selected.has(d.id);
+  session.render = () => {
+    const remaining = session.getRemaining();
+    grid.innerHTML = session.rows.map((d) => {
+      const disabled = remaining <= 0 && !session.selected.has(d.id);
+      const checked = session.selected.has(d.id);
       const label = (d.feature || "design").replace(/-/g, " ");
       const cleanTitle = d.user_input && d.user_input !== d.feature ? d.user_input : label;
       return `
@@ -2254,59 +2255,69 @@ function openLibraryPicker({ currentCount = 0, onConfirm = null } = {}) {
         </div>`;
     }).join("");
     renderIcons();
-    countEl.textContent = `${selected.size} selected`;
-    confirmBtn.disabled = selected.size === 0;
+    countEl.textContent = `${session.selected.size} selected`;
+    confirmBtn.disabled = session.selected.size === 0;
     subEl.textContent = remaining > 0
       ? `Select up to ${remaining} more design${remaining === 1 ? "" : "s"} to add to the queue.`
       : "Queue is full (100/100). Deselect some to add more.";
-  }
+  };
 
-  function close() {
+  session.close = () => {
     modal.classList.add("hidden");
-    selected.clear();
-    activePickerSession = null;
-  }
+    session.selected.clear();
+    if (activePickerSession === session) activePickerSession = null;
+  };
 
-  // Wire static DOM events once — dynamic data is read from activePickerSession
+  activePickerSession = session;
+
+  // Wire static DOM events once — every handler reads the CURRENT session.
   if (!modal.dataset.libPickerWired) {
     modal.dataset.libPickerWired = "1";
-    $("#prepLibraryClose")?.addEventListener("click", close);
-    $("#prepLibCancel")?.addEventListener("click", close);
+    $("#prepLibraryClose")?.addEventListener("click", () => activePickerSession?.close());
+    $("#prepLibCancel")?.addEventListener("click", () => activePickerSession?.close());
     modal.addEventListener("click", (e) => {
-      if (e.target === modal) close();
+      if (e.target === modal) activePickerSession?.close();
     });
 
     grid.addEventListener("click", (e) => {
+      const s = activePickerSession;
+      if (!s) return;
       const item = e.target.closest(".prep-lib-item");
       if (!item || item.classList.contains("disabled")) return;
       const id = item.dataset.id;
-      if (selected.has(id)) {
-        selected.delete(id);
+      if (s.selected.has(id)) {
+        s.selected.delete(id);
       } else {
-        const remaining = getRemaining();
-        if (selected.size >= remaining) return;
-        selected.add(id);
+        const remaining = s.getRemaining();
+        if (s.selected.size >= remaining) return;
+        s.selected.add(id);
       }
-      render();
+      s.render();
     });
 
     $("#prepLibSelectAll")?.addEventListener("click", () => {
-      const remaining = getRemaining();
-      selected.clear();
-      rows.slice(0, remaining).forEach((d) => selected.add(d.id));
-      render();
+      const s = activePickerSession;
+      if (!s) return;
+      const remaining = s.getRemaining();
+      s.selected.clear();
+      s.rows.slice(0, remaining).forEach((d) => s.selected.add(d.id));
+      s.render();
     });
 
     $("#prepLibDeselectAll")?.addEventListener("click", () => {
-      selected.clear();
-      render();
+      const s = activePickerSession;
+      if (!s) return;
+      s.selected.clear();
+      s.render();
     });
 
     confirmBtn.addEventListener("click", async () => {
-      const chosen = rows.filter((d) => selected.has(d.id));
+      const s = activePickerSession;
+      if (!s) return;
+      const chosen = s.rows.filter((d) => s.selected.has(d.id));
       if (!chosen.length) return;
 
-      const sessionCallback = activePickerSession ? activePickerSession.onConfirm : null;
+      const sessionCallback = s.onConfirm;
       confirmBtn.disabled = true;
       confirmBtn.textContent = "Loading...";
 
@@ -2328,16 +2339,17 @@ function openLibraryPicker({ currentCount = 0, onConfirm = null } = {}) {
         console.error("Failed to load designs from library:", err);
       } finally {
         confirmBtn.disabled = false;
-        confirmBtn.textContent = "Add selected";
-        close();
+        confirmBtn.innerHTML = '<i data-lucide="plus"></i> Add selected';
+        renderIcons();
+        s.close();
       }
     });
   }
 
   // Load fresh library designs on every modal launch
   api("/api/designs?pageSize=120").then((data) => {
-    rows = data.designs || data.rows || [];
-    render();
+    session.rows = data.designs || data.rows || [];
+    session.render();
     modal.classList.remove("hidden");
   }).catch((err) => {
     console.error("Failed to fetch designs for picker:", err);
@@ -3091,52 +3103,57 @@ function renderVariations() {
       .filter(Boolean);
 
     try {
-      for (let i = 0; i < baseFiles.length; i++) {
-        if (abortController.signal.aborted) break;
-        tracker.startItem(i);
+          // FIX: Fan every uploaded design out to the fleet IN PARALLEL instead of
+          // awaiting each design's full batch before starting the next. Previously
+          // 4 uploaded images ran as 4 sequential fleet batches, so only one
+          // account was ever busy at a time and the whole run took 4× as long.
+          // Each request is its own fleet batch, so firing them together lets the
+          // backend lease a distinct account per design simultaneously.
+          await Promise.all(baseFiles.map((file, i) => {
+            if (abortController.signal.aborted) return Promise.resolve();
+            tracker.startItem(i);
 
-        // Map each uploaded design to its corresponding niche idea (1-to-1)
-        // when multiple designs are uploaded and multiple ideas are provided.
-        const targetNiche = (baseFiles.length > 1 && parsedIdeas.length > 1)
-          ? parsedIdeas[i % parsedIdeas.length]
-          : nicheText;
+            // Map each uploaded design to its corresponding niche idea (1-to-1)
+            // when multiple designs are uploaded and multiple ideas are provided.
+            const targetNiche = (baseFiles.length > 1 && parsedIdeas.length > 1)
+              ? parsedIdeas[i % parsedIdeas.length]
+              : nicheText;
 
-        const fd = new FormData();
-        fd.append("source", baseFiles[i]);
-        fd.append("niche", targetNiche);
-        fd.append("count", count);
-        fd.append("bg_color", selectedBg);
-        fd.append("aspectRatio", getNvShape());
-        // Per-design style takes priority; falls back to the global pick.
-        const perDesign = designAnalyses[i];
-        appendMagicStyle(fd, perDesign?.primaryStyle || magicStyle.get());
-        fd.append("manualStyle", ($("#nvManualStyle")?.value || "").trim());
+            const fd = new FormData();
+            fd.append("source", file);
+            fd.append("niche", targetNiche);
+            fd.append("count", count);
+            fd.append("bg_color", selectedBg);
+            fd.append("aspectRatio", getNvShape());
+            // Per-design style takes priority; falls back to the global pick.
+            const perDesign = designAnalyses[i];
+            appendMagicStyle(fd, perDesign?.primaryStyle || magicStyle.get());
+            fd.append("manualStyle", ($("#nvManualStyle")?.value || "").trim());
 
-        // Stream each finished design back as it completes on the fleet.
-        await fetchStreamNDJSON(
-          "/api/generate/niche-variations",
-          { method: "POST", body: fd, signal: abortController.signal },
-          (payload) => {
-            if (payload.event === "design" && payload.design) {
-              const globalSlot = i * count + (payload.slotIndex || 0);
-              resolvePlaceholder(`nv-slot-${globalSlot}`, payload.design);
-              allDesigns.push(payload.design);
-              $("#nvOutCount").textContent = `${allDesigns.length} generated`;
-            } else if (payload.event === "slot_failed") {
-              const globalSlot = i * count + (payload.slotIndex || 0);
-              failPlaceholder(`nv-slot-${globalSlot}`, payload.error || "Generation failed");
-            } else if (payload.event === "error") {
-              console.error(`Design ${i + 1} error:`, payload.error);
-              for (let s = 0; s < count; s++) {
-                failPlaceholder(`nv-slot-${i * count + s}`, payload.error || "Failed");
+            // Stream each finished design back as it completes on the fleet.
+            return fetchStreamNDJSON(
+              "/api/generate/niche-variations",
+              { method: "POST", body: fd, signal: abortController.signal },
+              (payload) => {
+                if (payload.event === "design" && payload.design) {
+                  const globalSlot = i * count + (payload.slotIndex || 0);
+                  resolvePlaceholder(`nv-slot-${globalSlot}`, payload.design);
+                  allDesigns.push(payload.design);
+                  $("#nvOutCount").textContent = `${allDesigns.length} generated`;
+                } else if (payload.event === "slot_failed") {
+                  const globalSlot = i * count + (payload.slotIndex || 0);
+                  failPlaceholder(`nv-slot-${globalSlot}`, payload.error || "Generation failed");
+                } else if (payload.event === "error") {
+                  console.error(`Design ${i + 1} error:`, payload.error);
+                  for (let s = 0; s < count; s++) {
+                    failPlaceholder(`nv-slot-${i * count + s}`, payload.error || "Failed");
+                  }
+                }
               }
-            }
-          }
-        );
-        tracker.finishItem(i);
-      }
-      tracker.completeAll();
-    } catch (err) {
+            ).finally(() => tracker.finishItem(i));
+          }));
+          tracker.completeAll();
+        } catch (err) {
       if (err.name !== "AbortError") {
         alert("Generation stopped or failed: " + err.message);
       }
@@ -3603,18 +3620,21 @@ function renderMagicListing() {
       labelEl.textContent =
         `Fleet distribution: processing ${designs.length} design(s) across all ready accounts in parallel...`;
 
-      const res = await fetch("/api/magic-listing/batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          designs,
-          referenceData,
-          platform: currentPlatform,
-        }),
-        // FIX: 3-minute client-side timeout prevents the UI from hanging
-        // forever at 95% if the backend stops responding.
-        signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(180000)]),
-      });
+      // FIX: Scale the client timeout with the batch size instead of a fixed
+            // 3 minutes. The backend runs up to 4 accounts in parallel, each listing
+            // taking up to ~110s worst-case, so a fixed 180s cap aborted healthy
+            // batches of 4+ designs and surfaced as a bogus "delay/failure".
+            const mlTimeoutMs = Math.max(180000, Math.ceil(designs.length / 4) * 120000 + 60000);
+            const res = await fetch("/api/magic-listing/batch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                designs,
+                referenceData,
+                platform: currentPlatform,
+              }),
+              signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(mlTimeoutMs)]),
+            });
 
       if (!res.ok) {
         let errMsg = `Request failed (${res.status})`;

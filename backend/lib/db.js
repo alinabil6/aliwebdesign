@@ -156,18 +156,22 @@ const accountStmts = {
   listReady: db.prepare(
     `SELECT * FROM browser_accounts WHERE active = 1 AND status = 'ready' ORDER BY last_used_at ASC NULLS FIRST, added_at ASC, rowid ASC`
   ),
-  // Atomic claim: selects the least recently used ready account and marks it 'running' in a single step
-  claimNextReady: db.prepare(`
-    UPDATE browser_accounts
-       SET status = 'running'
-     WHERE id = (
-       SELECT id FROM browser_accounts
-        WHERE active = 1 AND status = 'ready'
-        ORDER BY last_used_at ASC NULLS FIRST, added_at ASC
-        LIMIT 1
-     )
-    RETURNING *
-  `),
+  // Atomic claim: selects the least recently used ready account and marks it 'running' in a single step.
+    // last_used_at is stamped at CLAIM time (not just on success) so the runtime
+    // watchdog measures "stuck" from when the generation actually started — an
+    // account that was idle for a while and then begins a long generation can no
+    // longer be falsely reset to 'ready' mid-flight.
+    claimNextReady: db.prepare(`
+      UPDATE browser_accounts
+         SET status = 'running', last_used_at = datetime('now')
+       WHERE id = (
+         SELECT id FROM browser_accounts
+          WHERE active = 1 AND status = 'ready'
+          ORDER BY last_used_at ASC NULLS FIRST, added_at ASC
+          LIMIT 1
+       )
+      RETURNING *
+    `),
   insert: db.prepare(
     `INSERT INTO browser_accounts (id, email, browser, profile_dir, status, usage_daily, usage_weekly, last_error)
      VALUES (@id, @email, @browser, @profile_dir, @status, @usage_daily, @usage_weekly, @last_error)`
@@ -218,7 +222,7 @@ export function claimNextReadyAccount(excludeIds = []) {
   const placeholders = excludeIds.map(() => "?").join(",");
   const stmt = db.prepare(`
     UPDATE browser_accounts
-       SET status = 'running'
+         SET status = 'running', last_used_at = datetime('now')
      WHERE id = (
        SELECT id FROM browser_accounts
         WHERE active = 1 AND status = 'ready' AND id NOT IN (${placeholders})
@@ -331,14 +335,21 @@ export function reconcileAccountStates() {
 //
 // FIX: The boot sweep only runs at startup; a hung browser during runtime
 // would permanently strand accounts. This interval checks every 5 minutes
-// and resets any account stuck in 'running' or 'generating' for > 5 min.
+// and resets any account stuck in 'running' or 'generating' for > 15 min.
+//
+// The threshold was raised from 5 → 15 minutes because a single generation
+// (85s monitor + two 45s in-session nudges + attachment upload + up to 3
+// fleet retries) can legitimately exceed 5 minutes. With last_used_at now
+// stamped at CLAIM time, a 5-minute threshold would reset a healthy account
+// mid-generation, letting a second worker double-lease the same profile and
+// causing the "one account works then breaks" cascade.
 // ────────────────────────────────────────────────
 const _stuckAccountWatchdog = db.prepare(
   `UPDATE browser_accounts
       SET status = 'ready'
     WHERE active = 1
       AND status IN ('running', 'generating')
-      AND last_used_at < datetime('now', '-5 minutes')`
+      AND last_used_at < datetime('now', '-15 minutes')`
 );
 setInterval(() => {
   try {
