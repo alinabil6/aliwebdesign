@@ -6563,6 +6563,60 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Documentation modal — open from top bar, close via ✕, backdrop click,
+  // or Escape. Wire section navigation tabs and one-click copy email button.
+  const docModal = $("#docModal");
+  const docBtn = $("#docBtn");
+  if (docModal && docBtn) {
+    const openDoc = () => {
+      docModal.classList.add("active");
+      renderIcons();
+    };
+    const closeDoc = () => docModal.classList.remove("active");
+
+    docBtn.addEventListener("click", openDoc);
+    $("#docModalClose")?.addEventListener("click", closeDoc);
+    docModal.addEventListener("click", (e) => {
+      if (e.target === docModal) closeDoc();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && docModal.classList.contains("active")) closeDoc();
+    });
+
+    // Quick navigation tabs
+    const navTabs = docModal.querySelectorAll(".doc-nav-tab");
+    navTabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const targetId = tab.dataset.target;
+        const targetEl = docModal.querySelector(`#${targetId}`);
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          navTabs.forEach((t) => t.classList.remove("active"));
+          tab.classList.add("active");
+        }
+      });
+    });
+
+    // Copy email button
+    const copyEmailBtn = $("#docCopyEmailBtn");
+    if (copyEmailBtn) {
+      copyEmailBtn.addEventListener("click", async () => {
+        const email = copyEmailBtn.dataset.email || "nabilali2000marrakech@gmail.com";
+        const ok = await copyToClipboard(email);
+        if (ok) {
+          copyEmailBtn.classList.add("copied");
+          copyEmailBtn.innerHTML = `<i data-lucide="check"></i> <span>Copied!</span>`;
+          renderIcons();
+          setTimeout(() => {
+            copyEmailBtn.classList.remove("copied");
+            copyEmailBtn.innerHTML = `<i data-lucide="copy"></i> <span>Copy Email</span>`;
+            renderIcons();
+          }, 2000);
+        }
+      });
+    }
+  }
+
   // About Us modal — open from the top-bar link, close via ✕, backdrop click
   // or Escape. Icons re-render on open so Lucide mounts inside the dialog.
   const aboutModal = $("#aboutModal");

@@ -101,6 +101,10 @@
           <i data-lucide="sparkles" class="style-catalog-icon"></i>
           <span class="style-catalog-label">Style Catalog</span>
         </button>
+        <button class="doc-btn" id="docBtn" title="Documentation & User Guide" aria-label="Documentation & User Guide">
+          <i data-lucide="book-open" class="doc-icon"></i>
+          <span class="doc-label">Documentation</span>
+        </button>
         <button class="nav-about-btn" id="navAboutBtn" title="About Magic Fabrica Studio">
           <i data-lucide="info"></i> About
         </button>
@@ -323,6 +327,403 @@
       </header>
       <input type="text" class="style-catalog-search" id="styleCatalogSearch" placeholder="Search styles..." />
       <div class="style-catalog-grid" id="styleCatalogGrid"></div>
+    </div>
+  </div>
+
+  
+  <!-- Documentation Modal -->
+  <div class="doc-modal-backdrop" id="docModal" role="dialog" aria-modal="true" aria-labelledby="docModalTitle">
+    <div class="doc-modal-content">
+      <!-- Header -->
+      <header class="doc-modal-header">
+        <div class="doc-brand-group">
+          <img src="LOGO.png" alt="Magic Fabrica Studio Logo" class="doc-brand-logo" />
+          <div class="doc-brand-meta">
+            <div class="doc-title-row">
+              <h2 class="doc-modal-title" id="docModalTitle"><span class="gradient-text">Magic Fabrica Studio</span></h2>
+              <span class="doc-version-pill">v1.0.6</span>
+              <span class="doc-guide-pill">Official Guide</span>
+            </div>
+            <p class="doc-modal-sub">Comprehensive Workflow Guide &amp; Autonomous POD Production Manual</p>
+          </div>
+        </div>
+        <button class="doc-modal-close" id="docModalClose" title="Close Documentation" aria-label="Close Documentation">
+          <i data-lucide="x"></i>
+        </button>
+      </header>
+
+      <!-- Quick Navigation Bar -->
+      <nav class="doc-nav-bar" aria-label="Documentation navigation">
+        <button class="doc-nav-tab active" data-target="doc-overview">
+          <i data-lucide="info"></i>
+          <span>Overview</span>
+        </button>
+        <button class="doc-nav-tab" data-target="doc-workflow">
+          <i data-lucide="git-branch"></i>
+          <span>Master Workflow</span>
+        </button>
+        <button class="doc-nav-tab" data-target="doc-prefer">
+          <i data-lucide="check-circle-2"></i>
+          <span>Best Practices</span>
+        </button>
+        <button class="doc-nav-tab" data-target="doc-avoid">
+          <i data-lucide="alert-triangle"></i>
+          <span>What to Avoid</span>
+        </button>
+        <button class="doc-nav-tab" data-target="doc-troubleshoot">
+          <i data-lucide="wrench"></i>
+          <span>Troubleshooting</span>
+        </button>
+        <button class="doc-nav-tab" data-target="doc-contact">
+          <i data-lucide="mail"></i>
+          <span>Contact &amp; Feedback</span>
+        </button>
+      </nav>
+
+      <!-- Body Scroll Container -->
+      <div class="doc-modal-body" id="docModalBody">
+
+        <!-- Section 1: Overview -->
+        <section class="doc-section" id="doc-overview">
+          <div class="doc-section-header">
+            <i data-lucide="sparkles" class="doc-section-icon"></i>
+            <h3 class="doc-section-title">Executive Summary</h3>
+          </div>
+          <div class="doc-card doc-overview-box">
+            <p class="doc-p doc-lead">
+              <strong>Magic Fabrica Studio</strong> is an autonomous Print-on-Demand (POD) production engine. It uses a pooled fleet of your Gemini accounts to generate, redraw, scale, post-process, and write SEO listings for commercial merch designs in bulk without API costs or rate-limit bottlenecks.
+            </p>
+            <div class="doc-pills-row">
+              <span class="doc-feature-pill"><i data-lucide="layers"></i> Fleet Load-Balancing</span>
+              <span class="doc-feature-pill"><i data-lucide="cpu"></i> 5 Generative Engines</span>
+              <span class="doc-feature-pill"><i data-lucide="scissors"></i> Transparent Print-Prep</span>
+              <span class="doc-feature-pill"><i data-lucide="tag"></i> Autonomous SEO</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 2: Master Workflow -->
+        <section class="doc-section" id="doc-workflow">
+          <div class="doc-section-header">
+            <i data-lucide="git-branch" class="doc-section-icon"></i>
+            <h3 class="doc-section-title">The End-to-End Master Workflow</h3>
+          </div>
+          <p class="doc-p doc-intro">
+            Follow this structured 4-stage pipeline to achieve maximum throughput, pristine graphic fidelity, and zero rate-limit interruptions.
+          </p>
+
+          <div class="doc-stages-stack">
+            <!-- Stage 1 -->
+            <div class="doc-card doc-stage-card">
+              <div class="doc-stage-badge">
+                <span class="doc-stage-num">Stage 1</span>
+                <span class="doc-stage-name">Connect Your Engine</span>
+                <span class="doc-stage-tag doc-tag-cyan">Gemini Accounts</span>
+              </div>
+              <p class="doc-stage-desc">
+                Before initiating design jobs, open <strong>Gemini Accounts</strong> located at the bottom of the left sidebar.
+              </p>
+              <ul class="doc-list">
+                <li>
+                  <strong>Connect Account Pool:</strong> Add up to 6 Google accounts and authenticate once inside the automated browser window. <span class="doc-tag doc-tag-success">Pro accounts recommended</span> for significantly faster renders, higher daily ceilings, and premium visual fidelity.
+                </li>
+                <li>
+                  <strong>Health &amp; Status Monitoring:</strong> Wait for each account status badge to switch to <span class="doc-tag doc-tag-success">Ready</span>. The internal scheduler automatically balances batch load across all active sessions and directs priority queues to the healthiest account marked with the <span class="doc-tag doc-tag-best">Best</span> badge.
+                </li>
+              </ul>
+            </div>
+
+            <!-- Stage 2 -->
+            <div class="doc-card doc-stage-card">
+              <div class="doc-stage-badge">
+                <span class="doc-stage-num">Stage 2</span>
+                <span class="doc-stage-name">Create &amp; Scale Artwork</span>
+                <span class="doc-stage-tag doc-tag-cyan">5 Creative Engines</span>
+              </div>
+              <p class="doc-stage-desc">
+                Select the generative tool matching your production entry point:
+              </p>
+              <div class="doc-engines-grid">
+                <div class="doc-engine-item">
+                  <div class="doc-engine-header">
+                    <i data-lucide="sparkles" class="doc-engine-icon"></i>
+                    <strong>AI Design Generator</strong>
+                    <span class="doc-engine-sub">Text to Image</span>
+                  </div>
+                  <p>
+                    Start from scratch. Enter a concise subject, select a solid backdrop, trigger <strong>Magic Style</strong> (or select from the <strong>Style Catalog</strong>), and set target batch quantity from 1 to 100 variations.
+                  </p>
+                </div>
+
+                <div class="doc-engine-item">
+                  <div class="doc-engine-header">
+                    <i data-lucide="sliders" class="doc-engine-icon"></i>
+                    <strong>Generate Variations</strong>
+                    <span class="doc-engine-sub">Niche Variations</span>
+                  </div>
+                  <p>
+                    Scale a winning layout. Upload your primary design and input target niches separated by commas (e.g. <em>Nurse, Firefighter, Cat Mom, Trucker</em>). The engine preserves overall typography and composition while swapping the central subject for each niche.
+                  </p>
+                </div>
+
+                <div class="doc-engine-item">
+                  <div class="doc-engine-header">
+                    <i data-lucide="pen-tool" class="doc-engine-icon"></i>
+                    <strong>Design to Design</strong>
+                    <span class="doc-engine-sub">Vector Redraw</span>
+                  </div>
+                  <p>
+                    Convert rough sketches or mockups. Drop up to 100 low-resolution concept graphics or product photos. The engine reconstructs them into clean, original, commercially viable 2D vector illustrations.
+                  </p>
+                </div>
+
+                <div class="doc-engine-item">
+                  <div class="doc-engine-header">
+                    <i data-lucide="grid" class="doc-engine-icon"></i>
+                    <strong>Pixel to Pixel</strong>
+                    <span class="doc-engine-sub">Strict Redraw</span>
+                  </div>
+                  <p>
+                    Execute 1:1 fidelity redrawing. Upgrade lower-resolution graphics to crisp vector artwork while maintaining exact silhouette geometry, proportions, and visual arrangement without artistic alterations.
+                  </p>
+                </div>
+
+                <div class="doc-engine-item">
+                  <div class="doc-engine-header">
+                    <i data-lucide="palette" class="doc-engine-icon"></i>
+                    <strong>Art Style + Niche</strong>
+                    <span class="doc-engine-sub">Style Fusion</span>
+                  </div>
+                  <p>
+                    Aesthetic cross-pollination. Upload your <strong>Subject/Niche</strong> image in the left frame and an <strong>Art Style</strong> reference in the right frame. The engine infuses the visual DNA of the reference onto the subject.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stage 3 -->
+            <div class="doc-card doc-stage-card">
+              <div class="doc-stage-badge">
+                <span class="doc-stage-num">Stage 3</span>
+                <span class="doc-stage-name">Post-Process for Print</span>
+                <span class="doc-stage-tag doc-tag-cyan">Prepare Designs</span>
+              </div>
+              <p class="doc-stage-desc">
+                Import generated outputs or load folders directly via <strong>From My Library</strong> for instant production standardization:
+              </p>
+              <div class="doc-prep-grid">
+                <div class="doc-prep-item">
+                  <div class="doc-prep-header">
+                    <i data-lucide="scissors" class="doc-prep-icon"></i>
+                    <strong>Remove Background</strong>
+                  </div>
+                  <p>Eliminate solid backdrops with edge antialiasing into crisp transparent PNGs ready for dark or light garment printing.</p>
+                </div>
+                <div class="doc-prep-item">
+                  <div class="doc-prep-header">
+                    <i data-lucide="layers" class="doc-prep-icon"></i>
+                    <strong>Upscale &amp; Resize</strong>
+                  </div>
+                  <p>Format to marketplace standards (e.g. <strong>4500 &times; 5400 px</strong> at 300 DPI for Amazon Merch) with Top or Center alignment.</p>
+                </div>
+                <div class="doc-prep-item">
+                  <div class="doc-prep-header">
+                    <i data-lucide="file-text" class="doc-prep-icon"></i>
+                    <strong>File Size Optimization</strong>
+                  </div>
+                  <p>High-efficiency lossless compression ensures fast uploads and prevents platform rejection limits.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stage 4 -->
+            <div class="doc-card doc-stage-card">
+              <div class="doc-stage-badge">
+                <span class="doc-stage-num">Stage 4</span>
+                <span class="doc-stage-name">Generate SEO Metadata</span>
+                <span class="doc-stage-tag doc-tag-cyan">Magic Listing</span>
+              </div>
+              <p class="doc-stage-desc">
+                Feed prepared artwork batches into <strong>Magic Listing</strong> and choose your target commercial destination:
+              </p>
+              <ul class="doc-list">
+                <li>
+                  <strong>Target Platforms:</strong> Built-in optimization algorithms for <span class="doc-tag doc-tag-blue">Amazon Merch on Demand</span>, <span class="doc-tag doc-tag-blue">TeePublic</span>, and <span class="doc-tag doc-tag-blue">Etsy</span>.
+                </li>
+                <li>
+                  <strong>Market Research Integration:</strong> Optionally supply competitor keywords or upload research data in CSV or TXT format into <strong>Reference Data</strong> for niche-specific search visibility.
+                </li>
+                <li>
+                  <strong>Autonomous SEO Deliverables:</strong> Generate trademark-vetted Titles, Brand Names, Feature Bullets, Descriptions, and High-converting Tags. Copy with one click or export an entire catalog as a <strong>CSV</strong>.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 3: Best Practices (Prefer) -->
+        <section class="doc-section" id="doc-prefer">
+          <div class="doc-section-header">
+            <i data-lucide="check-circle-2" class="doc-section-icon doc-color-success"></i>
+            <h3 class="doc-section-title">Best Practices (Recommended)</h3>
+          </div>
+          <div class="doc-rules-grid">
+            <div class="doc-card doc-rule-card prefer">
+              <div class="doc-rule-icon prefer"><i data-lucide="check"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Maintain 5+ Ready Accounts in Pool</h4>
+                <p>Standard free Google accounts permit roughly 30 to 60 image generations per 24 hours. Maintaining 5 or more active accounts ensures continuous batch generation without idle waiting periods. Pro accounts are highly recommended for higher limits.</p>
+              </div>
+            </div>
+
+            <div class="doc-card doc-rule-card prefer">
+              <div class="doc-rule-icon prefer"><i data-lucide="check"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Use Solid Contrasting Backgrounds</h4>
+                <p>When generating designs with intricate details or text, pick a solid contrasting background color (Black <code>#000000</code> or White <code>#FFFFFF</code>), then remove the background in <strong>Prepare Designs</strong> for clean, razor-sharp silhouettes.</p>
+              </div>
+            </div>
+
+            <div class="doc-card doc-rule-card prefer">
+              <div class="doc-rule-icon prefer"><i data-lucide="check"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Leverage Style Catalog &amp; Magic Style</h4>
+                <p>Keep your prompt descriptions concise (e.g. <em>"Retro raccoon drinking iced coffee"</em>). Allow the built-in <strong>60+ Style Catalog</strong> and <strong>Magic Style</strong> engine to automatically apply professional POD commercial styling directives.</p>
+              </div>
+            </div>
+
+            <div class="doc-card doc-rule-card prefer">
+              <div class="doc-rule-icon prefer"><i data-lucide="check"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Structure Niche Lists Cleanly</h4>
+                <p>In <strong>Niche Variations</strong>, delimit target topics clearly using standard commas or single line breaks (e.g. <code>bass fishing, golden retriever, vintage camper</code>) to ensure clean thematic separation across variations.</p>
+              </div>
+            </div>
+
+            <div class="doc-card doc-rule-card prefer">
+              <div class="doc-rule-icon prefer"><i data-lucide="check"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Organize Collections in My Library</h4>
+                <p>Group winning outputs into designated library folders right after generation. This enables instant two-click loading into <strong>Prepare Designs</strong> and <strong>Magic Listing</strong> without manual desktop file management.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 4: What to Avoid -->
+        <section class="doc-section" id="doc-avoid">
+          <div class="doc-section-header">
+            <i data-lucide="alert-triangle" class="doc-section-icon doc-color-danger"></i>
+            <h3 class="doc-section-title">Pitfalls &amp; Precautions (What to Avoid)</h3>
+          </div>
+          <div class="doc-rules-grid">
+            <div class="doc-card doc-rule-card avoid">
+              <div class="doc-rule-icon avoid"><i data-lucide="x"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Do Not Close or Interfere with Browser Sessions</h4>
+                <p>When the engine is performing account health checks or login tasks, allow the automated windows to complete their verification without manual closure. Never modify or delete the local <code>profiles</code> directory while the server is active.</p>
+              </div>
+            </div>
+
+            <div class="doc-card doc-rule-card avoid">
+              <div class="doc-rule-icon avoid"><i data-lucide="x"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Do Not Queue Massive Batches on a Single Account</h4>
+                <p>Sending batches of 50 or more requests to a single connected account can trigger Google rate-limit quarantines (15-minute cooldown). Scale your generation batch sizes according to the number of Ready accounts available.</p>
+              </div>
+            </div>
+
+            <div class="doc-card doc-rule-card avoid">
+              <div class="doc-rule-icon avoid"><i data-lucide="x"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Do Not Upload Apparel Mockups into Pixel to Pixel</h4>
+                <p><strong>Pixel to Pixel</strong> is strictly compositional and will replicate t-shirt folds, wrinkles, and fabric textures. Use <strong>Design to Design</strong> to isolate artwork from garment mockups, or supply clean isolated graphic files.</p>
+              </div>
+            </div>
+
+            <div class="doc-card doc-rule-card avoid">
+              <div class="doc-rule-icon avoid"><i data-lucide="x"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Avoid Trademarked Terms &amp; Protected IP</h4>
+                <p>Do not enter registered brand names, characters, or logos (e.g. Disney, Nike, Marvel) in prompt inputs or reference tags. While <strong>Magic Listing</strong> strips known infringements, clean inputs prevent provider refusal and marketplace flags.</p>
+              </div>
+            </div>
+
+            <div class="doc-card doc-rule-card avoid">
+              <div class="doc-rule-icon avoid"><i data-lucide="x"></i></div>
+              <div class="doc-rule-body">
+                <h4 class="doc-rule-heading">Do Not Repeatedly Click the Generate Button</h4>
+                <p>The queue scheduler intentionally staggers browser worker dispatch by 2.5 seconds per thread to keep system resources stable. Wait for the animated placeholder cards to appear rather than resubmitting requests.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 5: Troubleshooting -->
+        <section class="doc-section" id="doc-troubleshoot">
+          <div class="doc-section-header">
+            <i data-lucide="wrench" class="doc-section-icon doc-color-warn"></i>
+            <h3 class="doc-section-title">Quick Troubleshooting</h3>
+          </div>
+          <div class="doc-trouble-grid">
+            <div class="doc-card doc-trouble-card">
+              <div class="doc-trouble-header">
+                <i data-lucide="alert-triangle"></i>
+                <strong>"0 of X accounts ready" or Quarantined Tasks</strong>
+              </div>
+              <p>
+                This occurs when active accounts reach their daily rate limit or experience a momentary session expiration. Click the <span class="doc-tag doc-tag-cyan">Refresh</span> button in the top navigation bar to trigger an immediate health re-check, or add a fresh Google account under <strong>Gemini Accounts</strong>.
+              </p>
+            </div>
+
+            <div class="doc-card doc-trouble-card">
+              <div class="doc-trouble-header">
+                <i data-lucide="help-circle"></i>
+                <strong>Generation Returned Text Instead of an Image</strong>
+              </div>
+              <p>
+                The engine automatically detects conversational text replies and prompts Gemini to force an image render within the same session. If an account repeatedly returns text, rephrase the prompt into a declarative concept rather than an inquisitive question.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 6: Contact & Feedback -->
+        <section class="doc-section" id="doc-contact">
+          <div class="doc-section-header">
+            <i data-lucide="mail" class="doc-section-icon"></i>
+            <h3 class="doc-section-title">Feedback &amp; Direct Support</h3>
+          </div>
+          <div class="doc-card doc-contact-card">
+            <div class="doc-contact-left">
+              <img src="favicon.png" alt="Magic Fabrica Icon" class="doc-contact-icon" />
+              <div class="doc-contact-text">
+                <h4 class="doc-contact-heading">Questions, Feature Ideas, or Assistance?</h4>
+                <p class="doc-contact-sub">
+                  Our engineering team is dedicated to optimizing your POD production line. Direct feedback is always welcome.
+                </p>
+              </div>
+            </div>
+            <div class="doc-contact-actions">
+              <div class="doc-email-display">
+                <span class="doc-email-label">Official Support</span>
+                <span class="doc-email-val" id="docEmailVal">nabilali2000marrakech@gmail.com</span>
+              </div>
+              <div class="doc-btn-cluster">
+                <button class="doc-action-btn doc-copy-btn" id="docCopyEmailBtn" data-email="nabilali2000marrakech@gmail.com" title="Copy email address" aria-label="Copy email address">
+                  <i data-lucide="copy"></i>
+                  <span>Copy Email</span>
+                </button>
+                <a href="mailto:nabilali2000marrakech@gmail.com" class="doc-action-btn doc-mail-btn" title="Send email via mail client">
+                  <i data-lucide="external-link"></i>
+                  <span>Send Email</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
     </div>
   </div>
 
