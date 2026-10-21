@@ -1,8 +1,20 @@
 import { Router } from "express";
 import fs from "fs";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const archiver = require("archiver");
+import * as archiverPkg from "archiver";
+
+function createZipArchive(options = { zlib: { level: 6 } }) {
+  if (typeof archiverPkg.ZipArchive === "function") {
+    return new archiverPkg.ZipArchive(options);
+  }
+  const defaultExport = archiverPkg.default || archiverPkg;
+  if (typeof defaultExport === "function") {
+    return defaultExport("zip", options);
+  }
+  if (defaultExport && typeof defaultExport.ZipArchive === "function") {
+    return new defaultExport.ZipArchive(options);
+  }
+  throw new Error("Unable to initialize ZipArchive from archiver module");
+}
 import { resolveLibraryPath, removeFileSafe } from "../lib/files.js";
 import {
   getDesigns,
@@ -30,95 +42,141 @@ router.get("/", (req, res) => {
 
 // GET /api/designs/export?folder=&feature= — one zip of every matching output
 // image, flat-named by design id (ready for marketplace upload). Streams.
-router.get("/export", (req, res) => {
-  const { folder = null, feature = null } = req.query;
-  const f = folder || null;
-  const feat = feature || null;
+router.get("/export", async (req, res) => {
+  try {
+    const { folder = null, feature = null } = req.query;
+    const f = folder || null;
+    const feat = feature || null;
 
-  // getDesigns caps pageSize at 200 — page through to collect everything.
-  const rows = [];
-  let page = 1;
-  for (; ;) {
-    const { rows: chunk, total } = getDesigns({ folder: f, feature: feat, page, pageSize: 200 });
-    rows.push(...chunk);
-    if (page * 200 >= total) break;
-    page += 1;
+    // getDesigns caps pageSize at 200 — page through to collect everything.
+    const rows = [];
+    let page = 1;
+    for (; ;) {
+      const { rows: chunk, total } = getDesigns({ folder: f, feature: feat, page, pageSize: 200 });
+      rows.push(...chunk);
+      if (page * 200 >= total) break;
+      page += 1;
+    }
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "No designs match those filters" });
+    }
+
+    const filesToZip = [];
+    for (const d of rows) {
+      const abs = resolveLibraryPath(d.output_image_path);
+      if (abs && fs.existsSync(abs)) {
+        filesToZip.push({ abs, name: `${d.id}.png` });
+      }
+    }
+
+    if (filesToZip.length === 0) {
+      return res.status(404).json({ error: "No design image files found on disk" });
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="aliwebdesign-${stamp}.zip"`);
+
+    const archive = createZipArchive({ zlib: { level: 6 } });
+    archive.on("warning", (err) => {
+      if (err.code !== "ENOENT") console.error("zip warning:", err);
+    });
+    archive.on("error", (err) => {
+      console.error("zip error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Zip compression error: " + err.message });
+      } else {
+        res.destroy();
+      }
+    });
+
+    archive.pipe(res);
+    for (const f of filesToZip) {
+      archive.file(f.abs, { name: f.name });
+    }
+    await archive.finalize();
+  } catch (err) {
+    console.error("Export all designs route error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || "Failed to generate zip export" });
+    } else {
+      res.destroy();
+    }
   }
-
-  if (rows.length === 0) {
-    return res.status(404).json({ error: "No designs match those filters" });
-  }
-
-  const stamp = new Date().toISOString().slice(0, 10);
-  res.setHeader("Content-Type", "application/zip");
-  res.setHeader("Content-Disposition", `attachment; filename="aliwebdesign-${stamp}.zip"`);
-
-  const archive = archiver("zip", { zlib: { level: 9 } });
-  archive.on("warning", (err) => {
-    if (err.code !== "ENOENT") console.error("zip warning:", err);
-  });
-  archive.on("error", (err) => {
-    console.error("zip error:", err);
-    res.destroy();
-  });
-
-  archive.pipe(res);
-  for (const d of rows) {
-    const abs = resolveLibraryPath(d.output_image_path);
-    if (abs && fs.existsSync(abs)) archive.file(abs, { name: `${d.id}.png` });
-  }
-  archive.finalize();
 });
 
 // POST /api/designs/export-zip — one zip of the SELECTED design ids, named
 // cleanly from each design's title/prompt (e.g. design_01_golden_retriever.png).
 // body: { ids: string[] }. Streams a single attachment download.
-router.post("/export-zip", (req, res) => {
-  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
-  if (ids.length === 0) {
-    return res.status(400).json({ error: "ids array is required" });
+router.post("/export-zip", async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
+    if (ids.length === 0) {
+      return res.status(400).json({ error: "ids array is required" });
+    }
+
+    // Slug a design's display title into a filesystem-safe base name.
+    const slug = (raw) =>
+      String(raw || "design")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60) || "design";
+
+    const rows = [];
+    for (const id of ids) {
+      const d = getDesignById(id);
+      if (d) rows.push(d);
+    }
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "No matching designs found" });
+    }
+
+    const filesToZip = [];
+    rows.forEach((d, i) => {
+      const abs = resolveLibraryPath(d.output_image_path);
+      if (!abs || !fs.existsSync(abs)) return;
+      const title = d.user_input && d.user_input !== d.feature ? d.user_input : d.feature;
+      const ext = (String(d.output_image_path).match(/\.(\w{2,5})$/) || [null, "png"])[1].toLowerCase();
+      const name = `design_${String(i + 1).padStart(2, "0")}_${slug(title)}.${ext}`;
+      filesToZip.push({ abs, name });
+    });
+
+    if (filesToZip.length === 0) {
+      return res.status(404).json({ error: "Selected design image files were not found on disk" });
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="designs_export_${stamp}.zip"`);
+
+    const archive = createZipArchive({ zlib: { level: 6 } });
+    archive.on("warning", (err) => {
+      if (err.code !== "ENOENT") console.error("zip warning:", err);
+    });
+    archive.on("error", (err) => {
+      console.error("zip error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Zip compression error: " + err.message });
+      } else {
+        res.destroy();
+      }
+    });
+
+    archive.pipe(res);
+    for (const f of filesToZip) {
+      archive.file(f.abs, { name: f.name });
+    }
+    await archive.finalize();
+  } catch (err) {
+    console.error("Export zip route error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || "Failed to generate zip export" });
+    } else {
+      res.destroy();
+    }
   }
-
-  // Slug a design's display title into a filesystem-safe base name.
-  const slug = (raw) =>
-    String(raw || "design")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60) || "design";
-
-  const rows = [];
-  for (const id of ids) {
-    const d = getDesignById(id);
-    if (d) rows.push(d);
-  }
-  if (rows.length === 0) {
-    return res.status(404).json({ error: "No matching designs found" });
-  }
-
-  const stamp = new Date().toISOString().slice(0, 10);
-  res.setHeader("Content-Type", "application/zip");
-  res.setHeader("Content-Disposition", `attachment; filename="designs_export_${stamp}.zip"`);
-
-  const archive = archiver("zip", { zlib: { level: 9 } });
-  archive.on("warning", (err) => {
-    if (err.code !== "ENOENT") console.error("zip warning:", err);
-  });
-  archive.on("error", (err) => {
-    console.error("zip error:", err);
-    res.destroy();
-  });
-
-  archive.pipe(res);
-  rows.forEach((d, i) => {
-    const abs = resolveLibraryPath(d.output_image_path);
-    if (!abs || !fs.existsSync(abs)) return;
-    const title = d.user_input && d.user_input !== d.feature ? d.user_input : d.feature;
-    const ext = (String(d.output_image_path).match(/\.(\w{2,5})$/) || [null, "png"])[1].toLowerCase();
-    const name = `design_${String(i + 1).padStart(2, "0")}_${slug(title)}.${ext}`;
-    archive.file(abs, { name });
-  });
-  archive.finalize();
 });
 
 // PATCH /api/designs/:id — move to a folder
