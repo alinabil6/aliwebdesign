@@ -14,39 +14,85 @@ const router = Router();
 const form = multer().none();
 
 // POST /api/generate/text-to-image
-// multipart: prompt (text), prompts (JSON array of strings), count (1–100), manualStyle (optional)
+// multipart: prompt (text), prompts (JSON array of strings or prompt profile objects), count (1–100), manualStyle (optional)
 router.post("/text-to-image", form, async (req, res) => {
   try {
-    // Parse prompts: support array of prompts via req.body.prompts (JSON or array)
-    // or single prompt via req.body.prompt for backward compatibility.
-    let promptsList = [];
+    // Parse prompts: support array of prompt objects OR array of strings
+    // via req.body.prompts (JSON or array), or single prompt via req.body.prompt.
+    let rawPrompts = [];
     if (req.body.prompts) {
       try {
         const parsed = typeof req.body.prompts === "string" ? JSON.parse(req.body.prompts) : req.body.prompts;
         if (Array.isArray(parsed)) {
-          promptsList = parsed.map((p) => String(p || "").trim()).filter(Boolean);
+          rawPrompts = parsed;
         }
       } catch (_) {
         if (typeof req.body.prompts === "string") {
-          promptsList = [req.body.prompts.trim()].filter(Boolean);
+          rawPrompts = [req.body.prompts.trim()].filter(Boolean);
         }
       }
     }
-    if (promptsList.length === 0) {
+    if (rawPrompts.length === 0) {
       const single = String(req.body.prompt || "").trim();
       if (single) {
-        promptsList = [single];
+        rawPrompts = [single];
       }
     }
 
-    if (promptsList.length === 0) {
+    const defaultGlobalCount = Math.min(100, Math.max(1, parseInt(req.body.count, 10) || 1));
+    const defaultGlobalStyle = resolveStyle(req);
+    const defaultGlobalBg = req.body.bg_color || req.body.background_color || "";
+    const defaultGlobalRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
+
+    const normalizedPrompts = [];
+    for (const item of rawPrompts) {
+      if (typeof item === "string") {
+        const text = item.trim();
+        if (text) {
+          normalizedPrompts.push({
+            prompt: text,
+            aspectRatio: defaultGlobalRatio,
+            count: defaultGlobalCount,
+            bgColor: defaultGlobalBg,
+            style: defaultGlobalStyle,
+            styleId: defaultGlobalStyle.style_id,
+          });
+        }
+      } else if (item && typeof item === "object") {
+        const text = String(item.prompt || item.text || "").trim();
+        if (text) {
+          const itemRatio = String(item.aspectRatio || item.aspect_ratio || defaultGlobalRatio).trim();
+          const itemCount = Math.min(100, Math.max(1, parseInt(item.count || item.variations, 10) || defaultGlobalCount));
+          const itemBg = item.bg_color !== undefined ? item.bg_color : (item.bgColor !== undefined ? item.bgColor : defaultGlobalBg);
+
+          // Resolve per-prompt style
+          let itemStyle = defaultGlobalStyle;
+          if (item.manualStyle || item.style_directive || item.style_name || item.style_id || item.magicStyle) {
+            const manualStyle = String(item.manualStyle || "").trim();
+            const magicStyle = item.magicStyle || {};
+            const styleDirective = String(item.style_directive || magicStyle.directive || "").trim();
+            const styleName = String(item.style_name || magicStyle.name || "").trim() || null;
+            const styleId = String(item.style_id || magicStyle.id || "").trim() || null;
+            itemStyle = resolveStyle({
+              body: { manualStyle, style_directive: styleDirective, style_name: styleName, style_id: styleId },
+            });
+          }
+
+          normalizedPrompts.push({
+            prompt: text,
+            aspectRatio: itemRatio,
+            count: itemCount,
+            bgColor: itemBg,
+            style: itemStyle,
+            styleId: itemStyle.style_id,
+          });
+        }
+      }
+    }
+
+    if (normalizedPrompts.length === 0) {
       return res.status(400).json({ error: "prompt is required" });
     }
-    const count = Math.min(100, Math.max(1, parseInt(req.body.count, 10) || 1));
-    const style = resolveStyle(req);
-    const styleId = style.style_id;
-    const bg_color = req.body.bg_color || req.body.background_color || "";
-    const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
 
     if (!hasReadyAccount()) {
       return res.status(503).json({ error: "No Gemini account is ready — open the Accounts tab and sign in" });
@@ -55,24 +101,25 @@ router.post("/text-to-image", form, async (req, res) => {
     // One task per prompt & variation; runFleetBatch fans them out across the ENTIRE
     // ready fleet in parallel — each account runs its own profile browser concurrently.
     const tasks = [];
-    for (let pIdx = 0; pIdx < promptsList.length; pIdx++) {
-      const pText = promptsList[pIdx];
-      for (let v = 0; v < count; v++) {
+    for (let pIdx = 0; pIdx < normalizedPrompts.length; pIdx++) {
+      const pProfile = normalizedPrompts[pIdx];
+      for (let v = 0; v < pProfile.count; v++) {
         tasks.push({
-          originalPrompt: pText,
+          originalPrompt: pProfile.prompt,
           promptIndex: pIdx,
           variantIndex: v,
           prompt: buildPrompt({
-            prompt: pText,
+            prompt: pProfile.prompt,
             variant: v,
-            style_directive: style.style_directive,
-            style_name: style.style_name,
-            bg_color,
-            aspectRatio,
+            style_directive: pProfile.style.style_directive,
+            style_name: pProfile.style.style_name,
+            bg_color: pProfile.bgColor,
+            aspectRatio: pProfile.aspectRatio,
           }),
           imagePaths: [],
-          aspectRatio,
-          bgColor: bg_color,
+          aspectRatio: pProfile.aspectRatio,
+          bgColor: pProfile.bgColor,
+          styleId: pProfile.styleId,
         });
       }
     }
@@ -117,13 +164,14 @@ router.post("/text-to-image", form, async (req, res) => {
             if (routeAbort.signal.aborted) return null;
             const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
             const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
-            const promptLabel = task.originalPrompt || promptsList[0];
+            const promptLabel = task.originalPrompt || normalizedPrompts[0]?.prompt || "Design";
+            const effectiveStyleId = task.styleId;
             const design = insertDesign({
               id: uuidv4(),
               feature: "text-to-image",
               output_image_path: out.rel,
               prompt_used: task.prompt,
-              user_input: styleId ? `${promptLabel} [style:${styleId}]` : promptLabel,
+              user_input: effectiveStyleId ? `${promptLabel} [style:${effectiveStyleId}]` : promptLabel,
             });
             const decorated = {
               ...design,
@@ -173,13 +221,14 @@ router.post("/text-to-image", form, async (req, res) => {
           if (routeAbort.signal.aborted) return null;
           const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
           const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
-          const promptLabel = task.originalPrompt || promptsList[0];
+          const promptLabel = task.originalPrompt || normalizedPrompts[0]?.prompt || "Design";
+          const effectiveStyleId = task.styleId;
           const design = insertDesign({
             id: uuidv4(),
             feature: "text-to-image",
             output_image_path: out.rel,
             prompt_used: task.prompt,
-            user_input: styleId ? `${promptLabel} [style:${styleId}]` : promptLabel,
+            user_input: effectiveStyleId ? `${promptLabel} [style:${effectiveStyleId}]` : promptLabel,
           });
           const decorated = {
             ...design,

@@ -58,21 +58,29 @@ function renderShapeSelector(prefix, activeId = "1:1") {
 }
 
 function bindShapeSelector(prefix, onChange) {
-  const buttons = $$(`#${prefix}Shapes .shape-btn`);
+  const buttons = $(`#${prefix}Shapes .shape-btn`);
   const label = $(`#${prefix}ShapeLabel`);
   let selected = "1:1";
+  function applyRatio(ratio) {
+    selected = ratio || "1:1";
+    buttons.forEach((b) => {
+      b.classList.toggle("active", b.dataset.ratio === selected);
+    });
+    if (label) {
+      label.textContent = ASPECT_RATIOS.find((r) => r.id === selected)?.name || selected;
+    }
+  }
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      buttons.forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      selected = btn.dataset.ratio || "1:1";
-      if (label) {
-        label.textContent = ASPECT_RATIOS.find((r) => r.id === selected)?.name || selected;
-      }
+      applyRatio(btn.dataset.ratio || "1:1");
       if (typeof onChange === "function") onChange(selected);
     });
   });
-  return () => selected;
+  const getter = () => selected;
+  getter.set = (ratio) => {
+    applyRatio(ratio);
+  };
+  return getter;
 }
 
 /* ── Unified Continuous Progress Tracker ────────────────────
@@ -871,10 +879,18 @@ function setupMagicStyle({ btn, container, getContext, onPick, onStyle }) {
     renderIcons();
   }
 
+  function set(style) {
+    activeMagicStyle = style || null;
+    renderBadge();
+    btn.innerHTML = activeMagicStyle ? MAGIC_STYLE_BTN_REROLL : MAGIC_STYLE_BTN_DEFAULT;
+    renderIcons();
+  }
+
   btn.addEventListener("click", pick);
 
   return {
     get: () => activeMagicStyle,
+    set,
     clear,
   };
 }
@@ -2356,13 +2372,56 @@ function openLibraryPicker({ currentCount = 0, onConfirm = null } = {}) {
   });
 }
 
-let t2iPromptsState = [""];
+let t2iPromptsState = [
+  {
+    text: "",
+    aspectRatio: "1:1",
+    count: 3,
+    manualStyle: "",
+    magicStyle: null,
+    bgColor: "transparent",
+  }
+];
 let t2iActiveIndexState = 0;
 
+function normalizeT2iProfile(p) {
+  if (typeof p === "string") {
+    return {
+      text: p,
+      aspectRatio: "1:1",
+      count: 3,
+      manualStyle: "",
+      magicStyle: null,
+      bgColor: "transparent",
+    };
+  }
+  if (!p || typeof p !== "object") {
+    return {
+      text: "",
+      aspectRatio: "1:1",
+      count: 3,
+      manualStyle: "",
+      magicStyle: null,
+      bgColor: "transparent",
+    };
+  }
+  return {
+    text: p.text || "",
+    aspectRatio: p.aspectRatio || "1:1",
+    count: Math.min(100, Math.max(1, parseInt(p.count, 10) || 3)),
+    manualStyle: p.manualStyle || "",
+    magicStyle: p.magicStyle || null,
+    bgColor: p.bgColor || "transparent",
+  };
+}
+
 function renderTextToImage() {
-  let t2iPrompts = [...t2iPromptsState];
+  let t2iPrompts = (t2iPromptsState || []).map(normalizeT2iProfile);
+  if (t2iPrompts.length === 0) {
+    t2iPrompts = [normalizeT2iProfile("")];
+  }
   let t2iActiveIndex = Math.max(0, Math.min(t2iActiveIndexState, t2iPrompts.length - 1));
-  let selectedBg = "transparent";
+  let selectedBg = t2iPrompts[t2iActiveIndex]?.bgColor || "transparent";
   let abortController = null;
   let magicStyle = null;
   // Hoisted so the Stop handler can mark every pending slot and stop the
@@ -2498,10 +2557,8 @@ function renderTextToImage() {
 
   renderIcons();
 
-  const getT2iShape = bindShapeSelector("t2i");
   const generateBtn = $("#t2iGenerate");
   const stopBtn = $("#t2iStop");
-
   const promptTextarea = $("#t2iPrompt");
   const prevBtn = $("#t2iPrevPromptBtn");
   const nextBtn = $("#t2iNextPromptBtn");
@@ -2510,18 +2567,195 @@ function renderTextToImage() {
   const pillsContainer = $("#t2iNavPills");
   const badgeEl = $("#t2iPromptBadge");
   const queueCountEl = $("#t2iPromptQueueCount");
+  const countInput = $("#t2iCount");
+  const manualStyleInput = $("#t2iManualStyle");
+  const t2iColorPicker = $("#t2iColorPicker");
+  const t2iColorHex = $("#t2iColorHex");
+  const t2iCustomSwatch = $("#t2iCustomSwatch");
+  const t2iResetBgBtn = $("#t2iResetBg");
 
-  // Load existing prompt into textarea
-  if (promptTextarea) {
-    promptTextarea.value = t2iPrompts[t2iActiveIndex] || "";
+  const getT2iShape = bindShapeSelector("t2i", (newRatio) => {
+    if (t2iPrompts[t2iActiveIndex]) {
+      t2iPrompts[t2iActiveIndex].aspectRatio = newRatio;
+      t2iPromptsState = t2iPrompts;
+      if (badgeEl) {
+        badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length} • Shape: ${newRatio}`;
+      }
+      const pill = pillsContainer?.querySelector(`.t2i-pill-btn[data-index="${t2iActiveIndex}"]`);
+      if (pill) {
+        const text = (t2iPrompts[t2iActiveIndex].text || "").trim();
+        pill.title = `Prompt ${t2iActiveIndex + 1} [${newRatio}]${text ? ': ' + esc(text.slice(0, 30)) : ' (empty)'}`;
+      }
+    }
+  });
+
+  magicStyle = setupMagicStyle({
+    btn: $("#t2iMagicBtn"),
+    container: $("#t2iMagicStyle"),
+    getContext: () => ({ prompt: $("#t2iPrompt")?.value?.trim() || "", imageFile: null }),
+    onStyle: (name) => {
+      const input = $("#t2iManualStyle");
+      if (input) input.value = name;
+      if (t2iPrompts[t2iActiveIndex]) {
+        t2iPrompts[t2iActiveIndex].manualStyle = name;
+        t2iPrompts[t2iActiveIndex].magicStyle = magicStyle?.get() || null;
+        t2iPromptsState = t2iPrompts;
+      }
+    },
+  });
+
+  $$("#t2iSwatches .swatch").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      $$("#t2iSwatches .swatch").forEach((b) => b.classList.remove("active"));
+      if (t2iCustomSwatch) t2iCustomSwatch.classList.remove("active");
+      btn.classList.add("active");
+      selectedBg = btn.dataset.val || "transparent";
+      if (t2iPrompts[t2iActiveIndex]) {
+        t2iPrompts[t2iActiveIndex].bgColor = selectedBg;
+        t2iPromptsState = t2iPrompts;
+      }
+    });
+  });
+
+  if (t2iColorPicker) {
+    t2iColorPicker.addEventListener("input", (e) => {
+      $$("#t2iSwatches .swatch").forEach((b) => b.classList.remove("active"));
+      if (t2iCustomSwatch) t2iCustomSwatch.classList.add("active");
+      if (t2iColorHex) t2iColorHex.value = e.target.value.toUpperCase();
+      selectedBg = e.target.value;
+      if (t2iPrompts[t2iActiveIndex]) {
+        t2iPrompts[t2iActiveIndex].bgColor = selectedBg;
+        t2iPromptsState = t2iPrompts;
+      }
+    });
+  }
+
+  if (t2iColorHex) {
+    t2iColorHex.addEventListener("change", (e) => {
+      let val = e.target.value.trim();
+      if (!val.startsWith("#")) val = "#" + val;
+      if (t2iColorPicker) t2iColorPicker.value = val;
+      t2iColorHex.value = val.toUpperCase();
+      $$("#t2iSwatches .swatch").forEach((b) => b.classList.remove("active"));
+      if (t2iCustomSwatch) t2iCustomSwatch.classList.add("active");
+      selectedBg = val;
+      if (t2iPrompts[t2iActiveIndex]) {
+        t2iPrompts[t2iActiveIndex].bgColor = selectedBg;
+        t2iPromptsState = t2iPrompts;
+      }
+    });
+  }
+
+  if (t2iResetBgBtn) {
+    t2iResetBgBtn.addEventListener("click", () => {
+      selectedBg = "transparent";
+      $$("#t2iSwatches .swatch").forEach((b) => b.classList.remove("active"));
+      if (t2iCustomSwatch) t2iCustomSwatch.classList.remove("active");
+      $("#t2iSwatches .swatch[data-val='transparent']")?.classList.add("active");
+      if (t2iPrompts[t2iActiveIndex]) {
+        t2iPrompts[t2iActiveIndex].bgColor = "transparent";
+        t2iPromptsState = t2iPrompts;
+      }
+    });
+  }
+
+  if (countInput) {
+    countInput.addEventListener("input", (e) => {
+      if (t2iPrompts[t2iActiveIndex]) {
+        t2iPrompts[t2iActiveIndex].count = Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 1));
+        t2iPromptsState = t2iPrompts;
+      }
+    });
+  }
+
+  if (manualStyleInput) {
+    manualStyleInput.addEventListener("input", (e) => {
+      if (t2iPrompts[t2iActiveIndex]) {
+        t2iPrompts[t2iActiveIndex].manualStyle = e.target.value;
+        t2iPromptsState = t2iPrompts;
+      }
+    });
+  }
+
+  function applyBgColorToUI(color) {
+    const norm = (color || "transparent").toLowerCase();
+    const swatches = $$("#t2iSwatches .swatch");
+    let matched = false;
+    swatches.forEach((b) => {
+      const val = (b.dataset.val || "").toLowerCase();
+      if (val === norm) {
+        b.classList.add("active");
+        matched = true;
+      } else {
+        b.classList.remove("active");
+      }
+    });
+    if (matched) {
+      if (t2iCustomSwatch) t2iCustomSwatch.classList.remove("active");
+    } else if (norm && norm !== "transparent") {
+      if (t2iCustomSwatch) t2iCustomSwatch.classList.add("active");
+      const hexVal = color.startsWith("#") ? color : `#${color}`;
+      if (t2iColorPicker) t2iColorPicker.value = hexVal;
+      if (t2iColorHex) t2iColorHex.value = hexVal.toUpperCase();
+    } else {
+      if (t2iCustomSwatch) t2iCustomSwatch.classList.remove("active");
+      const trans = $(`#t2iSwatches .swatch[data-val='transparent']`);
+      if (trans) trans.classList.add("active");
+    }
+  }
+
+  function saveCurrentPromptToProfile() {
+    if (t2iActiveIndex < 0 || t2iActiveIndex >= t2iPrompts.length) return;
+    const current = t2iPrompts[t2iActiveIndex] || normalizeT2iProfile("");
+    if (promptTextarea) {
+      current.text = promptTextarea.value;
+    }
+    if (typeof getT2iShape === "function") {
+      current.aspectRatio = getT2iShape();
+    }
+    if (countInput) {
+      current.count = Math.min(100, Math.max(1, parseInt(countInput.value, 10) || 1));
+    }
+    if (manualStyleInput) {
+      current.manualStyle = manualStyleInput.value.trim();
+    }
+    if (magicStyle && typeof magicStyle.get === "function") {
+      current.magicStyle = magicStyle.get();
+    }
+    current.bgColor = selectedBg || "transparent";
+    t2iPrompts[t2iActiveIndex] = current;
+    t2iPromptsState = t2iPrompts;
+  }
+
+  function loadPromptProfileToUI(profile) {
+    if (!profile) return;
+    if (promptTextarea) {
+      promptTextarea.value = profile.text || "";
+    }
+    if (typeof getT2iShape?.set === "function") {
+      getT2iShape.set(profile.aspectRatio || "1:1");
+    }
+    if (countInput) {
+      countInput.value = profile.count || 3;
+    }
+    if (manualStyleInput) {
+      manualStyleInput.value = profile.manualStyle || "";
+    }
+    if (magicStyle && typeof magicStyle.set === "function") {
+      magicStyle.set(profile.magicStyle || null);
+    }
+    selectedBg = profile.bgColor || "transparent";
+    applyBgColorToUI(selectedBg);
   }
 
   function updatePromptUI(focusAfter = false) {
     if (t2iActiveIndex < 0) t2iActiveIndex = 0;
     if (t2iActiveIndex >= t2iPrompts.length) t2iActiveIndex = Math.max(0, t2iPrompts.length - 1);
 
+    const currentProfile = t2iPrompts[t2iActiveIndex];
+    loadPromptProfileToUI(currentProfile);
+
     if (promptTextarea) {
-      promptTextarea.value = t2iPrompts[t2iActiveIndex] || "";
       if (t2iPrompts.length > 1) {
         promptTextarea.placeholder = `Enter design idea for prompt #${t2iActiveIndex + 1}…`;
       } else {
@@ -2529,8 +2763,9 @@ function renderTextToImage() {
       }
     }
 
+    const currentRatio = currentProfile?.aspectRatio || "1:1";
     if (badgeEl) {
-      badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length}`;
+      badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length} • Shape: ${currentRatio}`;
     }
 
     if (prevBtn) prevBtn.disabled = t2iActiveIndex <= 0;
@@ -2546,9 +2781,11 @@ function renderTextToImage() {
 
     if (pillsContainer) {
       pillsContainer.innerHTML = t2iPrompts.map((p, idx) => {
-        const hasText = (p || "").trim().length > 0;
+        const text = (p?.text || "").trim();
+        const hasText = text.length > 0;
+        const ratio = p?.aspectRatio || "1:1";
         const isActive = idx === t2iActiveIndex;
-        return `<button type="button" class="t2i-pill-btn ${isActive ? 'active' : ''} ${hasText ? 'has-text' : ''}" data-index="${idx}" title="Prompt ${idx + 1}${hasText ? ': ' + esc(p.trim().slice(0, 30)) : ' (empty)'}">${idx + 1}</button>`;
+        return `<button type="button" class="t2i-pill-btn ${isActive ? 'active' : ''} ${hasText ? 'has-text' : ''}" data-index="${idx}" title="Prompt ${idx + 1} [${ratio}]${hasText ? ': ' + esc(text.slice(0, 30)) : ' (empty)'}">${idx + 1}</button>`;
       }).join("");
 
       pillsContainer.querySelectorAll(".t2i-pill-btn").forEach((pill) => {
@@ -2557,7 +2794,7 @@ function renderTextToImage() {
           e.stopPropagation();
           const idx = parseInt(pill.dataset.index, 10);
           if (idx !== t2iActiveIndex) {
-            if (promptTextarea) t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+            saveCurrentPromptToProfile();
             t2iActiveIndex = idx;
             updatePromptUI(true);
           }
@@ -2565,7 +2802,7 @@ function renderTextToImage() {
       });
     }
 
-    const filledCount = t2iPrompts.filter(p => (p || "").trim().length > 0).length;
+    const filledCount = t2iPrompts.filter((p) => (p?.text || "").trim().length > 0).length;
     if (queueCountEl) {
       queueCountEl.textContent = `${t2iPrompts.length} prompt${t2iPrompts.length === 1 ? '' : 's'}${filledCount !== t2iPrompts.length ? ` (${filledCount} filled)` : ''}`;
     }
@@ -2580,17 +2817,22 @@ function renderTextToImage() {
 
   if (promptTextarea) {
     promptTextarea.addEventListener("input", () => {
-      t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+      if (t2iPrompts[t2iActiveIndex]) {
+        t2iPrompts[t2iActiveIndex].text = promptTextarea.value;
+      }
       t2iPromptsState = t2iPrompts;
       const currentPill = pillsContainer?.querySelector(`.t2i-pill-btn[data-index="${t2iActiveIndex}"]`);
       if (currentPill) {
-        if (promptTextarea.value.trim().length > 0) {
+        const text = promptTextarea.value.trim();
+        if (text.length > 0) {
           currentPill.classList.add("has-text");
         } else {
           currentPill.classList.remove("has-text");
         }
+        const ratio = t2iPrompts[t2iActiveIndex]?.aspectRatio || "1:1";
+        currentPill.title = `Prompt ${t2iActiveIndex + 1} [${ratio}]${text ? ': ' + esc(text.slice(0, 30)) : ' (empty)'}`;
       }
-      const filledCount = t2iPrompts.filter(p => (p || "").trim().length > 0).length;
+      const filledCount = t2iPrompts.filter((p) => (p?.text || "").trim().length > 0).length;
       if (queueCountEl) {
         queueCountEl.textContent = `${t2iPrompts.length} prompt${t2iPrompts.length === 1 ? '' : 's'}${filledCount !== t2iPrompts.length ? ` (${filledCount} filled)` : ''}`;
       }
@@ -2602,7 +2844,7 @@ function renderTextToImage() {
       e.preventDefault();
       e.stopPropagation();
       if (t2iActiveIndex > 0) {
-        if (promptTextarea) t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+        saveCurrentPromptToProfile();
         t2iActiveIndex--;
         updatePromptUI(true);
       }
@@ -2614,7 +2856,7 @@ function renderTextToImage() {
       e.preventDefault();
       e.stopPropagation();
       if (t2iActiveIndex < t2iPrompts.length - 1) {
-        if (promptTextarea) t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+        saveCurrentPromptToProfile();
         t2iActiveIndex++;
         updatePromptUI(true);
       }
@@ -2625,8 +2867,15 @@ function renderTextToImage() {
     addBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (promptTextarea) t2iPrompts[t2iActiveIndex] = promptTextarea.value;
-      t2iPrompts.push("");
+      saveCurrentPromptToProfile();
+      t2iPrompts.push({
+        text: "",
+        aspectRatio: "1:1",
+        count: t2iPrompts[t2iActiveIndex]?.count || 3,
+        manualStyle: "",
+        magicStyle: null,
+        bgColor: "transparent",
+      });
       t2iActiveIndex = t2iPrompts.length - 1;
       updatePromptUI(true);
       renderIcons();
@@ -2648,72 +2897,35 @@ function renderTextToImage() {
 
   updatePromptUI(false);
 
-  magicStyle = setupMagicStyle({
-    btn: $("#t2iMagicBtn"),
-    container: $("#t2iMagicStyle"),
-    getContext: () => ({ prompt: $("#t2iPrompt").value.trim(), imageFile: null }),
-    onStyle: (name) => {
-      const input = $("#t2iManualStyle");
-      if (input) input.value = name;
-    },
-  });
-
-  $$("#t2iSwatches .swatch").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $$("#t2iSwatches .swatch").forEach((b) => b.classList.remove("active"));
-      $("#t2iCustomSwatch").classList.remove("active");
-      btn.classList.add("active");
-      selectedBg = btn.dataset.val;
-    });
-  });
-
-  const t2iColorPicker = $("#t2iColorPicker");
-  const t2iColorHex = $("#t2iColorHex");
-  const t2iCustomSwatch = $("#t2iCustomSwatch");
-
-  t2iColorPicker.addEventListener("input", (e) => {
-    $$("#t2iSwatches .swatch").forEach((b) => b.classList.remove("active"));
-    t2iCustomSwatch.classList.add("active");
-    t2iColorHex.value = e.target.value.toUpperCase();
-    selectedBg = e.target.value;
-  });
-
-  t2iColorHex.addEventListener("change", (e) => {
-    let val = e.target.value.trim();
-    if (!val.startsWith("#")) val = "#" + val;
-    t2iColorPicker.value = val;
-    t2iColorHex.value = val.toUpperCase();
-    $$("#t2iSwatches .swatch").forEach((b) => b.classList.remove("active"));
-    t2iCustomSwatch.classList.add("active");
-    selectedBg = val;
-  });
-
-  // Reset clears back to transparent, which is the view's opening state.
-  $("#t2iResetBg").addEventListener("click", () => {
-    selectedBg = "transparent";
-    $$("#t2iSwatches .swatch").forEach((b) => b.classList.remove("active"));
-    t2iCustomSwatch.classList.remove("active");
-    $("#t2iSwatches .swatch[data-val='transparent']")?.classList.add("active");
-  });
-
   $("#t2iOpenLibrary").addEventListener("click", (e) => {
     e.preventDefault();
     showView("designs");
   });
 
   generateBtn.addEventListener("click", async () => {
-    if (promptTextarea) {
-      t2iPrompts[t2iActiveIndex] = promptTextarea.value;
-      t2iPromptsState = t2iPrompts;
-    }
-    const activePrompts = t2iPrompts.map((p) => (p || "").trim()).filter(Boolean);
-    if (activePrompts.length === 0) {
+    saveCurrentPromptToProfile();
+
+    const activeProfiles = t2iPrompts
+      .map(normalizeT2iProfile)
+      .filter((p) => (p.text || "").trim().length > 0);
+
+    if (activeProfiles.length === 0) {
       return alert("Please enter at least one design idea description first.");
     }
-    const prompt = activePrompts[0];
-    const variationsPerPrompt = Math.min(100, Math.max(1, parseInt($("#t2iCount").value, 10) || 1));
-    if (!prompt) return alert("Please enter a design description first.");
-    const totalCount = activePrompts.length * variationsPerPrompt;
+
+    const promptsPayload = activeProfiles.map((p) => ({
+      prompt: p.text.trim(),
+      aspectRatio: p.aspectRatio || "1:1",
+      count: Math.min(100, Math.max(1, parseInt(p.count, 10) || 1)),
+      manualStyle: p.manualStyle || "",
+      magicStyle: p.magicStyle || null,
+      style_id: p.magicStyle?.id || null,
+      style_name: p.magicStyle?.name || null,
+      style_directive: p.magicStyle?.directive || null,
+      bg_color: p.bgColor || "transparent",
+    }));
+
+    const totalCount = promptsPayload.reduce((sum, p) => sum + (p.count || 1), 0);
     const count = totalCount;
     activeCount = totalCount;
 
@@ -2731,19 +2943,21 @@ function renderTextToImage() {
     if (emptyState) emptyState.classList.add("hidden");
     if (counterEl) counterEl.textContent = `0 of ${totalCount} generated`;
     renderPlaceholders(grid, totalCount, "t2i-slot");
+
     // Assign descriptive prompt labels to each placeholder slot
     let slotNum = 0;
-    activePrompts.forEach((pText, pIdx) => {
-      for (let v = 0; v < variationsPerPrompt; v++) {
+    promptsPayload.forEach((pItem, pIdx) => {
+      const pCount = pItem.count || 1;
+      for (let v = 0; v < pCount; v++) {
         const slotEl = document.getElementById(`t2i-slot-${slotNum}`);
         if (slotEl) {
           const label = slotEl.querySelector(".placeholder-label");
           if (label) {
-            const snippet = pText.length > 32 ? pText.slice(0, 30) + "…" : pText;
-            label.textContent = activePrompts.length > 1
-              ? `Prompt #${pIdx + 1}${variationsPerPrompt > 1 ? ` (v${v + 1})` : ''}: ${snippet}`
-              : (variationsPerPrompt > 1 ? `Variation #${v + 1}` : "Generating design…");
-            label.title = pText;
+            const snippet = pItem.prompt.length > 30 ? pItem.prompt.slice(0, 28) + "…" : pItem.prompt;
+            label.textContent = promptsPayload.length > 1
+              ? `Prompt #${pIdx + 1}${pCount > 1 ? ` (v${v + 1})` : ''} [${pItem.aspectRatio}]: ${snippet}`
+              : (pCount > 1 ? `Variation #${v + 1} [${pItem.aspectRatio}]` : `Generating [${pItem.aspectRatio}]…`);
+            label.title = `Prompt #${pIdx + 1} [${pItem.aspectRatio}]: ${pItem.prompt}`;
           }
         }
         slotNum++;
@@ -2756,9 +2970,9 @@ function renderTextToImage() {
     const fillEl = $("#t2iProgressFill");
     fillEl.style.width = "0%";
     const labelEl = progressArea.querySelector("span");
-    labelEl.textContent = activePrompts.length > 1
-      ? `Starting generation for ${activePrompts.length} prompts (${totalCount} designs across fleet)…`
-      : "Starting text-to-image generation…";
+    labelEl.textContent = promptsPayload.length > 1
+      ? `Starting generation for ${promptsPayload.length} prompts (${totalCount} designs across fleet)…`
+      : `Starting text-to-image generation (${totalCount} designs across fleet)…`;
     tracker = new GenerationProgressTracker({
       barEl: fillEl,
       labelEl,
@@ -2770,15 +2984,14 @@ function renderTextToImage() {
     if (typeof startAccountPoll === "function") startAccountPoll();
 
     const fd = new FormData();
-    fd.append("prompt", prompt);
-    fd.append("prompts", JSON.stringify(activePrompts));
-    fd.append("count", count);
-    fd.append("bg_color", selectedBg);
-    fd.set("count", variationsPerPrompt);
-    fd.append("aspectRatio", getT2iShape());
-    fd.append("manualStyle", ($("#t2iManualStyle")?.value || "").trim());
-    if (typeof appendMagicStyle === "function" && magicStyle) {
-      appendMagicStyle(fd, magicStyle.get());
+    fd.append("prompt", promptsPayload[0].prompt);
+    fd.append("prompts", JSON.stringify(promptsPayload));
+    fd.append("count", promptsPayload[0].count);
+    fd.append("bg_color", promptsPayload[0].bg_color);
+    fd.append("aspectRatio", promptsPayload[0].aspectRatio);
+    fd.append("manualStyle", promptsPayload[0].manualStyle || "");
+    if (promptsPayload[0].magicStyle) {
+      appendMagicStyle(fd, promptsPayload[0].magicStyle);
     }
 
     let completedSlots = 0;
