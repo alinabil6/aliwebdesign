@@ -29,6 +29,71 @@ async function api(url, opts = {}) {
   return data;
 }
 
+function showToast(message, duration = 4000, onClick = null) {
+  const toastEl = $("#toast");
+  if (!toastEl) return;
+  toastEl.innerHTML = message;
+  toastEl.classList.remove("hidden");
+  toastEl.style.display = "flex";
+  toastEl.style.alignItems = "center";
+  toastEl.style.gap = "10px";
+  toastEl.style.position = "fixed";
+  toastEl.style.bottom = "24px";
+  toastEl.style.right = "24px";
+  toastEl.style.zIndex = "99999";
+  toastEl.style.background = "rgba(15, 23, 42, 0.95)";
+  toastEl.style.color = "#f8fafc";
+  toastEl.style.padding = "12px 20px";
+  toastEl.style.borderRadius = "10px";
+  toastEl.style.border = "1px solid rgba(56, 189, 248, 0.35)";
+  toastEl.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.5)";
+  toastEl.style.fontSize = "13px";
+  toastEl.style.fontWeight = "500";
+  toastEl.style.cursor = onClick ? "pointer" : "default";
+  toastEl.style.transition = "opacity 0.3s ease";
+  toastEl.style.opacity = "1";
+
+  if (onClick) {
+    toastEl.onclick = () => {
+      onClick();
+    };
+  } else {
+    toastEl.onclick = null;
+  }
+
+  clearTimeout(toastEl._timer);
+  if (duration > 0) {
+    toastEl._timer = setTimeout(() => {
+      toastEl.style.opacity = "0";
+      setTimeout(() => {
+        toastEl.classList.add("hidden");
+        toastEl.style.display = "";
+      }, 300);
+    }, duration);
+  }
+}
+
+// Wire up Desktop Auto-Updater Notifications
+if (typeof window !== "undefined" && window.desktopAPI) {
+  window.desktopAPI.onUpdateAvailable?.((info) => {
+    showToast(`
+      <i data-lucide="download-cloud" style="color:#38bdf8;width:18px;height:18px;"></i>
+      <span>Downloading <strong>v${esc(info.version || "")}</strong> in background…</span>
+    `, 8000);
+    renderIcons();
+  });
+
+  window.desktopAPI.onUpdateDownloaded?.((info) => {
+    showToast(`
+      <i data-lucide="sparkles" style="color:#22c55e;width:18px;height:18px;"></i>
+      <span><strong>Update v${esc(info.version || "")} ready!</strong> Click here to restart & install now.</span>
+    `, 0, () => {
+      window.desktopAPI.restartAndInstall?.();
+    });
+    renderIcons();
+  });
+}
+
 /* ── Design Shape / Aspect Ratio Definitions ─────────────── */
 const ASPECT_RATIOS = [
   { id: "1:1", label: "1:1", name: "1:1 Square", previewClass: "ratio-1-1" },
