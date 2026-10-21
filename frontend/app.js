@@ -2,6 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
+const APP_VERSION = "1.0.9";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -58,7 +59,7 @@ function renderShapeSelector(prefix, activeId = "1:1") {
 }
 
 function bindShapeSelector(prefix, onChange) {
-  const buttons = $(`#${prefix}Shapes .shape-btn`);
+  const buttons = $$(`#${prefix}Shapes .shape-btn`);
   const label = $(`#${prefix}ShapeLabel`);
   let selected = "1:1";
   function applyRatio(ratio) {
@@ -1002,6 +1003,7 @@ let accountsDirty = false;
 let isRefreshingAccounts = false;
 
 async function refreshAccountsData() {
+  $$(".doc-version-pill").forEach((el) => { el.textContent = `v${APP_VERSION}`; });
   refreshTopBar();
   const accountsSection = document.getElementById("section-accounts");
   const isAccountsVisible = accountsSection && !accountsSection.classList.contains("hidden");
@@ -5789,7 +5791,8 @@ async function renderAccounts() {
         await api(`/api/accounts/${card.dataset.id}`, { method: "DELETE" });
       }
       await renderAccounts();
-      refreshTopBar();
+      $$(".doc-version-pill").forEach((el) => { el.textContent = `v${APP_VERSION}`; });
+  refreshTopBar();
     } catch (err) {
       alert("Action failed: " + err.message);
     }
@@ -5798,7 +5801,8 @@ async function renderAccounts() {
   $("#checkAllBtn").addEventListener("click", async () => {
     await api("/api/accounts/check-all", { method: "POST" });
     await renderAccounts();
-    refreshTopBar();
+    $$(".doc-version-pill").forEach((el) => { el.textContent = `v${APP_VERSION}`; });
+  refreshTopBar();
   });
 }
 
@@ -5807,7 +5811,8 @@ async function startAddAccount(browser) {
     alert(`Opening ${browser} window. Sign into your Google account and wait for the window to close.`);
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ browser }) });
     await renderAccounts();
-    refreshTopBar();
+    $$(".doc-version-pill").forEach((el) => { el.textContent = `v${APP_VERSION}`; });
+  refreshTopBar();
   } catch (err) {
     alert("Sign-in failed: " + err.message);
   }
@@ -7064,6 +7069,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   initAccountsEventStream();
+  $$(".doc-version-pill").forEach((el) => { el.textContent = `v${APP_VERSION}`; });
   refreshTopBar();
   setInterval(refreshTopBar, 15000);
   let initialView = "home";
