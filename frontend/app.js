@@ -2356,7 +2356,12 @@ function openLibraryPicker({ currentCount = 0, onConfirm = null } = {}) {
   });
 }
 
+let t2iPromptsState = [""];
+let t2iActiveIndexState = 0;
+
 function renderTextToImage() {
+  let t2iPrompts = [...t2iPromptsState];
+  let t2iActiveIndex = Math.max(0, Math.min(t2iActiveIndexState, t2iPrompts.length - 1));
   let selectedBg = "transparent";
   let abortController = null;
   let magicStyle = null;
@@ -2389,8 +2394,37 @@ function renderTextToImage() {
       <div class="t2i-workspace">
         <section class="t2i-panel">
           <label class="field">
-            <span class="field-label">Design idea</span>
+            <div class="t2i-prompt-header">
+              <div class="t2i-prompt-title-group">
+                <span class="field-label" style="margin-bottom:0;">Design idea</span>
+                <span class="t2i-prompt-badge" id="t2iPromptBadge">Prompt 1 of 1</span>
+              </div>
+              <div class="t2i-prompt-nav">
+                <button type="button" class="t2i-nav-btn" id="t2iPrevPromptBtn" title="Previous prompt (Return back)" disabled>
+                  <i data-lucide="chevron-left"></i>
+                </button>
+                <div class="t2i-nav-pills" id="t2iNavPills">
+                  <button type="button" class="t2i-pill-btn active" data-index="0" title="Prompt 1">1</button>
+                </div>
+                <button type="button" class="t2i-nav-btn" id="t2iNextPromptBtn" title="Next prompt (Move on)" disabled>
+                  <i data-lucide="chevron-right"></i>
+                </button>
+                <button type="button" class="t2i-nav-btn t2i-add-btn" id="t2iAddPromptBtn" title="Add another prompt (+)">
+                  <i data-lucide="plus"></i>
+                </button>
+                <button type="button" class="t2i-nav-btn t2i-del-btn hidden" id="t2iDelPromptBtn" title="Remove this prompt">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </div>
+            </div>
             <textarea id="t2iPrompt" class="prompt-editor" placeholder="e.g. a cozy winter cabin wrapped in pine, 70s retro diner sign, kawaii strawberry mascot…" required></textarea>
+            <div class="t2i-prompt-footer">
+              <span class="t2i-prompt-footer-hint">
+                <i data-lucide="layers" style="width:12px;height:12px;color:var(--color-ion);"></i>
+                <span id="t2iPromptHint">Add multiple prompts (+) to run across all accounts in parallel</span>
+              </span>
+              <span class="t2i-prompt-footer-count" id="t2iPromptQueueCount">1 prompt</span>
+            </div>
           </label>
 
           <label class="field">
@@ -2468,6 +2502,152 @@ function renderTextToImage() {
   const generateBtn = $("#t2iGenerate");
   const stopBtn = $("#t2iStop");
 
+  const promptTextarea = $("#t2iPrompt");
+  const prevBtn = $("#t2iPrevPromptBtn");
+  const nextBtn = $("#t2iNextPromptBtn");
+  const addBtn = $("#t2iAddPromptBtn");
+  const delBtn = $("#t2iDelPromptBtn");
+  const pillsContainer = $("#t2iNavPills");
+  const badgeEl = $("#t2iPromptBadge");
+  const queueCountEl = $("#t2iPromptQueueCount");
+
+  // Load existing prompt into textarea
+  if (promptTextarea) {
+    promptTextarea.value = t2iPrompts[t2iActiveIndex] || "";
+  }
+
+  function updatePromptUI(focusAfter = false) {
+    if (t2iActiveIndex < 0) t2iActiveIndex = 0;
+    if (t2iActiveIndex >= t2iPrompts.length) t2iActiveIndex = Math.max(0, t2iPrompts.length - 1);
+
+    if (promptTextarea) {
+      promptTextarea.value = t2iPrompts[t2iActiveIndex] || "";
+      if (t2iPrompts.length > 1) {
+        promptTextarea.placeholder = `Enter design idea for prompt #${t2iActiveIndex + 1}…`;
+      } else {
+        promptTextarea.placeholder = "e.g. a cozy winter cabin wrapped in pine, 70s retro diner sign, kawaii strawberry mascot…";
+      }
+    }
+
+    if (badgeEl) {
+      badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length}`;
+    }
+
+    if (prevBtn) prevBtn.disabled = t2iActiveIndex <= 0;
+    if (nextBtn) nextBtn.disabled = t2iActiveIndex >= t2iPrompts.length - 1;
+
+    if (delBtn) {
+      if (t2iPrompts.length > 1) {
+        delBtn.classList.remove("hidden");
+      } else {
+        delBtn.classList.add("hidden");
+      }
+    }
+
+    if (pillsContainer) {
+      pillsContainer.innerHTML = t2iPrompts.map((p, idx) => {
+        const hasText = (p || "").trim().length > 0;
+        const isActive = idx === t2iActiveIndex;
+        return `<button type="button" class="t2i-pill-btn ${isActive ? 'active' : ''} ${hasText ? 'has-text' : ''}" data-index="${idx}" title="Prompt ${idx + 1}${hasText ? ': ' + esc(p.trim().slice(0, 30)) : ' (empty)'}">${idx + 1}</button>`;
+      }).join("");
+
+      pillsContainer.querySelectorAll(".t2i-pill-btn").forEach((pill) => {
+        pill.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const idx = parseInt(pill.dataset.index, 10);
+          if (idx !== t2iActiveIndex) {
+            if (promptTextarea) t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+            t2iActiveIndex = idx;
+            updatePromptUI(true);
+          }
+        });
+      });
+    }
+
+    const filledCount = t2iPrompts.filter(p => (p || "").trim().length > 0).length;
+    if (queueCountEl) {
+      queueCountEl.textContent = `${t2iPrompts.length} prompt${t2iPrompts.length === 1 ? '' : 's'}${filledCount !== t2iPrompts.length ? ` (${filledCount} filled)` : ''}`;
+    }
+
+    t2iPromptsState = t2iPrompts;
+    t2iActiveIndexState = t2iActiveIndex;
+
+    if (focusAfter && promptTextarea) {
+      promptTextarea.focus();
+    }
+  }
+
+  if (promptTextarea) {
+    promptTextarea.addEventListener("input", () => {
+      t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+      t2iPromptsState = t2iPrompts;
+      const currentPill = pillsContainer?.querySelector(`.t2i-pill-btn[data-index="${t2iActiveIndex}"]`);
+      if (currentPill) {
+        if (promptTextarea.value.trim().length > 0) {
+          currentPill.classList.add("has-text");
+        } else {
+          currentPill.classList.remove("has-text");
+        }
+      }
+      const filledCount = t2iPrompts.filter(p => (p || "").trim().length > 0).length;
+      if (queueCountEl) {
+        queueCountEl.textContent = `${t2iPrompts.length} prompt${t2iPrompts.length === 1 ? '' : 's'}${filledCount !== t2iPrompts.length ? ` (${filledCount} filled)` : ''}`;
+      }
+    });
+  }
+
+  if (prevBtn) {
+    prevBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (t2iActiveIndex > 0) {
+        if (promptTextarea) t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+        t2iActiveIndex--;
+        updatePromptUI(true);
+      }
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (t2iActiveIndex < t2iPrompts.length - 1) {
+        if (promptTextarea) t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+        t2iActiveIndex++;
+        updatePromptUI(true);
+      }
+    });
+  }
+
+  if (addBtn) {
+    addBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (promptTextarea) t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+      t2iPrompts.push("");
+      t2iActiveIndex = t2iPrompts.length - 1;
+      updatePromptUI(true);
+      renderIcons();
+    });
+  }
+
+  if (delBtn) {
+    delBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (t2iPrompts.length <= 1) return;
+      t2iPrompts.splice(t2iActiveIndex, 1);
+      if (t2iActiveIndex >= t2iPrompts.length) {
+        t2iActiveIndex = t2iPrompts.length - 1;
+      }
+      updatePromptUI(true);
+    });
+  }
+
+  updatePromptUI(false);
+
   magicStyle = setupMagicStyle({
     btn: $("#t2iMagicBtn"),
     container: $("#t2iMagicStyle"),
@@ -2522,10 +2702,20 @@ function renderTextToImage() {
   });
 
   generateBtn.addEventListener("click", async () => {
-    const prompt = $("#t2iPrompt").value.trim();
-    const count = Math.min(100, Math.max(1, parseInt($("#t2iCount").value, 10) || 1));
+    if (promptTextarea) {
+      t2iPrompts[t2iActiveIndex] = promptTextarea.value;
+      t2iPromptsState = t2iPrompts;
+    }
+    const activePrompts = t2iPrompts.map((p) => (p || "").trim()).filter(Boolean);
+    if (activePrompts.length === 0) {
+      return alert("Please enter at least one design idea description first.");
+    }
+    const prompt = activePrompts[0];
+    const variationsPerPrompt = Math.min(100, Math.max(1, parseInt($("#t2iCount").value, 10) || 1));
     if (!prompt) return alert("Please enter a design description first.");
-    activeCount = count;
+    const totalCount = activePrompts.length * variationsPerPrompt;
+    const count = totalCount;
+    activeCount = totalCount;
 
     abortController = new AbortController();
     generateBtn.disabled = true;
@@ -2539,8 +2729,26 @@ function renderTextToImage() {
     grid.innerHTML = "";
     grid.classList.remove("hidden");
     if (emptyState) emptyState.classList.add("hidden");
-    if (counterEl) counterEl.textContent = `0 of ${count} generated`;
-    renderPlaceholders(grid, count, "t2i-slot");
+    if (counterEl) counterEl.textContent = `0 of ${totalCount} generated`;
+    renderPlaceholders(grid, totalCount, "t2i-slot");
+    // Assign descriptive prompt labels to each placeholder slot
+    let slotNum = 0;
+    activePrompts.forEach((pText, pIdx) => {
+      for (let v = 0; v < variationsPerPrompt; v++) {
+        const slotEl = document.getElementById(`t2i-slot-${slotNum}`);
+        if (slotEl) {
+          const label = slotEl.querySelector(".placeholder-label");
+          if (label) {
+            const snippet = pText.length > 32 ? pText.slice(0, 30) + "…" : pText;
+            label.textContent = activePrompts.length > 1
+              ? `Prompt #${pIdx + 1}${variationsPerPrompt > 1 ? ` (v${v + 1})` : ''}: ${snippet}`
+              : (variationsPerPrompt > 1 ? `Variation #${v + 1}` : "Generating design…");
+            label.title = pText;
+          }
+        }
+        slotNum++;
+      }
+    });
 
     // Progress bar & engine — one simulated curve per output, aggregated.
     const progressArea = $("#t2iProgress");
@@ -2548,7 +2756,9 @@ function renderTextToImage() {
     const fillEl = $("#t2iProgressFill");
     fillEl.style.width = "0%";
     const labelEl = progressArea.querySelector("span");
-    labelEl.textContent = "Starting text-to-image generation…";
+    labelEl.textContent = activePrompts.length > 1
+      ? `Starting generation for ${activePrompts.length} prompts (${totalCount} designs across fleet)…`
+      : "Starting text-to-image generation…";
     tracker = new GenerationProgressTracker({
       barEl: fillEl,
       labelEl,
@@ -2561,8 +2771,10 @@ function renderTextToImage() {
 
     const fd = new FormData();
     fd.append("prompt", prompt);
+    fd.append("prompts", JSON.stringify(activePrompts));
     fd.append("count", count);
     fd.append("bg_color", selectedBg);
+    fd.set("count", variationsPerPrompt);
     fd.append("aspectRatio", getT2iShape());
     fd.append("manualStyle", ($("#t2iManualStyle")?.value || "").trim());
     if (typeof appendMagicStyle === "function" && magicStyle) {
@@ -2584,7 +2796,7 @@ function renderTextToImage() {
             resolvePlaceholder(`t2i-slot-${slotIndex}`, design);
             tracker.completeItem(slotIndex);
             completedSlots++;
-            if (counterEl) counterEl.textContent = `${completedSlots} of ${count} generated`;
+            if (counterEl) counterEl.textContent = `${completedSlots} of ${totalCount} generated`;
             renderIcons();
           } else if (event === "error" || event === "slot_failed") {
             failPlaceholder(`t2i-slot-${slotIndex}`, error || "Generation failed");
