@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.9";
+const APP_VERSION = "1.0.10";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -74,6 +74,53 @@ function showToast(message, duration = 4000, onClick = null) {
 }
 
 // Wire up Desktop Auto-Updater Notifications
+if (typeof window !== "undefined" && window.desktopAPI) {
+  window.desktopAPI.onUpdateChecking?.(() => {
+    showToast(`
+      <i data-lucide="refresh-cw" class="spin" style="color:#38bdf8;width:18px;height:18px;"></i>
+      <span>Checking GitHub for updates…</span>
+    `, 3000);
+    renderIcons();
+  });
+
+  window.desktopAPI.onUpdateAvailable?.((info) => {
+    showToast(`
+      <i data-lucide="download-cloud" style="color:#38bdf8;width:18px;height:18px;"></i>
+      <span>New update <strong>v${esc(info.version || "")}</strong> found! Downloading in background…</span>
+    `, 8000);
+    renderIcons();
+  });
+
+  window.desktopAPI.onUpdateNotAvailable?.((info) => {
+    const msg = info?.devMode
+      ? "Running in local dev mode — auto-updates only apply in desktop installer."
+      : `You are on the latest version (v${APP_VERSION}).`;
+    showToast(`
+      <i data-lucide="check-circle" style="color:#22c55e;width:18px;height:18px;"></i>
+      <span>${esc(msg)}</span>
+    `, 4000);
+    renderIcons();
+  });
+
+  window.desktopAPI.onUpdateError?.((err) => {
+    showToast(`
+      <i data-lucide="alert-circle" style="color:#f87171;width:18px;height:18px;"></i>
+      <span>Update check: ${esc(err.error || "Unable to check updates")}</span>
+    `, 5000);
+    renderIcons();
+  });
+
+  window.desktopAPI.onUpdateDownloaded?.((info) => {
+    showToast(`
+      <i data-lucide="sparkles" style="color:#22c55e;width:18px;height:18px;"></i>
+      <span><strong>Update v${esc(info.version || "")} ready!</strong> Click here to restart & install now.</span>
+    `, 0, () => {
+      window.desktopAPI.restartAndInstall?.();
+    });
+    renderIcons();
+  });
+}
+// End desktop updater listeners
 if (typeof window !== "undefined" && window.desktopAPI) {
   window.desktopAPI.onUpdateAvailable?.((info) => {
     showToast(`
@@ -7132,6 +7179,31 @@ document.addEventListener("DOMContentLoaded", () => {
       if (e.key === "Escape" && aboutModal.classList.contains("active")) closeAbout();
     });
   }
+
+    $("#aboutCheckUpdateBtn")?.addEventListener("click", () => {
+      if (window.desktopAPI?.checkForUpdates) {
+        window.desktopAPI.checkForUpdates();
+      } else {
+        showToast(`<i data-lucide="info" style="color:#38bdf8;width:18px;height:18px;"></i><span>Checking GitHub releases…</span>`, 3000);
+        renderIcons();
+        fetch("https://api.github.com/repos/alinabil6/aliwebdesign/releases/latest")
+          .then((r) => r.json())
+          .then((rel) => {
+            if (rel.tag_name && rel.tag_name !== `v${APP_VERSION}`) {
+              showToast(`<i data-lucide="download-cloud" style="color:#38bdf8;width:18px;height:18px;"></i><span>New version <strong>${esc(rel.tag_name)}</strong> available on GitHub! Click to view.</span>`, 8000, () => {
+                window.open("https://github.com/alinabil6/aliwebdesign/releases/latest", "_blank");
+              });
+            } else {
+              showToast(`<i data-lucide="check-circle" style="color:#22c55e;width:18px;height:18px;"></i><span>You are running the latest version (${esc(rel.tag_name || `v${APP_VERSION}`)}).</span>`, 4000);
+            }
+            renderIcons();
+          })
+          .catch((err) => {
+            showToast(`<i data-lucide="alert-circle" style="color:#f87171;width:18px;height:18px;"></i><span>Check failed: ${esc(err.message)}</span>`, 4000);
+            renderIcons();
+          });
+      }
+    });
 
   initAccountsEventStream();
   $$(".doc-version-pill").forEach((el) => { el.textContent = `v${APP_VERSION}`; });

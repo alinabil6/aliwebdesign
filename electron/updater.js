@@ -12,6 +12,14 @@ const require = createRequire(import.meta.url);
 export function initAutoUpdater(mainWindow) {
   if (!app.isPackaged) {
     console.log("[updater] Development mode — auto-update check skipped.");
+    ipcMain.on("check-for-updates", () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("update-not-available", {
+          devMode: true,
+          message: "Running in local development mode — auto-updates only run in packaged builds.",
+        });
+      }
+    });
     return;
   }
 
@@ -30,6 +38,9 @@ export function initAutoUpdater(mainWindow) {
 
   autoUpdater.on("checking-for-update", () => {
     console.log("[updater] Checking GitHub Releases for updates...");
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update-checking");
+    }
   });
 
   autoUpdater.on("update-available", (info) => {
@@ -42,13 +53,22 @@ export function initAutoUpdater(mainWindow) {
     }
   });
 
-  autoUpdater.on("update-not-available", () => {
+  autoUpdater.on("update-not-available", (info) => {
     console.log("[updater] App is up to date.");
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update-not-available", {
+        version: info?.version,
+      });
+    }
   });
 
   autoUpdater.on("error", (err) => {
-    // Non-fatal — log silently, never crash the app for an update check failure
-    console.error("[updater] Update check error:", err.message);
+    console.error("[updater] Update check error:", err?.message || err);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update-error", {
+        error: err?.message || "Failed to check for updates",
+      });
+    }
   });
 
   autoUpdater.on("download-progress", (progress) => {
@@ -78,6 +98,16 @@ export function initAutoUpdater(mainWindow) {
     }
   });
 
+  ipcMain.on("check-for-updates", () => {
+    console.log("[updater] User requested manual update check.");
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.warn("[updater] Check failed:", err.message);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("update-error", { error: err.message });
+      }
+    });
+  });
+
   ipcMain.on("restart-and-install", () => {
     autoUpdater.quitAndInstall(false, true);
   });
@@ -87,7 +117,7 @@ export function initAutoUpdater(mainWindow) {
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
       console.warn("[updater] Initial check failed:", err.message);
     });
-  }, 5000);
+  }, 4000);
 
   setInterval(() => {
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
