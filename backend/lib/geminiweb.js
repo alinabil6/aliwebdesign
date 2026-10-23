@@ -69,9 +69,12 @@ export const SELECTORS = {
   ],
   fileInput: ['input[type="file"][accept*="image"]', 'input[type="file"]'],
   attachButton: [
-    'button[aria-label*="Upload & tools" i]',
     'button[aria-label*="Upload and tools" i]',
+    'button[aria-label*="Upload & tools" i]',
+    'button[aria-label*="Tools" i]',
+    'button[aria-label*="Outils" i]',
     'button[aria-label*="Add files" i]',
+    '[data-test-id*="tools" i]',
     'button.menu-placeholder-button',
     'button[aria-label*="Upload" i]:not(nav *):not(aside *)',
     'button[aria-label*="Add" i]:not(nav *):not(aside *)',
@@ -82,9 +85,12 @@ export const SELECTORS = {
     'mat-icon:has-text("plus")',
   ],
   uploadMenuItem: [
-    'text="Upload files"',
+    '[data-test-id*="local-images-files-uploader" i]',
+    '[data-test-id*="local-images" i]',
+    '[data-test-id*="uploader-button" i]',
     '[data-test-id="local-images-files-upload"]',
     'button[data-test-id*="upload" i]',
+    'text="Upload files"',
     '.gem-menu-item-label:has-text("Upload files")',
     'mat-list-item:has-text("Upload files")',
     'button:has-text("Upload files")',
@@ -200,85 +206,73 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   await dismissModals(page);
   const beforePreview = await page.locator(PREVIEW_SELECTOR).count().catch(() => 0);
 
-  // 1. Ensure composer toolbar is mounted
+  // 1. Ensure composer editor is mounted and focused
   const editor = await findVisibleElement(page, SELECTORS.promptInput, 15000);
   if (!editor) throw new Error("Gemini composer not ready for image attachment");
 
-  // 2. Direct attach: Check if input[type="file"] is already mounted in DOM
   const fileInputSelector = SELECTORS.fileInput.join(", ");
-  let fileInput = page.locator(fileInputSelector).last();
-  let count = await fileInput.count().catch(() => 0);
-
   let chooserHandled = false;
 
-  if (count === 0) {
-    console.log("[geminiweb] input[type='file'] not mounted, waiting for attach button...");
+  // 2. Step A: Check if input[type="file"] is ALREADY in DOM (e.g. from previous task)
+  let directInput = page.locator(fileInputSelector).last();
+  if ((await directInput.count().catch(() => 0)) > 0) {
+    try {
+      await directInput.setInputFiles(imagePaths, { timeout: 3000 });
+      chooserHandled = true;
+      console.log(`[geminiweb] Attached ${imagePaths.length} file(s) via existing input[type='file']`);
+    } catch (_) {}
+  }
+
+  // 3. Step B: Open Tools menu and trigger FileChooser via Upload menu item
+  if (!chooserHandled) {
     const attachBtn = await getVisibleAttachButton(page, 10000);
     if (attachBtn) {
-      try {
-        const [fc] = await Promise.all([
-          page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null),
-          attachBtn.click({ timeout: 3000 }).catch(() => {}),
-        ]);
-        if (fc) {
-          console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via attach button filechooser.`);
-          await fc.setFiles(imagePaths);
-          chooserHandled = true;
-        }
-      } catch (_) {}
-      await page.waitForTimeout(250);
-    }
-    if (!chooserHandled) {
-      fileInput = page.locator(fileInputSelector).last();
-      count = await fileInput.count().catch(() => 0);
+      console.log("[geminiweb] Opening tools menu via attach button...");
+      await attachBtn.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(350);
+
+      const uploadItem = await getVisibleUploadItem(page, 5000);
+      if (uploadItem) {
+        console.log("[geminiweb] Clicking upload menu item with filechooser listener...");
+        try {
+          const [fc] = await Promise.all([
+            page.waitForEvent("filechooser", { timeout: 4000 }).catch(() => null),
+            uploadItem.click({ timeout: 3000 }).catch(() => {}),
+          ]);
+          if (fc) {
+            console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via upload item filechooser.`);
+            await fc.setFiles(imagePaths);
+            chooserHandled = true;
+          }
+        } catch (_) {}
+      }
     }
   }
 
-  // Fallback check if menu item needs to be clicked
-  if (count === 0 && !chooserHandled) {
-    const uploadItem = await getVisibleUploadItem(page, 5000);
-    if (uploadItem) {
+  // 4. Step C: Fallback to direct input if newly mounted
+  if (!chooserHandled) {
+    await page.waitForTimeout(250);
+    const activeInput = page.locator(fileInputSelector).last();
+    if ((await activeInput.count().catch(() => 0)) > 0) {
       try {
-        const [fc] = await Promise.all([
-          page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null),
-          uploadItem.click({ timeout: 3000 }).catch(() => {}),
-        ]);
-        if (fc) {
-          console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via upload menu item filechooser.`);
-          await fc.setFiles(imagePaths);
-          chooserHandled = true;
-        }
-      } catch (_) {}
-      await page.waitForTimeout(250);
-    }
-    if (!chooserHandled) {
-      fileInput = page.locator(fileInputSelector).last();
-      count = await fileInput.count().catch(() => 0);
+        await activeInput.setInputFiles(imagePaths, { timeout: 5000 });
+        chooserHandled = true;
+        console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via newly mounted input[type='file'].`);
+      } catch (err) {
+        console.warn("[geminiweb] setInputFiles fallback warning:", err?.message);
+      }
     }
   }
 
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-  // 3. Dispatch files to input[type="file"] if not already handled by filechooser
-  if (!chooserHandled) {
-    try {
-      const activeInput = page.locator(fileInputSelector).last();
-      await activeInput.setInputFiles(imagePaths, { timeout: 12000 });
-      console.log(`[geminiweb] Direct setInputFiles dispatched with ${imagePaths.length} file(s)`);
-    } catch (err) {
-      console.warn("[geminiweb] Direct setInputFiles failed, attempting fallback:", err?.message);
-      const fallbackInput = page.locator('input[type="file"]').last();
-      await fallbackInput.setInputFiles(imagePaths, { timeout: 12000 });
-    }
-  }
-
-  // 4. Verify attachment mounted in DOM and wait for upload completion
+  // 5. Verify attachment mounted in DOM and wait for upload completion
   const mounted = await waitForAttachmentPreview(page, beforePreview, 8000, imagePaths.length);
   if (!mounted) {
     console.warn("[geminiweb] Attachment preview chip not immediately detected, waiting for upload settling...");
   }
   await waitForUploadCompletion(page, 8000);
-  console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s)`);
+  console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s) successfully.`);
 }
 
 async function fillPrompt(page, promptText) {

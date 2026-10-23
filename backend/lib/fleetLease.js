@@ -156,8 +156,10 @@ export function getActiveExcludes(extraExcludes = []) {
  */
 export async function acquireFleetAccount({ timeoutMs = 60000, excludeIds = [] } = {}) {
   const start = Date.now();
+  let effectiveExcludes = Array.isArray(excludeIds) ? Array.from(excludeIds) : [];
+
   while (Date.now() - start < timeoutMs) {
-    const activeExcludes = getActiveExcludes(excludeIds);
+    const activeExcludes = getActiveExcludes(effectiveExcludes);
     const claimed = claimNextReadyAccount(activeExcludes);
     if (claimed) {
       if (tryLease(claimed.id)) {
@@ -166,6 +168,15 @@ export async function acquireFleetAccount({ timeoutMs = 60000, excludeIds = [] }
       // If in-memory tryLease failed (e.g. race condition), release DB claim and retry
       release(claimed.id);
     }
+
+    // Safety fallback: If 8 seconds elapsed and no account could be claimed because all ready accounts
+    // were excluded (e.g. on small fleets or when only 1 account is ready/signed in),
+    // drop the exclusion list so the task can retry on the sole available account!
+    if (effectiveExcludes.length > 0 && Date.now() - start > 8000) {
+      console.log("[fleetLease] Clearing exclusions to avoid queue starvation on small/single-account fleet");
+      effectiveExcludes = [];
+    }
+
     await new Promise((r) => setTimeout(r, 1000));
   }
   throw new Error("All Gemini accounts are busy — try again in a moment");
