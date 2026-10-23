@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.12";
+const APP_VERSION = "1.0.13";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -2023,15 +2023,69 @@ function renderPrepareDesigns() {
     }
   });
 
-  downloadAllBtn.addEventListener("click", () => {
-    preparedResults.forEach((d, i) => {
+  downloadAllBtn.addEventListener("click", async () => {
+    if (!preparedResults || preparedResults.length === 0) return;
+
+    // Single design convenience: if only 1 design, direct download
+    if (preparedResults.length === 1) {
+      const d = preparedResults[0];
+      const outPath = d.output_image_path || d.path || "";
+      const a = document.createElement("a");
+      a.href = outPath.startsWith("/") ? outPath : `/library/${outPath}`;
+      a.download = "prepared-print-4500x5400-01.png";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+
+    // Multiple designs: Bundle instantly into ONE zip via /api/designs/export-zip
+    const originalHtml = downloadAllBtn.innerHTML;
+    downloadAllBtn.disabled = true;
+    downloadAllBtn.innerHTML = `<i data-lucide="loader-2" class="spin" style="width: 14px;"></i> Zipping ${preparedResults.length} designs...`;
+    renderIcons();
+
+    try {
+      const ids = preparedResults.map((d) => d.id).filter(Boolean);
+      const paths = preparedResults.map((d) => d.output_image_path || d.path).filter(Boolean);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const filename = `prepared_designs_export_${stamp}.zip`;
+
+      const res = await fetch("/api/designs/export-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, paths, filename }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+      downloadAllBtn.innerHTML = `<i data-lucide="check" style="width: 14px; color: #10b981;"></i> Downloaded!`;
+      renderIcons();
       setTimeout(() => {
-        const a = document.createElement("a");
-        a.href = d.output_image_path || d.path;
-        a.download = "prepared-print-4500x5400-" + (i + 1) + ".png";
-        a.click();
-      }, i * 200);
-    });
+        downloadAllBtn.disabled = false;
+        downloadAllBtn.innerHTML = originalHtml;
+        renderIcons();
+      }, 2000);
+    } catch (err) {
+      console.error("Prepare designs zip export failed:", err);
+      downloadAllBtn.disabled = false;
+      downloadAllBtn.innerHTML = originalHtml;
+      renderIcons();
+      alert("Could not create the zip: " + (err.message || err));
+    }
   });
 }
 

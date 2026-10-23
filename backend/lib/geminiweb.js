@@ -337,6 +337,7 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outpu
             // Free canvas backing store in browser engine immediately
             canvas.width = 0;
             canvas.height = 0;
+            canvas.remove();
             return dataUrl.split(",")[1];
           } catch {
             return null;

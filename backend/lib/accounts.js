@@ -1,3 +1,4 @@
+import { isLeased } from "./fleetLease.js";
 // ────────────────────────────────────────────────
 // Accounts — the profile registry + session orchestration.
 //
@@ -356,6 +357,11 @@ function failAccount(id, err) {
 export async function checkAccount(id) {
   const row = withAbs(getAccountById(id));
   if (!row) return null;
+
+  // Never disrupt an active generation worker holding this account
+  if (isLeased(id)) {
+    return { id, email: row.email, status: row.status, leased: true };
+  }
 
   if (!canLaunchBrowser(row.browser)) {
     const email = row.email || "studio@magicfabrica.io";

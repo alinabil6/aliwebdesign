@@ -3,7 +3,19 @@ import pLimit from "p-limit";
 import { generateImage, generateImageOnAccount } from "./gemini.js";
 import { listReadyAccountsWithAbs, listAccountsWithAbs, withAbs } from "./accounts.js";
 import { setAccountStatus, getAccountById, claimNextReadyAccount } from "./db.js";
-import { getProfilePage, closeProfile, canLaunchBrowser, isInteractiveAuthActive, purgeFleetBrowsers as purgeFleetBrowsersBrowser } from "./browser.js";
+import {
+  getProfilePage,
+  closeProfile,
+  canLaunchBrowser,
+  isInteractiveAuthActive,
+  purgeFleetBrowsers as purgeFleetBrowsersBrowser,
+  incrementActiveBatches,
+  decrementActiveBatches,
+  touchAccountSession,
+  parkAccountPageWhileLeased,
+  scheduleIdleClose,
+  releaseAndScheduleIdleClose,
+} from "./browser.js";
 import {
   isLeased,
   tryLease,
@@ -109,6 +121,8 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
   const { signal } = options;
   if (signal?.aborted) return [];
 
+  incrementActiveBatches();
+
   const allUsable = listAccountsWithAbs().filter((a) => a.active === 1 && a.status !== "disabled" && a.status !== "error" && a.status !== "signed_out");
   if (allUsable.length === 0) {
     throw new Error("No Gemini account is ready");
@@ -150,6 +164,8 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           unleaseAccount(account.id);
           break;
         }
+
+        touchAccountSession(account.id);
 
         // 8-second tab heartbeat check before dispatching tasks (only if warm page exists)
         if (activeAccountPages.has(account.id)) {
@@ -277,8 +293,13 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           } catch (_) {}
         }
         if (account) {
+          // 1. Park tab at about:blank WHILE STILL LEASED so no sibling worker can acquire this account mid-navigation!
+          await parkAccountPageWhileLeased(account.id).catch(() => {});
+          // 2. Release lease so waiting sibling tasks can claim the clean account
           unleaseAccount(account.id);
           unregisterAccountPage(account.id);
+          // 3. Arm the 90s idle process reaper (will only fire if no worker re-leases it)
+          scheduleIdleClose(account.id);
         }
       }
     }
@@ -296,6 +317,7 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
   } finally {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     if (signal) activeBatchSignals.delete(signal);
+    decrementActiveBatches();
   }
   results.sort((a, b) => a.taskIndex - b.taskIndex);
   return results;

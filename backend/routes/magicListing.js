@@ -11,7 +11,17 @@ import os from "os";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { withAbs, listReadyAccountsWithAbs } from "../lib/accounts.js";
-import { getProfilePage, closeProfile, canLaunchBrowser } from "../lib/browser.js";
+import {
+  getProfilePage,
+  closeProfile,
+  canLaunchBrowser,
+  touchAccountSession,
+  parkAccountPageWhileLeased,
+  scheduleIdleClose,
+  releaseAndScheduleIdleClose,
+  incrementActiveBatches,
+  decrementActiveBatches,
+} from "../lib/browser.js";
 import { MOCK_GEMINI } from "../lib/gemini.js";
 import * as web from "../lib/geminiweb.js";
 import {
@@ -524,6 +534,8 @@ router.post("/batch", async (req, res) => {
       return res.status(400).json({ error: "designs array is required" });
     }
 
+    incrementActiveBatches();
+
     console.log(`[magicListing] Incoming batch request: Platform = [${platform}], Files = [${designs.length}], stream = ${wantsStream}`);
     const sanitizedReference = sanitizeReference(referenceData);
 
@@ -585,7 +597,10 @@ router.post("/batch", async (req, res) => {
         let account = null;
         try {
           account = await acquireFleetAccount({ timeoutMs: 30000, excludeIds: item.failedAccountIds || [] });
-          if (account?.id) batchAccountIds.add(account.id);
+          if (account?.id) {
+            batchAccountIds.add(account.id);
+            touchAccountSession(account.id);
+          }
           const result = await processListingOnAccount(
             account,
             design,
@@ -650,7 +665,9 @@ router.post("/batch", async (req, res) => {
         } finally {
           activeInFlight--;
           if (account) {
+            await parkAccountPageWhileLeased(account.id).catch(() => {});
             release(account.id);
+            scheduleIdleClose(account.id);
           }
         }
       }
@@ -691,8 +708,9 @@ router.post("/batch", async (req, res) => {
   } finally {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     for (const accountId of batchAccountIds) {
-      await closeProfile(accountId).catch(() => {});
+      scheduleIdleClose(accountId);
     }
+    decrementActiveBatches();
   }
 });
 

@@ -10,6 +10,9 @@ db.pragma("journal_mode = WAL");
 db.pragma("busy_timeout = 5000");
 db.pragma("synchronous = NORMAL");
 db.pragma("foreign_keys = ON");
+db.pragma("temp_store = MEMORY");        // Keep temporary indices/tables in RAM
+db.pragma("cache_size = -64000");        // 64MB page cache
+db.pragma("wal_autocheckpoint = 1000");  // Prevent unbounded .db-wal file growth
 
 // ────────────────────────────────────────────────
 // Schema — see ALIWEBDESIGN_BUILD_SPEC.md section 5

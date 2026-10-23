@@ -1,7 +1,8 @@
 import { chromium } from "playwright";
-import { exec, spawn } from "node:child_process";
+import { exec, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -107,6 +108,122 @@ export function browserExecutable(name) {
 const sessions = new Map();
 const mainPages = new Map();
 
+/** @type {Map<string, NodeJS.Timeout>} */
+export const idleTimers = new Map();
+
+/** @type {Set<string>} */
+export const launchingAccountIds = new Set();
+
+/**
+ * Configurable idle TTL (ms) before an unleased warm browser is closed.
+ * Default: 90 seconds — long enough to bridge consecutive user batches
+ * with zero cold-start penalty, short enough to free Windows RAM promptly.
+ */
+export const IDLE_BROWSER_TTL_MS = Number(process.env.BROWSER_IDLE_TTL_MS) || 90_000;
+
+/** Active batch counter coordinated by queue.js */
+let activeBatchCount = 0;
+
+export function incrementActiveBatches() {
+  activeBatchCount++;
+}
+
+export function decrementActiveBatches() {
+  activeBatchCount = Math.max(0, activeBatchCount - 1);
+  if (activeBatchCount === 0) {
+    // All batches finished: schedule idle eviction for all currently unleased sessions
+    for (const accountId of sessions.keys()) {
+      if (!isLeased(accountId) && !launchingAccountIds.has(accountId)) {
+        scheduleIdleClose(accountId, IDLE_BROWSER_TTL_MS);
+      }
+    }
+  }
+}
+
+export function getActiveBatchCount() {
+  return activeBatchCount;
+}
+
+/**
+ * Cancels any pending idle-close timer for an account (called when leased/used).
+ * @param {string} accountId
+ */
+export function touchAccountSession(accountId) {
+  const timer = idleTimers.get(accountId);
+  if (timer) {
+    clearTimeout(timer);
+    idleTimers.delete(accountId);
+  }
+}
+
+/**
+ * Parks an unleased account's page at about:blank to immediately release V8/DOM/Canvas
+ * memory, and schedules full Chromium process termination after IDLE_BROWSER_TTL_MS.
+ * @param {string} accountId
+ * @param {number} [ttlMs]
+ */
+/**
+ * MUST be called BEFORE releasing the lease in the worker's finally block!
+ * Because the caller still holds the lease, no sibling worker can acquire this
+ * account while we park the tab at about:blank to free ~300MB of DOM/Canvas RAM.
+ * @param {string} accountId
+ */
+export async function parkAccountPageWhileLeased(accountId) {
+  try {
+    const page = mainPages.get(accountId);
+    if (page && !page.isClosed()) {
+      await page.goto("about:blank", { waitUntil: "commit", timeout: 2500 }).catch(() => {});
+    }
+  } catch {
+    // Ignore errors on closed/crashed pages
+  }
+}
+
+/**
+ * Parks an unleased account's page at about:blank to immediately release V8/DOM/Canvas
+ * memory, and schedules full Chromium process termination after IDLE_BROWSER_TTL_MS.
+ * @param {string} accountId
+ * @param {number} [ttlMs]
+ */
+export async function releaseAndScheduleIdleClose(accountId, ttlMs = IDLE_BROWSER_TTL_MS) {
+  await parkAccountPageWhileLeased(accountId);
+  scheduleIdleClose(accountId, ttlMs);
+}
+
+/**
+ * Schedules a safe idle teardown for a specific account profile.
+ * @param {string} accountId
+ * @param {number} [ttlMs]
+ */
+export function scheduleIdleClose(accountId, ttlMs = IDLE_BROWSER_TTL_MS) {
+  touchAccountSession(accountId);
+  if (!sessions.has(accountId)) return;
+
+  const timer = setTimeout(async () => {
+    idleTimers.delete(accountId);
+    // Strict safety re-check: never evict if leased, mid-launch, or while a batch is active
+    if (isLeased(accountId) || launchingAccountIds.has(accountId)) {
+      return;
+    }
+    if (activeBatchCount > 0) {
+      // Another batch is still running; defer eviction until batches settle
+      scheduleIdleClose(accountId, ttlMs);
+      return;
+    }
+    try {
+      console.log(`[browser] Idle TTL (${ttlMs / 1000}s) expired for ${accountId}. Closing warm browser.`);
+      await closeProfile(accountId, { force: false });
+    } catch (err) {
+      console.warn(`[browser] Idle close error for ${accountId}:`, err?.message || err);
+    }
+  }, ttlMs);
+
+  if (typeof timer.unref === "function") {
+    timer.unref();
+  }
+  idleTimers.set(accountId, timer);
+}
+
 // Runtime lock/flag for active interactive sign-in sessions
 export let isInteractiveAuthActive = false;
 
@@ -152,6 +269,7 @@ function getLaunchArgs(opts = {}) {
     "--disable-dev-shm-usage",
     "--js-flags=--max-old-space-size=512",
     "--renderer-process-limit=2",
+    "--process-per-site",
     "--disable-background-networking",
     "--disable-component-update",
     "--disable-extensions",
@@ -159,26 +277,47 @@ function getLaunchArgs(opts = {}) {
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
     "--disable-ipc-flooding-protection",
-    "--disable-features=Translate,BackForwardCache,AcceptCHFrame,MediaRouter,OptimizationHints",
+    "--disable-features=Translate,BackForwardCache,AcceptCHFrame,MediaRouter,OptimizationHints,DialMediaRouteProvider,CalculateNativeWinOcclusion,SpareRendererForSitePerProcess",
   ];
 }
 
+/**
+ * Injection-safe, timeout-bounded Windows process tree reaper.
+ * Passes the normalized profile path via TARGET_PROFILE_DIR env var to avoid
+ * PowerShell quoting/interpolation vulnerabilities, and uses taskkill /F /T
+ * to guarantee child crashpad_handler.exe processes are eliminated.
+ */
 export async function killOrphanProcesses(profileDir) {
-  // If an interactive sign-in session is active, EXIT IMMEDIATELY
-  if (isInteractiveAuthActive) return;
+  if (isInteractiveAuthActive || !profileDir) return;
   if (process.platform === "win32") {
-    const safe = profileDir.replace(/'/g, "''");
-    const base = path.basename(profileDir).replace(/'/g, "''");
-    const script = `$procs = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'brave.exe' or Name = 'msedge.exe'" -ErrorAction SilentlyContinue | Where-Object { \$_.CommandLine -and (\$_.CommandLine.Contains('${safe}') -or \$_.CommandLine.Contains('${base}')) }; \$roots = \$procs | Where-Object { -not \$_.CommandLine.Contains('--type=') }; if (\$roots) { \$roots | ForEach-Object { taskkill.exe /PID \$_.ProcessId /T /F 2>\$null } } else { \$procs | ForEach-Object { taskkill.exe /PID \$_.ProcessId /F 2>\$null } }`;
     try {
-      const encoded = Buffer.from(script, "utf16le").toString("base64");
-      await execAsync(`powershell -NoProfile -EncodedCommand ${encoded}`, { stdio: "ignore", timeout: 4000 });
-    } catch {}
+      const normDir = path.resolve(profileDir);
+      const psScript = `
+        \$target = \$env:TARGET_PROFILE_DIR
+        if (-not \$target) { exit 0 }
+        \$procs = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' OR Name = 'brave.exe' OR Name = 'msedge.exe'" -ErrorAction SilentlyContinue |
+          Where-Object { \$_.CommandLine -and \$_.CommandLine.IndexOf(\$target, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }
+        foreach (\$p in \$procs) {
+          & taskkill.exe /F /T /PID \$p.ProcessId 2>\$null | Out-Null
+        }
+      `;
+      await execFileAsync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psScript],
+        {
+          timeout: 5000,
+          windowsHide: true,
+          env: { ...process.env, TARGET_PROFILE_DIR: normDir },
+        }
+      );
+    } catch {
+      // Ignore timeout or non-existent process errors
+    }
     return;
   }
   if (process.platform === "darwin" || process.platform === "linux") {
     try {
-      const safe = profileDir.replace(/"/g, '\\"');
+      const safe = profileDir.replace(/"/g, '\\\"');
       await execAsync(`pkill -9 -f "${safe}"`, { stdio: "ignore", timeout: 3000 });
     } catch {}
   }
@@ -190,17 +329,18 @@ export function resolveAccountProfileDir(account) {
 }
 
 export async function purgeFleetBrowsers(opts = {}) {
-  const force = Boolean(opts?.force);
+  const force = typeof opts === "boolean" ? opts : Boolean(opts?.force);
   // If an interactive sign-in session is active, EXIT IMMEDIATELY
   if (isInteractiveAuthActive) {
     console.log("[browser] Interactive sign-in active, skipping fleet browser purge");
     return;
   }
   for (const [id, entry] of sessions.entries()) {
-    if (!force && isLeased(id)) {
+    if (!force && (isLeased(id) || launchingAccountIds.has(id))) {
       console.log(`[browser] Account ${id} is actively leased in another task, skipping purge.`);
       continue;
     }
+    touchAccountSession(id);
     try {
       await entry.context.close().catch(() => {});
       if (entry.profileDir) {
@@ -215,6 +355,10 @@ export async function purgeFleetBrowsers(opts = {}) {
 export async function launchProfile(account, opts = {}) {
   const profileDir = resolveAccountProfileDir(account);
   fs.mkdirSync(profileDir, { recursive: true });
+
+  const accountId = account.id;
+  touchAccountSession(accountId);
+  launchingAccountIds.add(accountId);
 
   const isVisible = Boolean(opts?.visible);
   if (isVisible) {
@@ -603,7 +747,12 @@ async function ensureEntry(account, opts = {}) {
 
   const profileDir = resolveAccountProfileDir(account);
 
-  const context = await launchProfile(account, opts);
+  let context;
+  try {
+    context = await launchProfile(account, opts);
+  } finally {
+    launchingAccountIds.delete(account.id);
+  }
 
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", { get: () => undefined });
@@ -672,11 +821,12 @@ export function isProfileOpen(accountId) {
 }
 
 export async function closeProfile(accountId, opts = {}) {
-  const force = Boolean(opts?.force);
-  if (!force && isLeased(accountId)) {
-    console.log(`[browser] Deferring closeProfile for ${accountId} — account is currently leased in active generation.`);
+  const force = typeof opts === "boolean" ? opts : Boolean(opts?.force);
+  if (!force && (isLeased(accountId) || launchingAccountIds.has(accountId))) {
+    console.log(`[browser] Deferring closeProfile for ${accountId} — account is currently leased/launching.`);
     return;
   }
+  touchAccountSession(accountId);
   const entry = sessions.get(accountId);
   if (!entry) return;
   sessions.delete(accountId);
@@ -684,7 +834,7 @@ export async function closeProfile(accountId, opts = {}) {
   try {
     await Promise.race([
       entry.context.close().catch(() => {}),
-      new Promise((resolve) => setTimeout(resolve, 3000)),
+      new Promise((resolve) => setTimeout(resolve, 4000)),
     ]);
   } catch {}
   if (!isInteractiveAuthActive && entry.profileDir) {
@@ -723,14 +873,8 @@ export async function closeProfileForPage(page) {
 }
 
 export async function closeAll() {
-  const entries = [...sessions.entries()];
-  sessions.clear();
-  mainPages.clear();
+  const ids = Array.from(sessions.keys());
   await Promise.allSettled(
-    entries.map(async ([, entry]) => {
-      try {
-        await entry.context.close();
-      } catch {}
-    })
+    ids.map((id) => closeProfile(id, true))
   );
 }
