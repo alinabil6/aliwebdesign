@@ -167,7 +167,7 @@ router.post("/text-to-image", form, async (req, res) => {
       try {
         await runFleetBatch(
           tasks,
-          async ({ buffer, taskIndex, task, account, durationMs }) => {
+          async ({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) => {
             if (routeAbort.signal.aborted) return null;
             const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
             const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -186,8 +186,8 @@ router.post("/text-to-image", form, async (req, res) => {
               account_email: account?.email || null,
               prompt_index: task.promptIndex,
               variant_index: task.variantIndex,
-              generation_time: formatDuration(durationMs),
-              generation_time_ms: durationMs,
+              generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),
+              generation_time_ms: retried ? (totalDurationMs || durationMs) : durationMs,
             };
             streamedCount++;
             // STREAM CHUNK IMMEDIATELY TO CLIENT
@@ -233,7 +233,7 @@ router.post("/text-to-image", form, async (req, res) => {
       const savedDesigns = new Array(tasks.length);
       await runFleetBatch(
         tasks,
-        async ({ buffer, taskIndex, task, account, durationMs }) => {
+        async ({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) => {
           if (routeAbort.signal.aborted) return null;
           const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
           const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -252,8 +252,8 @@ router.post("/text-to-image", form, async (req, res) => {
             account_email: account?.email || null,
             prompt_index: task.promptIndex,
             variant_index: task.variantIndex,
-            generation_time: formatDuration(durationMs),
-            generation_time_ms: durationMs,
+            generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),
+            generation_time_ms: retried ? (totalDurationMs || durationMs) : durationMs,
           };
           savedDesigns[taskIndex] = decorated;
           return decorated;

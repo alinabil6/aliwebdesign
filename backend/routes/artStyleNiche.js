@@ -101,7 +101,7 @@ router.post(
         try {
           await runFleetBatch(
             tasks,
-            async ({ buffer, taskIndex, task, account, durationMs }) => {
+            async ({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) => {
               if (routeAbort.signal.aborted) return null;
               const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
               const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -171,7 +171,7 @@ router.post(
         const savedDesigns = new Array(tasks.length);
         await runFleetBatch(
           tasks,
-          async ({ buffer, taskIndex, task, account, durationMs }) => {
+          async ({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) => {
             if (routeAbort.signal.aborted) return null;
             const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
             const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -187,8 +187,8 @@ router.post(
               ...design,
               account_id: account?.id || null,
               account_email: account?.email || null,
-              generation_time: formatDuration(durationMs),
-              generation_time_ms: durationMs,
+              generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),
+              generation_time_ms: retried ? (totalDurationMs || durationMs) : durationMs,
             };
             savedDesigns[taskIndex] = decorated;
             return decorated;

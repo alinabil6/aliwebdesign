@@ -97,43 +97,37 @@ export const SELECTORS = {
   signInButton: ['a[href*="accounts.google.com"]', 'button:has-text("Sign in")'],
 };
 
-async function getVisibleAttachButton(page) {
-  for (const sel of SELECTORS.attachButton) {
-    const loc = page.locator(sel);
-    const count = await loc.count().catch(() => 0);
-    for (let i = 0; i < count; i++) {
-      const el = loc.nth(i);
-      if (await el.isVisible().catch(() => false)) {
-        return el;
-      }
+export async function findVisibleElement(page, selectors, maxTimeoutMs = 15000) {
+  const list = [].concat(selectors);
+  const deadline = Date.now() + maxTimeoutMs;
+  while (Date.now() < deadline) {
+    if (!page || page.isClosed()) throw new Error("Target page, context or browser has been closed");
+    for (const sel of list) {
+      try {
+        const loc = page.locator(sel);
+        const count = await loc.count().catch(() => 0);
+        for (let i = 0; i < count; i++) {
+          const el = loc.nth(i);
+          const visible = await el.isVisible().catch(() => false);
+          if (visible) return el;
+        }
+      } catch (_) {}
     }
+    await page.waitForTimeout(150);
   }
   return null;
 }
 
-async function getVisibleUploadItem(page) {
-  for (const sel of SELECTORS.uploadMenuItem) {
-    const loc = page.locator(sel);
-    const count = await loc.count().catch(() => 0);
-    for (let i = 0; i < count; i++) {
-      const el = loc.nth(i);
-      if (await el.isVisible().catch(() => false)) {
-        return el;
-      }
-    }
-  }
-  return null;
+async function getVisibleAttachButton(page, maxTimeoutMs = 10000) {
+  return findVisibleElement(page, SELECTORS.attachButton, maxTimeoutMs);
+}
+
+async function getVisibleUploadItem(page, maxTimeoutMs = 5000) {
+  return findVisibleElement(page, SELECTORS.uploadMenuItem, maxTimeoutMs);
 }
 
 async function firstVisible(page, candidates, { timeout = 5000 } = {}) {
-  const list = [].concat(candidates);
-  try {
-    const combined = page.locator(list.join(", ")).first();
-    await combined.waitFor({ state: "visible", timeout });
-    return combined;
-  } catch {
-    return null;
-  }
+  return findVisibleElement(page, candidates, timeout);
 }
 
 async function dismissModals(page) {
@@ -186,22 +180,20 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   const beforePreview = await page.locator(PREVIEW_SELECTOR).count().catch(() => 0);
 
   // 1. Ensure composer toolbar is mounted
-  await page.locator('rich-textarea, mat-toolbar, div[contenteditable="true"], .input-area, .composer-root, div[role="textbox"]')
-    .first()
-    .waitFor({ state: "visible", timeout: 8000 })
-    .catch(() => {});
+  const editor = await findVisibleElement(page, SELECTORS.promptInput, 15000);
+  if (!editor) throw new Error("Gemini composer not ready for image attachment");
 
-  // 2. Fast direct attach: If input[type="file"] is not mounted, click attachBtn once to immediately mount it
+  // 2. Direct attach: Check if input[type="file"] is already mounted in DOM
   const fileInputSelector = SELECTORS.fileInput.join(", ");
   let fileInput = page.locator(fileInputSelector).last();
   let count = await fileInput.count().catch(() => 0);
 
   if (count === 0) {
-    console.log("[geminiweb] input[type='file'] not mounted, clicking attach button once to mount...");
-    const attachBtn = await getVisibleAttachButton(page);
+    console.log("[geminiweb] input[type='file'] not mounted, waiting for attach button...");
+    const attachBtn = await getVisibleAttachButton(page, 10000);
     if (attachBtn) {
-      await attachBtn.click({ timeout: 2000 }).catch(() => {});
-      await page.waitForTimeout(150);
+      await attachBtn.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(250);
     }
     fileInput = page.locator(fileInputSelector).last();
     count = await fileInput.count().catch(() => 0);
@@ -209,10 +201,10 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
 
   // Fallback check if menu item needs to be clicked
   if (count === 0) {
-    const uploadItem = await getVisibleUploadItem(page);
+    const uploadItem = await getVisibleUploadItem(page, 4000);
     if (uploadItem) {
-      await uploadItem.click({ timeout: 2000 }).catch(() => {});
-      await page.waitForTimeout(150);
+      await uploadItem.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(250);
     }
     fileInput = page.locator(fileInputSelector).last();
     count = await fileInput.count().catch(() => 0);
@@ -220,27 +212,27 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
 
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-  // 3. Call fileInput.setInputFiles(imagePaths, { timeout: 3000 }) directly without waiting 6s for filechooser
+  // 3. Dispatch files to input[type="file"]
   try {
-    await fileInput.setInputFiles(imagePaths, { timeout: 3000 });
+    await fileInput.setInputFiles(imagePaths, { timeout: 8000 });
     console.log(`[geminiweb] Direct setInputFiles dispatched with ${imagePaths.length} file(s)`);
   } catch (err) {
     console.warn("[geminiweb] Direct setInputFiles failed, attempting fallback:", err?.message);
     const fallbackInput = page.locator(fileInputSelector).last();
-    await fallbackInput.setInputFiles(imagePaths, { timeout: 3000 }).catch(() => {});
+    await fallbackInput.setInputFiles(imagePaths, { timeout: 8000 });
   }
 
   // 4. Verify attachment mounted in DOM and wait for upload completion
-  const mounted = await waitForAttachmentPreview(page, beforePreview, 3000, imagePaths.length);
+  const mounted = await waitForAttachmentPreview(page, beforePreview, 8000, imagePaths.length);
   if (!mounted) {
     console.warn("[geminiweb] Attachment preview chip not immediately detected, waiting for upload settling...");
   }
-  await waitForUploadCompletion(page, 3500);
+  await waitForUploadCompletion(page, 8000);
   console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s)`);
 }
 
 async function fillPrompt(page, promptText) {
-  const editor = await firstVisible(page, SELECTORS.promptInput, { timeout: 20000 });
+  const editor = await findVisibleElement(page, SELECTORS.promptInput, 15000);
   if (!editor) throw new Error("Gemini prompt editor not found");
   await editor.click({ timeout: 3000 }).catch(() => {});
   await editor.evaluate((el) => { el.innerHTML = ""; el.focus(); }).catch(() => {});
@@ -254,7 +246,6 @@ async function fillPrompt(page, promptText) {
 
 async function submitPrompt(page, editor) {
   console.log("[geminiweb] Submitting prompt...");
-  const sendSelector = SELECTORS.sendButton.join(", ");
   const uqBefore = await page.locator("user-query, .user-query-container").count().catch(() => 0);
   const mrBefore = await page.locator("model-response").count().catch(() => 0);
 
@@ -266,43 +257,52 @@ async function submitPrompt(page, editor) {
     return false;
   }, { uqPrev: uqBefore, mrPrev: mrBefore }).catch(() => false);
 
-  // Wait for the send button to become enabled (it is disabled while images are still uploading)
-  const send = page.locator(sendSelector).first();
-  await send.waitFor({ state: "visible", timeout: 12000 }).catch(() => {});
-
-  const deadline = Date.now() + 12000;
+  const sendSelector = SELECTORS.sendButton.join(", ");
+  const deadline = Date.now() + 20000;
   let attempts = 0;
+
   while (Date.now() < deadline) {
     attempts++;
-    const sendVisible = await send.isVisible().catch(() => false);
-    if (sendVisible) {
-      await send.click({ timeout: 3000 }).catch(() => {});
+    if (!page || page.isClosed()) throw new Error("Target page, context or browser has been closed");
+
+    // Check if send button is enabled in the DOM
+    const isSendReady = await page.evaluate((selectors) => {
+      for (const sel of selectors) {
+        const btn = document.querySelector(sel);
+        if (btn && btn.offsetWidth > 0 && !btn.disabled && btn.getAttribute("aria-disabled") !== "true") {
+          return true;
+        }
+      }
+      return false;
+    }, SELECTORS.sendButton).catch(() => false);
+
+    if (isSendReady) {
+      const send = page.locator(sendSelector).first();
+      await send.click({ timeout: 2000 }).catch(() => {});
     } else {
       await editor.focus().catch(() => {});
       await page.keyboard.press("Enter").catch(() => {});
     }
 
-    // Poll every 300ms for up to 2.1s per attempt
-    for (let w = 0; w < 7; w++) {
-      await page.waitForTimeout(300);
+    // Poll for dispatch confirmation
+    for (let w = 0; w < 6; w++) {
+      await page.waitForTimeout(250);
       if (await checkDispatched()) {
         console.log(`[geminiweb] Prompt submitted successfully (confirmed on attempt ${attempts}).`);
         return;
       }
     }
 
-    // If click didn't confirm dispatch on this attempt, try pressing Enter as alternative
-    if (sendVisible) {
-      await editor.focus().catch(() => {});
-      await page.keyboard.press("Enter").catch(() => {});
-      await page.waitForTimeout(600);
-      if (await checkDispatched()) {
-        console.log(`[geminiweb] Prompt submitted successfully via Enter fallback (attempt ${attempts}).`);
-        return;
-      }
+    // Alternative: Enter press
+    await editor.focus().catch(() => {});
+    await page.keyboard.press("Enter").catch(() => {});
+    await page.waitForTimeout(350);
+    if (await checkDispatched()) {
+      console.log(`[geminiweb] Prompt submitted successfully via Enter fallback (attempt ${attempts}).`);
+      return;
     }
   }
-  console.log("[geminiweb] Prompt submission loop finished (unconfirmed).");
+  console.log("[geminiweb] Prompt submission loop finished.");
 }
 
 async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outputPath = null, signal = null) {
@@ -523,21 +523,23 @@ export async function ensureGeminiApp(page) {
 
   // If not on base /app or if existing conversation has turns, navigate directly to /app to reset context completely
   if (!currentUrl.includes("gemini.google.com/app") || !isBaseAppUrl || existingTurns > 0) {
-    await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => {});
+    await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
     if ((page.url() || "").includes("accounts.google.com")) {
       throw new Error("SESSION_EXPIRED: Account redirected to Google login");
     }
   }
 
-  // Wait until the composer editor is interactive before proceeding
-  const editorLoc = page.locator('rich-textarea div[contenteditable="true"], .ql-editor, div[role="textbox"]').first();
+  // Wait until composer editor is recognized and interactive
   await dismissModals(page);
-  await editorLoc.waitFor({ state: "visible", timeout: 12000 }).catch(() => {});
+  const editorLoc = await findVisibleElement(page, SELECTORS.promptInput, 15000);
+  if (!editorLoc) {
+    throw new Error("Gemini composer editor not recognized after page load");
+  }
   // Automatically ensure highest-speed Flash-Lite model is selected
   await ensureFlashLiteModel(page);
   // Activate composer by focusing the editor
   await editorLoc.click({ timeout: 2000 }).catch(() => {});
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(150);
 }
 
 export async function checkSession(page, { navigate = true, fallbackEmail = null } = {}) {

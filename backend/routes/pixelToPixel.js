@@ -90,7 +90,7 @@ router.post("/pixel-to-pixel", upload.single("source"), async (req, res) => {
       try {
         await runFleetBatch(
           tasks,
-          async ({ buffer, taskIndex, task, account, durationMs }) => {
+          async ({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) => {
             if (routeAbort.signal.aborted) return null;
             const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
             const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -106,8 +106,8 @@ router.post("/pixel-to-pixel", upload.single("source"), async (req, res) => {
               ...design,
               account_id: account?.id || null,
               account_email: account?.email || null,
-              generation_time: formatDuration(durationMs),
-              generation_time_ms: durationMs,
+              generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),
+              generation_time_ms: retried ? (totalDurationMs || durationMs) : durationMs,
             };
             streamedCount++;
             // STREAM CHUNK IMMEDIATELY TO CLIENT
@@ -157,7 +157,7 @@ router.post("/pixel-to-pixel", upload.single("source"), async (req, res) => {
       const savedDesigns = new Array(tasks.length);
       await runFleetBatch(
         tasks,
-        async ({ buffer, taskIndex, task, account, durationMs }) => {
+        async ({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) => {
           if (routeAbort.signal.aborted) return null;
           const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
           const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -173,8 +173,8 @@ router.post("/pixel-to-pixel", upload.single("source"), async (req, res) => {
             ...design,
             account_id: account?.id || null,
             account_email: account?.email || null,
-            generation_time: formatDuration(durationMs),
-            generation_time_ms: durationMs,
+            generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),
+            generation_time_ms: retried ? (totalDurationMs || durationMs) : durationMs,
           };
           savedDesigns[taskIndex] = decorated;
           return decorated;

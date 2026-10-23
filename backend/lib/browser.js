@@ -8,6 +8,7 @@ import path from "path";
 import Database from "better-sqlite3";
 
 import { PROFILES_DIR } from "./paths.js";
+import { isLeased } from "./fleetLease.js";
 
 const LOCAL_APPDATA = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
 
@@ -188,22 +189,27 @@ export function resolveAccountProfileDir(account) {
   return path.isAbsolute(rawDir) ? rawDir : path.resolve(PROFILES_DIR, path.basename(rawDir));
 }
 
-export async function purgeFleetBrowsers() {
+export async function purgeFleetBrowsers(opts = {}) {
+  const force = Boolean(opts?.force);
   // If an interactive sign-in session is active, EXIT IMMEDIATELY
   if (isInteractiveAuthActive) {
     console.log("[browser] Interactive sign-in active, skipping fleet browser purge");
     return;
   }
   for (const [id, entry] of sessions.entries()) {
+    if (!force && isLeased(id)) {
+      console.log(`[browser] Account ${id} is actively leased in another task, skipping purge.`);
+      continue;
+    }
     try {
       await entry.context.close().catch(() => {});
       if (entry.profileDir) {
         await killOrphanProcesses(entry.profileDir).catch(() => {});
       }
     } catch (_) {}
+    sessions.delete(id);
+    mainPages.delete(id);
   }
-  sessions.clear();
-  mainPages.clear();
 }
 
 export async function launchProfile(account, opts = {}) {
@@ -665,7 +671,12 @@ export function isProfileOpen(accountId) {
   return sessions.has(accountId);
 }
 
-export async function closeProfile(accountId) {
+export async function closeProfile(accountId, opts = {}) {
+  const force = Boolean(opts?.force);
+  if (!force && isLeased(accountId)) {
+    console.log(`[browser] Deferring closeProfile for ${accountId} — account is currently leased in active generation.`);
+    return;
+  }
   const entry = sessions.get(accountId);
   if (!entry) return;
   sessions.delete(accountId);

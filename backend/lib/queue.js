@@ -115,7 +115,7 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
   }
 
   const results = [];
-  const pending = tasks.map((task, idx) => ({ task, taskIndex: idx, retries: 0, failedAccountIds: [] }));
+  const pending = tasks.map((task, idx) => ({ task, taskIndex: idx, retries: 0, failedAccountIds: [], initialStartTime: Date.now() }));
 
   const freeMemGb = os.freemem() / (1024 * 1024 * 1024);
   const effectiveMaxConcurrent = freeMemGb < 3.0 ? Math.min(MAX_CONCURRENT, 2) : MAX_CONCURRENT;
@@ -177,12 +177,21 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           }
         );
         const durationMs = Date.now() - taskStartTime;
+        const totalDurationMs = Date.now() - (item.initialStartTime || taskStartTime);
 
         let checkpoint = null;
         if (typeof onCheckpoint === "function" && !signal?.aborted) {
-          checkpoint = await onCheckpoint({ buffer, taskIndex, task, account, durationMs }).catch(() => null);
+          checkpoint = await onCheckpoint({
+            buffer,
+            taskIndex,
+            task,
+            account,
+            durationMs,
+            totalDurationMs,
+            retried: item.retries > 0,
+          }).catch(() => null);
         }
-        results.push({ buffer, taskIndex, checkpoint, durationMs });
+        results.push({ buffer, taskIndex, checkpoint, durationMs, totalDurationMs });
 
         // Periodic context recycling (Anti-Memory Creep) after 15 designs per account
         if (account) {
@@ -287,7 +296,6 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
   } finally {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     if (signal) activeBatchSignals.delete(signal);
-    await purgeFleetBrowsersBrowser().catch(() => {});
   }
   results.sort((a, b) => a.taskIndex - b.taskIndex);
   return results;
@@ -322,7 +330,7 @@ export function cancelAllRunningFleetTasks() {
     } catch (_) {}
   }
   if (!isInteractiveAuthActive) {
-    purgeFleetBrowsersBrowser().catch(() => {});
+    purgeFleetBrowsersBrowser({ force: true }).catch(() => {});
   }
   return releaseAllLeases();
 }
