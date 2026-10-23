@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.10";
+const APP_VERSION = "1.0.11";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -413,6 +413,15 @@ function resolvePlaceholder(slotId, design) {
     cardEl.classList.add("card-fade-in");
     placeholder.replaceWith(cardEl);
     renderIcons();
+  }
+}
+
+function updatePlaceholderStatus(slotId, statusText) {
+  const placeholder = document.getElementById(slotId);
+  if (!placeholder || placeholder.classList.contains("placeholder-failed")) return;
+  const label = placeholder.querySelector(".placeholder-label");
+  if (label) {
+    label.textContent = statusText;
   }
 }
 
@@ -1546,6 +1555,9 @@ function renderPixelToPixel() {
                   resolvePlaceholder(`p2p-slot-${globalSlot}`, payload.design);
                   generatedResults.push(payload.design);
                   redrawnCounter.textContent = generatedResults.length;
+                } else if (payload.event === "slot_retrying") {
+                  const globalSlot = loopIdx * vCount + (payload.slotIndex || 0);
+                  updatePlaceholderStatus(`p2p-slot-${globalSlot}`, "Re-routing to healthy account…");
                 } else if (payload.event === "slot_failed") {
                   const globalSlot = loopIdx * vCount + (payload.slotIndex || 0);
                   failPlaceholder(`p2p-slot-${globalSlot}`, payload.error || "Generation failed");
@@ -3125,6 +3137,8 @@ function renderTextToImage() {
             completedSlots++;
             if (counterEl) counterEl.textContent = `${completedSlots} of ${totalCount} generated`;
             renderIcons();
+          } else if (event === "slot_retrying") {
+            updatePlaceholderStatus(`t2i-slot-${slotIndex}`, "Re-routing to healthy account…");
           } else if (event === "error" || event === "slot_failed") {
             failPlaceholder(`t2i-slot-${slotIndex}`, error || "Generation failed");
             tracker.completeItem(slotIndex);
@@ -3679,6 +3693,9 @@ function renderVariations() {
                   resolvePlaceholder(`nv-slot-${globalSlot}`, payload.design);
                   allDesigns.push(payload.design);
                   $("#nvOutCount").textContent = `${allDesigns.length} generated`;
+                } else if (payload.event === "slot_retrying") {
+                  const globalSlot = i * count + (payload.slotIndex || 0);
+                  updatePlaceholderStatus(`nv-slot-${globalSlot}`, "Re-routing to healthy account…");
                 } else if (payload.event === "slot_failed") {
                   const globalSlot = i * count + (payload.slotIndex || 0);
                   failPlaceholder(`nv-slot-${globalSlot}`, payload.error || "Generation failed");
@@ -4209,6 +4226,10 @@ function renderMagicListing() {
             renderIcons();
             $("#mlOutCount").textContent = `${allListings.length} listing${allListings.length === 1 ? "" : "s"}`;
             if (downloadCsvBtn) downloadCsvBtn.classList.remove("hidden");
+          } else if (payload.event === "listing_retrying") {
+            const slotIdx = (payload.designIndex ?? 1) - 1;
+            const slotId = `ml-slot-${slotIdx}`;
+            updatePlaceholderStatus(slotId, "Re-routing to healthy account…");
           } else if (payload.event === "listing_failed") {
             const f = payload.failed || {};
             const slotIdx = (f.designIndex ?? 1) - 1;
@@ -5056,6 +5077,9 @@ function renderArtStyleNiche() {
                   allDesigns.push(payload.design);
                   $("#asOutCount").textContent = `${allDesigns.length} generated`;
                   if (typeof startAccountPoll === "function") startAccountPoll();
+                } else if (payload.event === "slot_retrying") {
+                  const globalSlot = unitIdx * vCount + (payload.slotIndex || 0);
+                  updatePlaceholderStatus(`as-slot-${globalSlot}`, "Re-routing to healthy account…");
                 } else if (payload.event === "slot_failed") {
                   const globalSlot = unitIdx * vCount + (payload.slotIndex || 0);
                   failPlaceholder(`as-slot-${globalSlot}`, payload.error || "Generation failed");
@@ -5425,6 +5449,9 @@ function renderDesignToDesign() {
                   resolvePlaceholder(`d2d-slot-${globalSlot}`, payload.design);
                   allDesigns.push(payload.design);
                   $("#d2dOutCount").textContent = `${allDesigns.length} redrawn`;
+                } else if (payload.event === "slot_retrying") {
+                  const globalSlot = loopIdx * vCount + (payload.slotIndex || 0);
+                  updatePlaceholderStatus(`d2d-slot-${globalSlot}`, "Re-routing to healthy account…");
                 } else if (payload.event === "slot_failed") {
                   const globalSlot = loopIdx * vCount + (payload.slotIndex || 0);
                   failPlaceholder(`d2d-slot-${globalSlot}`, payload.error || "Generation failed");

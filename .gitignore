@@ -5,8 +5,10 @@ bun.lockb
 .ssh_keys/
 
 # ── Runtime state ────────────────────────────
-profiles/               # hidden browser profiles — sessions/credentials live here
-library/                # generated + source artwork
+profiles/
+**/profiles/
+library/
+**/library/
 tmp/
 temp/
 *.db
@@ -15,6 +17,8 @@ temp/
 
 # ── Logs ─────────────────────────────────────
 *.log
+dist/
+latest*.yml
 
 # ── Secrets ──────────────────────────────────
 .env
@@ -41,4 +45,6 @@ profiles/
 **/profiles/
 
 *.log
+dist/
+latest*.yml
 

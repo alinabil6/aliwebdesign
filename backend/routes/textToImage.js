@@ -13,6 +13,13 @@ const router = Router();
 // multipart form fields only — no file uploads on this endpoint.
 const form = multer().none();
 
+function formatDuration(ms) {
+  const totalSec = Math.max(1, Math.round((ms || 0) / 1000));
+  const mins = String(Math.floor(totalSec / 60)).padStart(2, "0");
+  const secs = String(totalSec % 60).padStart(2, "0");
+  return `${mins}:${secs}`;
+}
+
 // POST /api/generate/text-to-image
 // multipart: prompt (text), prompts (JSON array of strings or prompt profile objects), count (1–100), manualStyle (optional)
 router.post("/text-to-image", form, async (req, res) => {
@@ -160,7 +167,7 @@ router.post("/text-to-image", form, async (req, res) => {
       try {
         await runFleetBatch(
           tasks,
-          async ({ buffer, taskIndex, task, account }) => {
+          async ({ buffer, taskIndex, task, account, durationMs }) => {
             if (routeAbort.signal.aborted) return null;
             const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
             const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -179,6 +186,8 @@ router.post("/text-to-image", form, async (req, res) => {
               account_email: account?.email || null,
               prompt_index: task.promptIndex,
               variant_index: task.variantIndex,
+              generation_time: formatDuration(durationMs),
+              generation_time_ms: durationMs,
             };
             streamedCount++;
             // STREAM CHUNK IMMEDIATELY TO CLIENT
@@ -187,6 +196,13 @@ router.post("/text-to-image", form, async (req, res) => {
           },
           {
             signal: routeAbort.signal,
+            onItemRetry: ({ taskIndex, attempt }) => {
+              if (wantsStream && !res.writableEnded) {
+                try {
+                  res.write(JSON.stringify({ event: "slot_retrying", slotIndex: taskIndex, attempt }) + "\n");
+                } catch (_) {}
+              }
+            },
             onItemError: async ({ taskIndex, error }) => {
               if (wantsStream && !res.writableEnded) {
                 try {
@@ -217,7 +233,7 @@ router.post("/text-to-image", form, async (req, res) => {
       const savedDesigns = new Array(tasks.length);
       await runFleetBatch(
         tasks,
-        async ({ buffer, taskIndex, task, account }) => {
+        async ({ buffer, taskIndex, task, account, durationMs }) => {
           if (routeAbort.signal.aborted) return null;
           const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
           const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -236,6 +252,8 @@ router.post("/text-to-image", form, async (req, res) => {
             account_email: account?.email || null,
             prompt_index: task.promptIndex,
             variant_index: task.variantIndex,
+            generation_time: formatDuration(durationMs),
+            generation_time_ms: durationMs,
           };
           savedDesigns[taskIndex] = decorated;
           return decorated;

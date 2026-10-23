@@ -11,6 +11,13 @@ import { formatImageToAspectRatio } from "../lib/aspectRatioEnforcer.js";
 
 const router = Router();
 
+function formatDuration(ms) {
+  const totalSec = Math.max(1, Math.round((ms || 0) / 1000));
+  const mins = String(Math.floor(totalSec / 60)).padStart(2, "0");
+  const secs = String(totalSec % 60).padStart(2, "0");
+  return `${mins}:${secs}`;
+}
+
 // POST /api/generate/design-to-design
 // multipart: source (image), count (1–100), bg_color, manualStyle (optional)
 router.post("/design-to-design", upload.single("source"), async (req, res) => {
@@ -89,7 +96,7 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
       try {
         await runFleetBatch(
           tasks,
-          async ({ buffer, taskIndex, task, account }) => {
+          async ({ buffer, taskIndex, task, account, durationMs }) => {
             if (routeAbort.signal.aborted) return null;
             const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
             const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -101,7 +108,13 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
               prompt_used: task.prompt,
               user_input: style.style_id,
             });
-            const decorated = { ...design, account_id: account?.id || null, account_email: account?.email || null };
+            const decorated = {
+              ...design,
+              account_id: account?.id || null,
+              account_email: account?.email || null,
+              generation_time: formatDuration(durationMs),
+              generation_time_ms: durationMs,
+            };
             streamedCount++;
             // STREAM CHUNK IMMEDIATELY TO CLIENT
             res.write(JSON.stringify({ event: "design", slotIndex: taskIndex, design: decorated }) + "\n");
@@ -109,6 +122,13 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
           },
           {
             signal: routeAbort.signal,
+            onItemRetry: ({ taskIndex, attempt }) => {
+              if (wantsStream && !res.writableEnded) {
+                try {
+                  res.write(JSON.stringify({ event: "slot_retrying", slotIndex: taskIndex, attempt }) + "\n");
+                } catch (_) {}
+              }
+            },
             onItemError: async ({ taskIndex, error }) => {
               if (wantsStream && !res.writableEnded) {
                 try {
@@ -145,7 +165,7 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
       const savedDesigns = new Array(tasks.length);
       await runFleetBatch(
         tasks,
-        async ({ buffer, taskIndex, task, account }) => {
+        async ({ buffer, taskIndex, task, account, durationMs }) => {
           if (routeAbort.signal.aborted) return null;
           const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
           const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -157,7 +177,13 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
             prompt_used: task.prompt,
             user_input: style.style_id,
           });
-          const decorated = { ...design, account_id: account?.id || null, account_email: account?.email || null };
+          const decorated = {
+            ...design,
+            account_id: account?.id || null,
+            account_email: account?.email || null,
+            generation_time: formatDuration(durationMs),
+            generation_time_ms: durationMs,
+          };
           savedDesigns[taskIndex] = decorated;
           return decorated;
         },

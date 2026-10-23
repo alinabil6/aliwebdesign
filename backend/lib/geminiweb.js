@@ -2,7 +2,7 @@ import fs from "fs";
 import { closeProfile, closeProfileForPage, getAccountIdForPage } from "./browser.js";
 
 export class GenerationTimeoutError extends Error {
-  constructor(message = "Per-account generation ceiling exceeded (150s)") {
+  constructor(message = "Per-account generation ceiling exceeded (75s)") {
     super(message);
     this.name = "GenerationTimeoutError";
     this.code = "GENERATION_TIMEOUT";
@@ -10,7 +10,7 @@ export class GenerationTimeoutError extends Error {
   }
 }
 
-export const HARD_GENERATION_CEILING_MS = 150000; // 150s absolute per-account ceiling
+export const HARD_GENERATION_CEILING_MS = 75000; // 75s absolute per-account ceiling
 
 export async function withGenerationCeiling(fn, { page = null, accountId = null, ceilingMs = HARD_GENERATION_CEILING_MS, signal = null } = {}) {
   let timer = null;
@@ -140,6 +140,8 @@ async function dismissModals(page) {
   try {
     const modalSelectors = [
       'button:has-text("Agree")', 'button:has-text("Accept all")', 'button:has-text("Got it")', 'button:has-text("Dismiss")', 'button:has-text("Not now")',
+      'button:has-text("I agree")', 'button:has-text("Stay signed out")', 'button:has-text("No thanks")', 'button:has-text("Cancel")', 'button:has-text("Close")',
+      'button:has-text("Remind me later")', 'button:has-text("I understand")',
       'button:has-text("J\'accepte")', 'button:has-text("Accepter tout")', 'button:has-text("Tout accepter")', 'button:has-text("Continuer")', 'button:has-text("Plus tard")',
       '[role="dialog"] button[aria-label*="Close" i]', '[role="dialog"] button[aria-label*="Fermer" i]'
     ];
@@ -155,18 +157,18 @@ async function dismissModals(page) {
 
 const PREVIEW_SELECTOR = ".file-preview, .uploaded-image, mat-chip, [aria-label*='Remove' i], [aria-label*='Supprimer' i], [aria-label*='Delete' i], img[src^='blob:'], img[src^='data:'], input-area-v2 img, input-container img, .uploader-preview, [class*='thumbnail']";
 
-async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 15000, expectedCount = 1) {
+async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 3000, expectedCount = 1) {
   const loc = page.locator(PREVIEW_SELECTOR);
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     const n = await loc.count().catch(() => 0);
     if (n >= beforePreviewCount + expectedCount) return true;
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(100);
   }
   return (await loc.count().catch(() => 0)) > beforePreviewCount;
 }
 
-async function waitForUploadCompletion(page, maxMs = 20000) {
+async function waitForUploadCompletion(page, maxMs = 3500) {
   try {
     await page.waitForFunction(() => {
       const uploadSpinners = document.querySelectorAll(
@@ -183,87 +185,57 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   await dismissModals(page);
   const beforePreview = await page.locator(PREVIEW_SELECTOR).count().catch(() => 0);
 
-  // 1. Ensure the composer toolbar is fully mounted in the DOM
+  // 1. Ensure composer toolbar is mounted
   await page.locator('rich-textarea, mat-toolbar, div[contenteditable="true"], .input-area, .composer-root, div[role="textbox"]')
     .first()
-    .waitFor({ state: "visible", timeout: 12000 })
+    .waitFor({ state: "visible", timeout: 8000 })
     .catch(() => {});
-  await page.waitForTimeout(400);
 
-  // 2. Strategy A (Primary path): Direct <input type="file"> DOM bypass (setInputFiles)
-  const directInput = page.locator(SELECTORS.fileInput.join(", ")).last();
-  if (await directInput.count().catch(() => 0) > 0) {
-    try {
-      await directInput.setInputFiles(imagePaths, { timeout: 3000 });
-      const mounted = await waitForAttachmentPreview(page, beforePreview, 4000, imagePaths.length);
-      if (mounted) {
-        console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s) via direct input bypass`);
-        await waitForUploadCompletion(page);
-        return;
-      }
-    } catch (_) {}
-  }
+  // 2. Fast direct attach: If input[type="file"] is not mounted, click attachBtn once to immediately mount it
+  const fileInputSelector = SELECTORS.fileInput.join(", ");
+  let fileInput = page.locator(fileInputSelector).last();
+  let count = await fileInput.count().catch(() => 0);
 
-  if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-
-  // 3. Strategy B (UI fallback clicking): Fast 8s failover timeout
-  let uploadItem = await getVisibleUploadItem(page);
-
-  if (!uploadItem) {
-    console.log("[geminiweb] Clicking attach button...");
-    let attachBtn = await getVisibleAttachButton(page);
-    if (!attachBtn) {
-      await page.waitForTimeout(500);
-      attachBtn = await getVisibleAttachButton(page);
-    }
-
+  if (count === 0) {
+    console.log("[geminiweb] input[type='file'] not mounted, clicking attach button once to mount...");
+    const attachBtn = await getVisibleAttachButton(page);
     if (attachBtn) {
-      await attachBtn.click({ timeout: 4000 }).catch(() => {});
-      await page.waitForTimeout(500);
-      uploadItem = await getVisibleUploadItem(page);
-      if (!uploadItem) {
-        await page.waitForTimeout(300);
-        await attachBtn.click({ force: true, timeout: 3000 }).catch(() => {});
-        await page.waitForTimeout(500);
-        uploadItem = await getVisibleUploadItem(page);
-      }
+      await attachBtn.click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(150);
     }
+    fileInput = page.locator(fileInputSelector).last();
+    count = await fileInput.count().catch(() => 0);
+  }
+
+  // Fallback check if menu item needs to be clicked
+  if (count === 0) {
+    const uploadItem = await getVisibleUploadItem(page);
+    if (uploadItem) {
+      await uploadItem.click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(150);
+    }
+    fileInput = page.locator(fileInputSelector).last();
+    count = await fileInput.count().catch(() => 0);
   }
 
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-  console.log("[geminiweb] Binding files via filechooser...");
-  let fileChooser = null;
-  if (uploadItem) {
-    const res = await Promise.all([
-      page.waitForEvent("filechooser", { timeout: 6000 }).catch(() => null),
-      uploadItem.click({ timeout: 4000 }).catch(() => {})
-    ]);
-    fileChooser = res[0];
-  } else {
-    const fallbackItem = page.locator(SELECTORS.uploadMenuItem.join(", ")).first();
-    const res = await Promise.all([
-      page.waitForEvent("filechooser", { timeout: 6000 }).catch(() => null),
-      fallbackItem.click({ timeout: 4000 }).catch(() => {})
-    ]);
-    fileChooser = res[0];
-  }
-
-  if (fileChooser) {
-    await fileChooser.setFiles(imagePaths);
-    console.log(`[geminiweb] Bound ${imagePaths.length} file(s) to filechooser.`);
-  } else {
-    console.warn("[geminiweb] Filechooser event not caught, trying fallback file input...");
-    const fallbackInput = page.locator(SELECTORS.fileInput.join(", ")).last();
-    await fallbackInput.setInputFiles(imagePaths, { timeout: 4000 }).catch(() => {});
+  // 3. Call fileInput.setInputFiles(imagePaths, { timeout: 3000 }) directly without waiting 6s for filechooser
+  try {
+    await fileInput.setInputFiles(imagePaths, { timeout: 3000 });
+    console.log(`[geminiweb] Direct setInputFiles dispatched with ${imagePaths.length} file(s)`);
+  } catch (err) {
+    console.warn("[geminiweb] Direct setInputFiles failed, attempting fallback:", err?.message);
+    const fallbackInput = page.locator(fileInputSelector).last();
+    await fallbackInput.setInputFiles(imagePaths, { timeout: 3000 }).catch(() => {});
   }
 
   // 4. Verify attachment mounted in DOM and wait for upload completion
-  const mounted = await waitForAttachmentPreview(page, beforePreview, Math.max(8000, imagePaths.length * 4000), imagePaths.length);
+  const mounted = await waitForAttachmentPreview(page, beforePreview, 3000, imagePaths.length);
   if (!mounted) {
     console.warn("[geminiweb] Attachment preview chip not immediately detected, waiting for upload settling...");
   }
-  await waitForUploadCompletion(page);
+  await waitForUploadCompletion(page, 3500);
   console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s)`);
 }
 
@@ -298,7 +270,7 @@ async function submitPrompt(page, editor) {
   const send = page.locator(sendSelector).first();
   await send.waitFor({ state: "visible", timeout: 12000 }).catch(() => {});
 
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + 12000;
   let attempts = 0;
   while (Date.now() < deadline) {
     attempts++;
@@ -333,11 +305,12 @@ async function submitPrompt(page, editor) {
   console.log("[geminiweb] Prompt submission loop finished (unconfirmed).");
 }
 
-async function monitorAndExtractOutput(page, beforeCount, timeout = 120000, outputPath = null, signal = null) {
+async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outputPath = null, signal = null) {
   const start = Date.now();
   const deadline = start + timeout;
   console.log("[geminiweb] Waiting for output image render...");
   const imgLoc = page.locator("model-response img, .response-container img, [data-test-id*='response'] img");
+  let streamingDoneStart = null;
 
   while (Date.now() < deadline) {
     if (signal?.aborted) {
@@ -405,14 +378,18 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 120000, outp
 
     const isStreamingDone = await page.evaluate(() => {
       const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
-      if (stopBtn) return false;
+      if (stopBtn && stopBtn.offsetWidth > 0 && window.getComputedStyle(stopBtn).display !== "none") return false;
       const sendBtn = document.querySelector('button[aria-label*="Send" i], button[aria-label*="Envoyer" i], .send-button');
-      return sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true";
+      const micBtn = document.querySelector('button[aria-label*="microphone" i], button[aria-label*="Dictate" i], button[aria-label*="Micro" i]');
+      const editor = document.querySelector('rich-textarea div[contenteditable="true"], div[role="textbox"]');
+      const copyBtn = document.querySelector('model-response button[aria-label*="Copy" i]');
+      return Boolean(micBtn || copyBtn || (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") || (editor && editor.getAttribute("contenteditable") === "true"));
     }).catch(() => false);
 
     // Only inspect for text refusal if streaming is done AND no image spinner is active
     if (isStreamingDone && !isImageInProgress) {
-      const elapsed = Date.now() - start;
+      if (!streamingDoneStart) streamingDoneStart = Date.now();
+      const elapsedSinceDone = Date.now() - streamingDoneStart;
 
       const toastMsg = await page.evaluate(() => {
         const el = document.querySelector('mat-snack-bar-container, [role="alert"], .snack-bar, .toast');
@@ -429,24 +406,22 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 120000, outp
         throw new Error(`GEMINI_REFUSED_OR_TEXT: ${finalError}`);
       }
 
-      // If it is NOT an explicit refusal, give Nano Banana 2 a generous window to render
-            // (Gemini often streams an introductory conversational sentence while Nano Banana 2
-            // generates in parallel — the image can take 60–90s to appear). Declaring a "text
-            // refusal" too early was the #1 cause of 3–4 minute runs: it aborted a healthy
-            // generation, quarantined the account, and re-routed the whole task to a fresh
-            // account that had to re-upload and re-submit from scratch.
-            if (elapsed > 90000) {
-              const finalCount = await imgLoc.count().catch(() => 0);
-              if (finalCount <= beforeCount) {
-                const finalError = toastMsg || responseText.slice(0, 140) || "Gemini replied with text instead of image";
-                throw new Error(`GEMINI_REFUSED_OR_TEXT: ${finalError}`);
-              }
-            }
+      // If streaming has finished, no image spinner is active, and 4.5s has elapsed,
+      // Gemini produced text instead of an image. Fail fast to trigger in-session nudge / account retry.
+      if (elapsedSinceDone > 4500) {
+        const finalCount = await imgLoc.count().catch(() => 0);
+        if (finalCount <= beforeCount) {
+          const finalError = toastMsg || responseText.slice(0, 140) || "Gemini replied with text instead of image";
+          throw new Error(`GEMINI_REFUSED_OR_TEXT: ${finalError}`);
+        }
+      }
+    } else {
+      streamingDoneStart = null;
     }
 
     await page.waitForTimeout(400);
   }
-  throw new Error("timed out waiting for Gemini image render (120s)");
+  throw new Error("timed out waiting for Gemini image render (65s)");
 }
 
 export async function generateImage({ prompt, imagePaths, page, outputPath = null, signal = null, accountId = null }) {
@@ -472,7 +447,7 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
         await submitPrompt(page, editor);
 
         try {
-          return await monitorAndExtractOutput(page, beforeCount, 120000, outputPath, signal);
+          return await monitorAndExtractOutput(page, beforeCount, 65000, outputPath, signal);
         } catch (err) {
           if (signal?.aborted || err?.name === "AbortError" || (err?.message || "").includes("cancelled by user")) {
             throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
@@ -481,32 +456,25 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
           const isTextRefusal = (err?.message || "").includes("GEMINI_REFUSED_OR_TEXT");
           const isHardQuota = /daily limit|reached your limit|quota exceeded|limit reached/i.test(err?.message || "");
 
-          // Fix 3: Two progressive nudges instead of one for text refusals
+          // Single focused in-session nudge (25s) before failing over to alternate fleet account
           if (isTextRefusal && !isHardQuota && !page.isClosed() && !signal?.aborted) {
-            console.log("[geminiweb] Gemini replied with text. Executing progressive 2-step in-session nudges...");
-            const MAX_NUDGES = 2;
-            for (let nudge = 0; nudge < MAX_NUDGES; nudge++) {
+            console.log("[geminiweb] Gemini replied with text. Executing fast in-session nudge (25s)...");
+            const nudgePrompt = "Generate the image as requested above.";
+            try {
+              const countBeforeNudge = await page.locator("model-response img, .response-container img, [data-test-id*='response'] img").count().catch(() => 0);
+              const nudgeEditor = await fillPrompt(page, nudgePrompt);
               if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-              const nudgePrompt = nudge === 0
-                ? "Generate the image as requested above."
-                : "Please output only the graphic design image, no text response.";
-              console.log(`[geminiweb] In-session nudge ${nudge + 1}/${MAX_NUDGES}: "${nudgePrompt}"`);
-              try {
-                const countBeforeNudge = await page.locator("model-response img, .response-container img, [data-test-id*='response'] img").count().catch(() => 0);
-                const nudgeEditor = await fillPrompt(page, nudgePrompt);
-                if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-                await submitPrompt(page, nudgeEditor);
-                const result = await monitorAndExtractOutput(page, countBeforeNudge, 45000, outputPath, signal);
-                if (result) {
-                  console.log(`[geminiweb] In-session nudge ${nudge + 1} succeeded! Image captured on the same account.`);
-                  return result;
-                }
-              } catch (nudgeErr) {
-                if (signal?.aborted || nudgeErr?.name === "AbortError") throw nudgeErr;
-                console.warn(`[geminiweb] In-session nudge ${nudge + 1} failed:`, nudgeErr.message.slice(0, 80));
+              await submitPrompt(page, nudgeEditor);
+              const result = await monitorAndExtractOutput(page, countBeforeNudge, 25000, outputPath, signal);
+              if (result) {
+                console.log("[geminiweb] In-session nudge succeeded! Image captured on the same account.");
+                return result;
               }
+            } catch (nudgeErr) {
+              if (signal?.aborted || nudgeErr?.name === "AbortError") throw nudgeErr;
+              console.warn("[geminiweb] In-session nudge failed:", nudgeErr.message.slice(0, 80));
             }
-            throw new Error("GEMINI_REFUSED_OR_TEXT: Both in-session nudges failed to generate an image");
+            throw new Error("GEMINI_REFUSED_OR_TEXT: In-session nudge failed to generate an image");
           }
           throw err;
         }
@@ -525,6 +493,25 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
   );
 }
 
+export async function ensureFlashLiteModel(page) {
+  try {
+    const modeBtn = page.locator('.input-area-switch, button[aria-label*="mode picker" i], button:has-text("Flash")').first();
+    if (await modeBtn.isVisible({ timeout: 300 }).catch(() => false)) {
+      const currentMode = (await modeBtn.innerText().catch(() => "")).trim();
+      if (!currentMode.toLowerCase().includes("lite")) {
+        await modeBtn.click({ timeout: 800 }).catch(() => {});
+        await page.waitForTimeout(300);
+        const lite = page.locator('gem-menu-item:has-text("Flash-Lite"), [role="menuitem"]:has-text("Flash-Lite"), button:has-text("Flash-Lite")').first();
+        if (await lite.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await lite.click({ timeout: 800 }).catch(() => {});
+          await page.waitForTimeout(300);
+          console.log("[geminiweb] Automatically set model to Flash-Lite (Fastest answers)");
+        }
+      }
+    }
+  } catch (_) {}
+}
+
 export async function ensureGeminiApp(page) {
   const currentUrl = page.url() || "";
   if (currentUrl.includes("accounts.google.com")) {
@@ -534,42 +521,23 @@ export async function ensureGeminiApp(page) {
   const isBaseAppUrl = currentUrl.endsWith("/app") || currentUrl.endsWith("/app/");
   const existingTurns = await page.locator("model-response, user-query").count().catch(() => 0);
 
-  if (!currentUrl.includes("gemini.google.com/app")) {
-    await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+  // If not on base /app or if existing conversation has turns, navigate directly to /app to reset context completely
+  if (!currentUrl.includes("gemini.google.com/app") || !isBaseAppUrl || existingTurns > 0) {
+    await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => {});
     if ((page.url() || "").includes("accounts.google.com")) {
       throw new Error("SESSION_EXPIRED: Account redirected to Google login");
-    }
-  } else if (!isBaseAppUrl || existingTurns > 0) {
-    // Already on Gemini but in a previous conversation — click New Chat and wait for turns to clear
-    const newChatBtn = page.locator(
-      'a[href="/app"], a[href="/app/"], button[aria-label*="New chat" i], button[aria-label*="Nouvelle discussion" i]'
-    ).first();
-
-    let resetOk = false;
-    if (await newChatBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await newChatBtn.click({ timeout: 2000 }).catch(() => {});
-      resetOk = await page.waitForFunction(() => {
-        return document.querySelectorAll("model-response, user-query").length === 0;
-      }, { timeout: 3500 }).then(() => true).catch(() => false);
-    }
-
-    if (!resetOk) {
-      await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
-      if ((page.url() || "").includes("accounts.google.com")) {
-        throw new Error("SESSION_EXPIRED: Account redirected to Google login");
-      }
-      await page.waitForFunction(() => {
-        return document.querySelectorAll("model-response, user-query").length === 0;
-      }, { timeout: 4000 }).catch(() => {});
     }
   }
 
   // Wait until the composer editor is interactive before proceeding
   const editorLoc = page.locator('rich-textarea div[contenteditable="true"], .ql-editor, div[role="textbox"]').first();
-  await editorLoc.waitFor({ state: "visible", timeout: 20000 }).catch(() => {});
+  await dismissModals(page);
+  await editorLoc.waitFor({ state: "visible", timeout: 12000 }).catch(() => {});
+  // Automatically ensure highest-speed Flash-Lite model is selected
+  await ensureFlashLiteModel(page);
   // Activate composer by focusing the editor
   await editorLoc.click({ timeout: 2000 }).catch(() => {});
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(200);
 }
 
 export async function checkSession(page, { navigate = true, fallbackEmail = null } = {}) {
@@ -599,7 +567,19 @@ export async function checkSession(page, { navigate = true, fallbackEmail = null
   }
 }
 
-export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 90000, accountId = null }) {
+function extractJSON(rawText) {
+  if (!rawText) return null;
+  const clean = String(rawText).replace(/```json\s*/gi, "").replace(/```\s*$/gi, "").trim();
+  const match = clean.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[0]);
+  } catch (_) {
+    return null;
+  }
+}
+
+export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 40000, accountId = null }) {
   const resolvedAccountId = accountId || getAccountIdForPage(page);
   return withGenerationCeiling(
     async () => {
@@ -631,7 +611,7 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
           if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
           // Proactive dispatch retry: If 10s elapsed with 0 turns and not generating, nudge send/enter once
-          if (!retriggered && Date.now() - start > 10000) {
+          if (!retriggered && Date.now() - start > 5000) {
             retriggered = true;
             const needsNudge = await page.evaluate((prevCount) => {
               const turns = document.querySelectorAll("model-response").length;
@@ -654,8 +634,10 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
           }
 
           const probe = await page.evaluate((prevCount) => {
-            const toastEl = document.querySelector('mat-snack-bar-container, [role="alert"]');
-            const toastMsg = toastEl ? (toastEl.innerText || "").trim() : null;
+            const errorEl = document.querySelector(
+              'mat-snack-bar-container, [role="alert"], [role="dialog"], .error-container, .response-error, [data-test-id*="error"]'
+            );
+            const toastMsg = errorEl ? (errorEl.innerText || "").trim() : null;
 
             const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
             const isGenerating = Boolean(
@@ -689,12 +671,28 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
             return { toastMsg, isGenerating, hasCopyBtn, text };
           }, countBefore).catch(() => ({ toastMsg: null, isGenerating: false, hasCopyBtn: false, text: "" }));
 
-          if (probe.toastMsg && /limit|quota|error|try again|failed|unable/i.test(probe.toastMsg)) {
-            throw new Error(`GEMINI_ERROR: ${probe.toastMsg}`);
+          if (probe.toastMsg && /limit|quota|error|try again|failed|unable|something went wrong|cannot help/i.test(probe.toastMsg)) {
+            throw new Error(`GEMINI_ERROR: ${probe.toastMsg.slice(0, 120)}`);
+          }
+
+          // Fast-fail if generation never started after 16s and prompt nudge already dispatched
+          if (Date.now() - start > 16000 && !probe.isGenerating && !probe.text && retriggered) {
+            throw new Error("GEMINI_STALLED: Generation failed to start after 16s");
           }
 
           const trimmed = probe.text;
           if (trimmed.length > 0) {
+            // Early JSON return: As soon as braces appear, parse and validate
+            if (trimmed.includes("{") && trimmed.includes("}")) {
+              const parsed = extractJSON(trimmed);
+              if (parsed && typeof parsed === "object") {
+                if (parsed.title || parsed.main_tag || parsed.bullet1 || parsed.description) {
+                  console.log(`[geminiweb] Valid listing JSON detected early (${trimmed.length} chars), returning IMMEDIATELY.`);
+                  return trimmed;
+                }
+              }
+            }
+
             // Fast-path A: Copy button rendered = generation definitely complete (any non-empty text)
             if (probe.hasCopyBtn && !probe.isGenerating) {
               console.log(`[geminiweb] Text captured via Copy button + not-generating (${trimmed.length} chars).`);
@@ -711,7 +709,7 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
                 console.log(`[geminiweb] JSON captured immediately (${trimmed.length} chars).`);
                 return trimmed;
               }
-              // Stability fallback: same text for 2 consecutive ticks (~800ms)
+              // Stability fallback: same text for 2 consecutive ticks
               if (trimmed === lastText) {
                 if (++stableTicks >= 2) {
                   console.log(`[geminiweb] Text captured via stability (${trimmed.length} chars).`);
@@ -726,7 +724,7 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
             lastText = trimmed;
           }
 
-          await page.waitForTimeout(400);
+          await page.waitForTimeout(150);
         }
 
         if (lastText.length > 0) {

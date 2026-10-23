@@ -10,6 +10,13 @@ import { formatImageToAspectRatio } from "../lib/aspectRatioEnforcer.js";
 
 const router = Router();
 
+function formatDuration(ms) {
+  const totalSec = Math.max(1, Math.round((ms || 0) / 1000));
+  const mins = String(Math.floor(totalSec / 60)).padStart(2, "0");
+  const secs = String(totalSec % 60).padStart(2, "0");
+  return `${mins}:${secs}`;
+}
+
 // POST /api/generate/art-style-niche
 // Accepts up to 10 style references for moodboard fusion + 1 niche subject reference
 router.post(
@@ -94,7 +101,7 @@ router.post(
         try {
           await runFleetBatch(
             tasks,
-            async ({ buffer, taskIndex, task, account }) => {
+            async ({ buffer, taskIndex, task, account, durationMs }) => {
               if (routeAbort.signal.aborted) return null;
               const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
               const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -110,6 +117,8 @@ router.post(
                 ...design,
                 account_id: account?.id || null,
                 account_email: account?.email || null,
+                generation_time: formatDuration(durationMs),
+                generation_time_ms: durationMs,
               };
               streamedCount++;
               res.write(
@@ -119,6 +128,13 @@ router.post(
             },
             {
               signal: routeAbort.signal,
+              onItemRetry: ({ taskIndex, attempt }) => {
+                if (wantsStream && !res.writableEnded) {
+                  try {
+                    res.write(JSON.stringify({ event: "slot_retrying", slotIndex: taskIndex, attempt }) + "\n");
+                  } catch (_) {}
+                }
+              },
               onItemError: async ({ taskIndex, error }) => {
                 if (wantsStream && !res.writableEnded) {
                   try {
@@ -155,7 +171,7 @@ router.post(
         const savedDesigns = new Array(tasks.length);
         await runFleetBatch(
           tasks,
-          async ({ buffer, taskIndex, task, account }) => {
+          async ({ buffer, taskIndex, task, account, durationMs }) => {
             if (routeAbort.signal.aborted) return null;
             const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
             const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -171,6 +187,8 @@ router.post(
               ...design,
               account_id: account?.id || null,
               account_email: account?.email || null,
+              generation_time: formatDuration(durationMs),
+              generation_time_ms: durationMs,
             };
             savedDesigns[taskIndex] = decorated;
             return decorated;

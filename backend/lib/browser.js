@@ -147,6 +147,18 @@ function getLaunchArgs(opts = {}) {
     "--disable-session-crashed-bubble",
     "--hide-crash-restore-bubble",
     "--disable-blink-features=AutomationControlled",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--js-flags=--max-old-space-size=512",
+    "--renderer-process-limit=2",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-extensions",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-ipc-flooding-protection",
+    "--disable-features=Translate,BackForwardCache,AcceptCHFrame,MediaRouter,OptimizationHints",
   ];
 }
 
@@ -154,10 +166,9 @@ export async function killOrphanProcesses(profileDir) {
   // If an interactive sign-in session is active, EXIT IMMEDIATELY
   if (isInteractiveAuthActive) return;
   if (process.platform === "win32") {
-    // Fast process termination without heavy WMI CIM queries that saturate CPU
     const safe = profileDir.replace(/'/g, "''");
     const base = path.basename(profileDir).replace(/'/g, "''");
-    const script = `Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'brave.exe'" -ErrorAction SilentlyContinue | Where-Object { \$_.CommandLine -and (\$_.CommandLine.Contains('${safe}') -or \$_.CommandLine.Contains('${base}')) } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }`;
+    const script = `$procs = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' or Name = 'brave.exe' or Name = 'msedge.exe'" -ErrorAction SilentlyContinue | Where-Object { \$_.CommandLine -and (\$_.CommandLine.Contains('${safe}') -or \$_.CommandLine.Contains('${base}')) }; \$roots = \$procs | Where-Object { -not \$_.CommandLine.Contains('--type=') }; if (\$roots) { \$roots | ForEach-Object { taskkill.exe /PID \$_.ProcessId /T /F 2>\$null } } else { \$procs | ForEach-Object { taskkill.exe /PID \$_.ProcessId /F 2>\$null } }`;
     try {
       const encoded = Buffer.from(script, "utf16le").toString("base64");
       await execAsync(`powershell -NoProfile -EncodedCommand ${encoded}`, { stdio: "ignore", timeout: 4000 });
@@ -660,10 +671,13 @@ export async function closeProfile(accountId) {
   sessions.delete(accountId);
   mainPages.delete(accountId);
   try {
-    await entry.context.close();
+    await Promise.race([
+      entry.context.close().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 3000)),
+    ]);
   } catch {}
   if (!isInteractiveAuthActive && entry.profileDir) {
-    await killOrphanProcesses(entry.profileDir);
+    await killOrphanProcesses(entry.profileDir).catch(() => {});
   }
 }
 

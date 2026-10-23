@@ -11,14 +11,14 @@ import os from "os";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { withAbs, listReadyAccountsWithAbs } from "../lib/accounts.js";
-import { getProfilePage, canLaunchBrowser } from "../lib/browser.js";
+import { getProfilePage, closeProfile, canLaunchBrowser } from "../lib/browser.js";
 import { MOCK_GEMINI } from "../lib/gemini.js";
 import * as web from "../lib/geminiweb.js";
 import {
   recordGeneration,
   insertListing,
 } from "../lib/db.js";
-import { acquireFleetAccount, release } from "../lib/fleetLease.js";
+import { acquireFleetAccount, release, quarantine } from "../lib/fleetLease.js";
 import { storeInLibrary } from "../lib/files.js";
 import {
   buildMagicListingPrompt,
@@ -27,6 +27,13 @@ import {
 } from "../prompts/magicListing.js";
 
 const router = Router();
+
+function formatDuration(ms) {
+  const totalSec = Math.max(1, Math.round((ms || 0) / 1000));
+  const mins = String(Math.floor(totalSec / 60)).padStart(2, "0");
+  const secs = String(totalSec % 60).padStart(2, "0");
+  return `${mins}:${secs}`;
+}
 
 // ── Sanitizers ───────────────────────────────────────────────
 
@@ -331,6 +338,7 @@ function persistListingToLibrary({ fileName, designIndex, platform, listing, ima
 }
 
 async function processListingOnAccount(account, design, referenceData, platform, signal = null) {
+  const listingStartTime = Date.now();
   const plat = String(platform || "amazon").toLowerCase();
   const isTeePublic = plat === "teepublic";
   const isEtsy = plat === "etsy";
@@ -418,7 +426,7 @@ async function processListingOnAccount(account, design, referenceData, platform,
       imagePaths: [imagePath],
       page,
       signal,
-      timeoutMs: 90000,
+      timeoutMs: 55000,
       accountId: account.id,
     });
 
@@ -441,7 +449,8 @@ async function processListingOnAccount(account, design, referenceData, platform,
       imagePath,
     });
 
-    console.log(`[magicListing] Successfully parsed JSON for [${plat}], releasing account.`);
+    const durationMs = Date.now() - listingStartTime;
+    console.log(`[magicListing] Successfully parsed JSON for [${plat}] in ${durationMs}ms, releasing account.`);
     return {
       success: true,
       id: persisted.id,
@@ -451,6 +460,8 @@ async function processListingOnAccount(account, design, referenceData, platform,
       thumbnailPath: persisted.thumbnailRel,
       thumbnailUrl: persisted.thumbnailRel ? `/library/${persisted.thumbnailRel}` : "",
       listing: normalizedListing,
+      generation_time: formatDuration(durationMs),
+      generation_time_ms: durationMs,
       savedToLibrary: true,
     };
   } finally {
@@ -477,7 +488,7 @@ router.post("/generate", async (req, res) => {
     }
 
     console.log(`[magicListing] Incoming request: Platform = [${platform}], Files = 1`);
-    account = await acquireFleetAccount({ timeoutMs: 45000 });
+    account = await acquireFleetAccount({ timeoutMs: 30000 });
 
     const result = await processListingOnAccount(
       account,
@@ -495,6 +506,7 @@ router.post("/generate", async (req, res) => {
     res.status(500).json({ error: err.message || "Magic Listing backend processing failed" });
   } finally {
     if (account) {
+      await closeProfile(account.id).catch(() => {});
       release(account.id);
     }
   }
@@ -504,6 +516,7 @@ router.post("/generate", async (req, res) => {
 router.post("/batch", async (req, res) => {
   const wantsStream = req.headers.accept?.includes("application/x-ndjson") || req.query.stream === "true";
   let heartbeatInterval = null;
+  const batchAccountIds = new Set();
 
   try {
     const { designs = [], referenceData = "", platform = "amazon" } = req.body || {};
@@ -571,7 +584,8 @@ router.post("/batch", async (req, res) => {
         const { design, designIndex } = item;
         let account = null;
         try {
-          account = await acquireFleetAccount({ timeoutMs: 60000, excludeIds: item.failedAccountIds || [] });
+          account = await acquireFleetAccount({ timeoutMs: 30000, excludeIds: item.failedAccountIds || [] });
+          if (account?.id) batchAccountIds.add(account.id);
           const result = await processListingOnAccount(
             account,
             design,
@@ -593,11 +607,30 @@ router.post("/batch", async (req, res) => {
           if (account) {
             item.failedAccountIds = item.failedAccountIds || [];
             item.failedAccountIds.push(account.id);
+
+            // Immediately tear down frozen browser context to prevent cascaded stalls
+            if (isTimeout || msg.includes("error") || msg.includes("stalled") || msg.includes("session")) {
+              console.log(`[MagicListing] Closing frozen profile context for ${account.id}...`);
+              closeProfile(account.id).catch(() => {});
+            }
+            // Quarantine failing account for 30s to keep fleet healthy
+            quarantine(account.id, 30000);
           }
 
-          if (item.retries < 2 && !msg.includes("invalid image") && !msg.includes("bad request")) {
+          if (item.retries < 1 && !msg.includes("invalid image") && !msg.includes("bad request") && !routeAbort.signal.aborted) {
             item.retries++;
-            console.log(`[MagicListing] Re-routing design ${designIndex} (${design?.fileName}) (attempt ${item.retries + 1}/3) to alternate account...`);
+            console.log(`[MagicListing] Re-routing design ${designIndex} (${design?.fileName}) (attempt ${item.retries + 1}/2) to alternate account...`);
+            if (wantsStream && !res.writableEnded) {
+              try {
+                res.write(JSON.stringify({
+                  event: "listing_retrying",
+                  designIndex,
+                  fileName: design?.fileName,
+                  attempt: item.retries + 1,
+                  message: "Account slow or busy, switching to alternate account...",
+                }) + "\n");
+              } catch (_) {}
+            }
             pending.push(item);
           } else {
             const failedItem = {
@@ -623,7 +656,15 @@ router.post("/batch", async (req, res) => {
       }
     }
 
-    await Promise.all(Array.from({ length: workerCount }, (_, i) => worker(i)));
+    await Promise.all(
+      Array.from({ length: workerCount }, async (_, i) => {
+        if (i > 0) {
+          // Stagger concurrent fleet worker launches to prevent IP socket throttling from Google
+          await new Promise((r) => setTimeout(r, i * 1200));
+        }
+        return worker(i);
+      })
+    );
 
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     if (wantsStream) {
@@ -647,6 +688,11 @@ router.post("/batch", async (req, res) => {
       return;
     }
     res.status(500).json({ error: err.message || "Magic Listing batch processing failed" });
+  } finally {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    for (const accountId of batchAccountIds) {
+      await closeProfile(accountId).catch(() => {});
+    }
   }
 });
 

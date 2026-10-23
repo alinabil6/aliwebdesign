@@ -33,6 +33,7 @@ export async function generateImage({ prompt, imagePaths = [] }) {
     await page.goto("about:blank", { timeout: 3000 }).catch(() => {});
     throw err;
   } finally {
+    await closeProfile(account.id).catch(() => {});
     release(account.id);
   }
 }

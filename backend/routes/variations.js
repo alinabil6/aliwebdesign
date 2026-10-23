@@ -12,6 +12,13 @@ import { formatImageToAspectRatio } from "../lib/aspectRatioEnforcer.js";
 
 const router = Router();
 
+function formatDuration(ms) {
+  const totalSec = Math.max(1, Math.round((ms || 0) / 1000));
+  const mins = String(Math.floor(totalSec / 60)).padStart(2, "0");
+  const secs = String(totalSec % 60).padStart(2, "0");
+  return `${mins}:${secs}`;
+}
+
 /**
  * Split user niche ideas into distinct targets by comma, newline, or semicolon.
  * Example: "usa, spain, canada, haiti" -> ["USA", "Spain", "Canada", "Haiti"]
@@ -114,7 +121,7 @@ router.post("/niche-variations", upload.single("source"), async (req, res) => {
       try {
         await runFleetBatch(
           tasks,
-          async ({ buffer, taskIndex, task, account }) => {
+          async ({ buffer, taskIndex, task, account, durationMs }) => {
             if (routeAbort.signal.aborted) return null;
             const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
             const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -130,6 +137,8 @@ router.post("/niche-variations", upload.single("source"), async (req, res) => {
               ...design,
               account_id: account?.id || null,
               account_email: account?.email || null,
+              generation_time: formatDuration(durationMs),
+              generation_time_ms: durationMs,
             };
             streamedCount++;
             // STREAM CHUNK IMMEDIATELY TO CLIENT
@@ -138,6 +147,13 @@ router.post("/niche-variations", upload.single("source"), async (req, res) => {
           },
           {
             signal: routeAbort.signal,
+            onItemRetry: ({ taskIndex, attempt }) => {
+              if (wantsStream && !res.writableEnded) {
+                try {
+                  res.write(JSON.stringify({ event: "slot_retrying", slotIndex: taskIndex, attempt }) + "\n");
+                } catch (_) {}
+              }
+            },
             onItemError: async ({ taskIndex, error }) => {
               if (wantsStream && !res.writableEnded) {
                 try {
@@ -170,7 +186,7 @@ router.post("/niche-variations", upload.single("source"), async (req, res) => {
     } else {
       await runFleetBatch(
         tasks,
-        async ({ buffer, taskIndex, task, account }) => {
+        async ({ buffer, taskIndex, task, account, durationMs }) => {
           if (routeAbort.signal.aborted) return null;
           const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio, { bg_color: task.bgColor });
           const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
@@ -186,6 +202,8 @@ router.post("/niche-variations", upload.single("source"), async (req, res) => {
             ...design,
             account_id: account?.id || null,
             account_email: account?.email || null,
+            generation_time: formatDuration(durationMs),
+            generation_time_ms: durationMs,
           };
           savedDesigns[taskIndex] = decorated;
           return decorated;

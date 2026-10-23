@@ -1,3 +1,4 @@
+import os from "os";
 import pLimit from "p-limit";
 import { generateImage, generateImageOnAccount } from "./gemini.js";
 import { listReadyAccountsWithAbs, listAccountsWithAbs, withAbs } from "./accounts.js";
@@ -53,7 +54,7 @@ const accountSessionGenerations = new Map();
 const activeBatchSignals = new Set();
 const activeAccountPages = new Map();
 
-const LAUNCH_DELAY_MS = 2500;
+const LAUNCH_DELAY_MS = 1200;
 let lastGlobalLaunchTime = 0;
 async function acquireGlobalLaunchSlot() {
   const now = Date.now();
@@ -116,7 +117,9 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
   const results = [];
   const pending = tasks.map((task, idx) => ({ task, taskIndex: idx, retries: 0, failedAccountIds: [] }));
 
-  const workerCount = Math.max(1, Math.min(tasks.length, allUsable.length, MAX_CONCURRENT));
+  const freeMemGb = os.freemem() / (1024 * 1024 * 1024);
+  const effectiveMaxConcurrent = freeMemGb < 3.0 ? Math.min(MAX_CONCURRENT, 2) : MAX_CONCURRENT;
+  const workerCount = Math.max(1, Math.min(tasks.length, allUsable.length, effectiveMaxConcurrent));
   if (signal) activeBatchSignals.add(signal);
 
   let activeInFlight = 0;
@@ -142,7 +145,7 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
       let pendingTeardown = null;
       try {
         if (signal?.aborted) { break; }
-        account = await acquireAccount(60000, item.failedAccountIds || []);
+        account = await acquireAccount(30000, item.failedAccountIds || []);
         if (signal?.aborted) {
           unleaseAccount(account.id);
           break;
@@ -161,6 +164,7 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
 
         await acquireGlobalLaunchSlot();
 
+        const taskStartTime = Date.now();
         const buffer = await raceWithSignal(
           generateImageOnAccount(account, task, { signal }),
           signal,
@@ -172,12 +176,13 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
             }
           }
         );
+        const durationMs = Date.now() - taskStartTime;
 
         let checkpoint = null;
         if (typeof onCheckpoint === "function" && !signal?.aborted) {
-          checkpoint = await onCheckpoint({ buffer, taskIndex, task, account }).catch(() => null);
+          checkpoint = await onCheckpoint({ buffer, taskIndex, task, account, durationMs }).catch(() => null);
         }
-        results.push({ buffer, taskIndex, checkpoint });
+        results.push({ buffer, taskIndex, checkpoint, durationMs });
 
         // Periodic context recycling (Anti-Memory Creep) after 15 designs per account
         if (account) {
@@ -231,15 +236,23 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           if (isHardQuota) {
             quarantine(account.id, 15 * 60 * 1000);
             console.warn(`[fleet] Account ${account.id} hit daily limit. Benched for 15 minutes.`);
-          } else if (!isHardPolicy && !isAuthDrop && !isTimeout) {
+          } else if (isTimeout) {
+            quarantine(account.id, 30 * 1000);
+            console.warn(`[fleet] Account ${account.id} timed out. Quarantined for 30s.`);
+          } else if (!isHardPolicy && !isAuthDrop) {
             quarantine(account.id, 10 * 1000);
             console.warn(`[fleet] Account ${account.id} soft-cooldown (10s).`);
           }
         }
 
-        if (!isHardPolicy && item.retries < 2 && !signal?.aborted) {
+        if (!isHardPolicy && item.retries < 1 && !signal?.aborted) {
           item.retries++;
-          console.log(`[fleet] Re-routing item ${taskIndex} (attempt ${item.retries + 1}/3) to alternate account...`);
+          console.log(`[fleet] Re-routing item ${taskIndex} (attempt ${item.retries + 1}/2) to alternate account...`);
+          if (typeof options?.onItemRetry === "function") {
+            try {
+              options.onItemRetry({ taskIndex, task, attempt: item.retries + 1, account });
+            } catch (_) {}
+          }
           pending.push(item);
         } else {
           console.error(`[fleet] Item ${taskIndex} permanently failed: ${err.message}`);
@@ -273,8 +286,9 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
     await Promise.all(Array.from({ length: workerCount }, () => fleetWorker()));
   } finally {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
+    if (signal) activeBatchSignals.delete(signal);
+    await purgeFleetBrowsersBrowser().catch(() => {});
   }
-  if (signal) activeBatchSignals.delete(signal);
   results.sort((a, b) => a.taskIndex - b.taskIndex);
   return results;
 }
@@ -306,6 +320,9 @@ export function cancelAllRunningFleetTasks() {
     try {
       unregisterAccountPage(accountId);
     } catch (_) {}
+  }
+  if (!isInteractiveAuthActive) {
+    purgeFleetBrowsersBrowser().catch(() => {});
   }
   return releaseAllLeases();
 }
