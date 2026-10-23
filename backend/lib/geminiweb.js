@@ -91,6 +91,27 @@ export const SELECTORS = {
     '[role="menuitem"]:has-text("Upload files")',
     '[role="menuitem"][aria-label*="Upload files" i]',
     '[aria-label*="Upload files" i]',
+    // French:
+    'text="Importer des fichiers"',
+    ':has-text("Importer des fichiers")',
+    ':has-text("Télécharger des fichiers")',
+    ':has-text("Importer")',
+    // Spanish:
+    'text="Subir archivos"',
+    ':has-text("Subir archivos")',
+    ':has-text("Subir")',
+    // Arabic:
+    ':has-text("تحميل ملفات")',
+    ':has-text("تحميل")',
+    // German:
+    ':has-text("Dateien hochladen")',
+    ':has-text("Hochladen")',
+    // Generic fallback:
+    '[role="menuitem"]:has(mat-icon[data-mat-icon-name*="upload"])',
+    '[role="menuitem"]:has(mat-icon[data-mat-icon-name*="file"])',
+    '[role="menuitem"]:has(mat-icon[data-mat-icon-name*="image"])',
+    'button[role="menuitem"]',
+    '.mat-mdc-menu-item:not([disabled])',
   ],
   outputImage: "model-response img, .response-container img, [data-test-id*='response'] img",
   signedInAvatar: ['[aria-label*="Google Account"]', '[aria-label*="@"]', '.gb_A'],
@@ -188,38 +209,67 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   let fileInput = page.locator(fileInputSelector).last();
   let count = await fileInput.count().catch(() => 0);
 
+  let chooserHandled = false;
+
   if (count === 0) {
     console.log("[geminiweb] input[type='file'] not mounted, waiting for attach button...");
     const attachBtn = await getVisibleAttachButton(page, 10000);
     if (attachBtn) {
-      await attachBtn.click({ timeout: 3000 }).catch(() => {});
+      try {
+        const [fc] = await Promise.all([
+          page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null),
+          attachBtn.click({ timeout: 3000 }).catch(() => {}),
+        ]);
+        if (fc) {
+          console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via attach button filechooser.`);
+          await fc.setFiles(imagePaths);
+          chooserHandled = true;
+        }
+      } catch (_) {}
       await page.waitForTimeout(250);
     }
-    fileInput = page.locator(fileInputSelector).last();
-    count = await fileInput.count().catch(() => 0);
+    if (!chooserHandled) {
+      fileInput = page.locator(fileInputSelector).last();
+      count = await fileInput.count().catch(() => 0);
+    }
   }
 
   // Fallback check if menu item needs to be clicked
-  if (count === 0) {
-    const uploadItem = await getVisibleUploadItem(page, 4000);
+  if (count === 0 && !chooserHandled) {
+    const uploadItem = await getVisibleUploadItem(page, 5000);
     if (uploadItem) {
-      await uploadItem.click({ timeout: 3000 }).catch(() => {});
+      try {
+        const [fc] = await Promise.all([
+          page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null),
+          uploadItem.click({ timeout: 3000 }).catch(() => {}),
+        ]);
+        if (fc) {
+          console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via upload menu item filechooser.`);
+          await fc.setFiles(imagePaths);
+          chooserHandled = true;
+        }
+      } catch (_) {}
       await page.waitForTimeout(250);
     }
-    fileInput = page.locator(fileInputSelector).last();
-    count = await fileInput.count().catch(() => 0);
+    if (!chooserHandled) {
+      fileInput = page.locator(fileInputSelector).last();
+      count = await fileInput.count().catch(() => 0);
+    }
   }
 
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
-  // 3. Dispatch files to input[type="file"]
-  try {
-    await fileInput.setInputFiles(imagePaths, { timeout: 8000 });
-    console.log(`[geminiweb] Direct setInputFiles dispatched with ${imagePaths.length} file(s)`);
-  } catch (err) {
-    console.warn("[geminiweb] Direct setInputFiles failed, attempting fallback:", err?.message);
-    const fallbackInput = page.locator(fileInputSelector).last();
-    await fallbackInput.setInputFiles(imagePaths, { timeout: 8000 });
+  // 3. Dispatch files to input[type="file"] if not already handled by filechooser
+  if (!chooserHandled) {
+    try {
+      const activeInput = page.locator(fileInputSelector).last();
+      await activeInput.setInputFiles(imagePaths, { timeout: 12000 });
+      console.log(`[geminiweb] Direct setInputFiles dispatched with ${imagePaths.length} file(s)`);
+    } catch (err) {
+      console.warn("[geminiweb] Direct setInputFiles failed, attempting fallback:", err?.message);
+      const fallbackInput = page.locator('input[type="file"]').last();
+      await fallbackInput.setInputFiles(imagePaths, { timeout: 12000 });
+    }
   }
 
   // 4. Verify attachment mounted in DOM and wait for upload completion

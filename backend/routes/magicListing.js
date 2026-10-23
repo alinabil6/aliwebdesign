@@ -10,7 +10,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
-import { withAbs, listReadyAccountsWithAbs } from "../lib/accounts.js";
+import { withAbs, listAccountsWithAbs, listReadyAccountsWithAbs } from "../lib/accounts.js";
 import {
   getProfilePage,
   closeProfile,
@@ -564,8 +564,9 @@ router.post("/batch", async (req, res) => {
       failedAccountIds: [],
     }));
 
+    const allUsable = listAccountsWithAbs().filter((a) => a.active === 1 && a.status !== "disabled" && a.status !== "error" && a.status !== "signed_out");
     const MAX_CONCURRENT = 4;
-    const workerCount = Math.min(designs.length, MAX_CONCURRENT);
+    const workerCount = Math.max(1, Math.min(designs.length, allUsable.length || 1, MAX_CONCURRENT));
     let activeInFlight = 0;
     let poolDone = false;
     const routeAbort = new AbortController();
@@ -596,7 +597,8 @@ router.post("/batch", async (req, res) => {
         const { design, designIndex } = item;
         let account = null;
         try {
-          account = await acquireFleetAccount({ timeoutMs: 30000, excludeIds: item.failedAccountIds || [] });
+          const excludeList = allUsable.length > 1 ? (item.failedAccountIds || []) : [];
+          account = await acquireFleetAccount({ timeoutMs: 120000, excludeIds: excludeList });
           if (account?.id) {
             batchAccountIds.add(account.id);
             touchAccountSession(account.id);
@@ -628,8 +630,12 @@ router.post("/batch", async (req, res) => {
               console.log(`[MagicListing] Closing frozen profile context for ${account.id}...`);
               closeProfile(account.id).catch(() => {});
             }
-            // Quarantine failing account for 30s to keep fleet healthy
-            quarantine(account.id, 30000);
+            // Fleet-aware quarantine: if single account, short 2s cooldown so retry can proceed
+            if (allUsable.length > 1) {
+              quarantine(account.id, 30000);
+            } else {
+              quarantine(account.id, 2000);
+            }
           }
 
           if (item.retries < 1 && !msg.includes("invalid image") && !msg.includes("bad request") && !routeAbort.signal.aborted) {

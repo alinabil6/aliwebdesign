@@ -159,7 +159,8 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
       let pendingTeardown = null;
       try {
         if (signal?.aborted) { break; }
-        account = await acquireAccount(30000, item.failedAccountIds || []);
+        const excludeList = allUsable.length > 1 ? (item.failedAccountIds || []) : [];
+        account = await acquireAccount(120000, excludeList);
         if (signal?.aborted) {
           unleaseAccount(account.id);
           break;
@@ -261,12 +262,18 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           if (isHardQuota) {
             quarantine(account.id, 15 * 60 * 1000);
             console.warn(`[fleet] Account ${account.id} hit daily limit. Benched for 15 minutes.`);
-          } else if (isTimeout) {
-            quarantine(account.id, 30 * 1000);
-            console.warn(`[fleet] Account ${account.id} timed out. Quarantined for 30s.`);
-          } else if (!isHardPolicy && !isAuthDrop) {
-            quarantine(account.id, 10 * 1000);
-            console.warn(`[fleet] Account ${account.id} soft-cooldown (10s).`);
+          } else if (allUsable.length > 1) {
+            if (isTimeout) {
+              quarantine(account.id, 30 * 1000);
+              console.warn(`[fleet] Account ${account.id} timed out. Quarantined for 30s.`);
+            } else if (!isHardPolicy && !isAuthDrop) {
+              quarantine(account.id, 10 * 1000);
+              console.warn(`[fleet] Account ${account.id} soft-cooldown (10s).`);
+            }
+          } else {
+            // Single account fleet: short 2s reset cooldown instead of 30s lockout
+            quarantine(account.id, 2000);
+            console.log(`[fleet] Single account fleet: 2s soft reset for ${account.id}.`);
           }
         }
 

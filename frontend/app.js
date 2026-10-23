@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.13";
+const APP_VERSION = "1.0.14";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -1167,6 +1167,8 @@ async function refreshTopBar() {
     const data = await api("/api/accounts");
     const list = data.accounts || [];
     const ready = list.filter((a) => a.status === "ready").length;
+    const activeUsable = list.filter((a) => a.status === "ready" || a.status === "running" || a.status === "generating").length || ready || 1;
+    window.__readyAccountsCount = activeUsable;
     text.textContent = `${ready} of ${list.length} accounts ready`;
     dot.className = "top-dot";
     if (ready === list.length && list.length > 0) {
@@ -1528,7 +1530,8 @@ function renderPixelToPixel() {
     try {
       let completedCount = 0;
       let nextIdx = 0;
-      const concurrency = Math.min(5, sourceFiles.length);
+      const readyPool = Math.max(1, Math.min(window.__readyAccountsCount || 1, 5));
+      const concurrency = Math.min(readyPool, sourceFiles.length);
 
       async function worker() {
         while (nextIdx < sourceFiles.length) {
@@ -5475,7 +5478,8 @@ function renderDesignToDesign() {
     try {
       let completedCount = 0;
       let nextIdx = 0;
-      const concurrency = Math.min(5, sourceFiles.length);
+      const readyPool = Math.max(1, Math.min(window.__readyAccountsCount || 1, 5));
+      const concurrency = Math.min(readyPool, sourceFiles.length);
 
       async function worker() {
         while (nextIdx < sourceFiles.length) {
