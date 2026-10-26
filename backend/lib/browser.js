@@ -352,7 +352,19 @@ export async function purgeFleetBrowsers(opts = {}) {
   }
 }
 
+const LAUNCH_DELAY_MS = 1200;
+let lastGlobalLaunchTime = 0;
+export async function acquireGlobalLaunchSlot() {
+  const now = Date.now();
+  const waitMs = Math.max(0, lastGlobalLaunchTime + LAUNCH_DELAY_MS - now);
+  lastGlobalLaunchTime = now + waitMs;
+  if (waitMs > 0) {
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+}
+
 export async function launchProfile(account, opts = {}) {
+  await acquireGlobalLaunchSlot();
   const profileDir = resolveAccountProfileDir(account);
   fs.mkdirSync(profileDir, { recursive: true });
 

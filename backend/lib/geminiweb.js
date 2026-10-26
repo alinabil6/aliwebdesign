@@ -236,7 +236,7 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
         console.log("[geminiweb] Clicking upload menu item with filechooser listener...");
         try {
           const [fc] = await Promise.all([
-            page.waitForEvent("filechooser", { timeout: 4000 }).catch(() => null),
+            page.waitForEvent("filechooser", { timeout: 8000 }).catch(() => null),
             uploadItem.click({ timeout: 3000 }).catch(() => {}),
           ]);
           if (fc) {
@@ -271,7 +271,7 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   if (!mounted) {
     console.warn("[geminiweb] Attachment preview chip not immediately detected, waiting for upload settling...");
   }
-  await waitForUploadCompletion(page, 8000);
+  await waitForUploadCompletion(page, 10000);
   console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s) successfully.`);
 }
 
@@ -658,7 +658,7 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
           if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
 
           // Proactive dispatch retry: If 10s elapsed with 0 turns and not generating, nudge send/enter once
-          if (!retriggered && Date.now() - start > 5000) {
+          if (!retriggered && Date.now() - start > 8000) {
             retriggered = true;
             const needsNudge = await page.evaluate((prevCount) => {
               const turns = document.querySelectorAll("model-response").length;
@@ -723,8 +723,8 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
           }
 
           // Fast-fail if generation never started after 16s and prompt nudge already dispatched
-          if (Date.now() - start > 16000 && !probe.isGenerating && !probe.text && retriggered) {
-            throw new Error("GEMINI_STALLED: Generation failed to start after 16s");
+          if (Date.now() - start > 35000 && !probe.isGenerating && !probe.text && retriggered) {
+            throw new Error("GEMINI_STALLED: Generation failed to start after 35s");
           }
 
           const trimmed = probe.text;

@@ -21,6 +21,7 @@ import {
   releaseAndScheduleIdleClose,
   incrementActiveBatches,
   decrementActiveBatches,
+  acquireGlobalLaunchSlot,
 } from "../lib/browser.js";
 import { MOCK_GEMINI } from "../lib/gemini.js";
 import * as web from "../lib/geminiweb.js";
@@ -436,7 +437,7 @@ async function processListingOnAccount(account, design, referenceData, platform,
       imagePaths: [imagePath],
       page,
       signal,
-      timeoutMs: 55000,
+      timeoutMs: 70000,
       accountId: account.id,
     });
 
@@ -565,8 +566,10 @@ router.post("/batch", async (req, res) => {
     }));
 
     const allUsable = listAccountsWithAbs().filter((a) => a.active === 1 && a.status !== "disabled" && a.status !== "error" && a.status !== "signed_out");
-    const MAX_CONCURRENT = 4;
-    const workerCount = Math.max(1, Math.min(designs.length, allUsable.length || 1, MAX_CONCURRENT));
+    const totalMemGb = os.totalmem() / (1024 * 1024 * 1024);
+    const maxFleetCap = parseInt(process.env.MAX_FLEET_CONCURRENT || "8", 10);
+    const safeSystemCap = totalMemGb >= 11.5 ? maxFleetCap : (totalMemGb >= 7.5 ? Math.min(maxFleetCap, 6) : 3);
+    const workerCount = Math.max(1, Math.min(designs.length, allUsable.length || 1, safeSystemCap));
     let activeInFlight = 0;
     let poolDone = false;
     const routeAbort = new AbortController();
@@ -632,7 +635,7 @@ router.post("/batch", async (req, res) => {
             }
             // Fleet-aware quarantine: if single account, short 2s cooldown so retry can proceed
             if (allUsable.length > 1) {
-              quarantine(account.id, 30000);
+              quarantine(account.id, 5000);
             } else {
               quarantine(account.id, 2000);
             }

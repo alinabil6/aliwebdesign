@@ -15,6 +15,7 @@ import {
   parkAccountPageWhileLeased,
   scheduleIdleClose,
   releaseAndScheduleIdleClose,
+  acquireGlobalLaunchSlot,
 } from "./browser.js";
 import {
   isLeased,
@@ -59,23 +60,14 @@ async function checkTabHeartbeat(account, timeoutMs = 8000) {
   }
 }
 
-export const MAX_CONCURRENT = parseInt(process.env.MAX_FLEET_CONCURRENT || "4", 10);
+export const MAX_CONCURRENT = parseInt(process.env.MAX_FLEET_CONCURRENT || "8", 10);
 const limit = pLimit(MAX_CONCURRENT);
 const accountSessionGenerations = new Map();
 
 const activeBatchSignals = new Set();
 const activeAccountPages = new Map();
 
-const LAUNCH_DELAY_MS = 1200;
-let lastGlobalLaunchTime = 0;
-async function acquireGlobalLaunchSlot() {
-  const now = Date.now();
-  const waitMs = Math.max(0, lastGlobalLaunchTime + LAUNCH_DELAY_MS - now);
-  lastGlobalLaunchTime = now + waitMs;
-  if (waitMs > 0) {
-    await new Promise((r) => setTimeout(r, waitMs));
-  }
-}
+
 
 export function registerBatchSignal(signal) { if (signal) activeBatchSignals.add(signal); }
 export function unregisterBatchSignal(signal) { if (signal) activeBatchSignals.delete(signal); }
@@ -131,9 +123,9 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
   const results = [];
   const pending = tasks.map((task, idx) => ({ task, taskIndex: idx, retries: 0, failedAccountIds: [], initialStartTime: Date.now() }));
 
-  const freeMemGb = os.freemem() / (1024 * 1024 * 1024);
-  const effectiveMaxConcurrent = freeMemGb < 3.0 ? Math.min(MAX_CONCURRENT, 2) : MAX_CONCURRENT;
-  const workerCount = Math.max(1, Math.min(tasks.length, allUsable.length, effectiveMaxConcurrent));
+  const totalMemGb = os.totalmem() / (1024 * 1024 * 1024);
+  const safeSystemCap = totalMemGb >= 11.5 ? MAX_CONCURRENT : (totalMemGb >= 7.5 ? Math.min(MAX_CONCURRENT, 6) : 3);
+  const workerCount = Math.max(1, Math.min(tasks.length, allUsable.length, safeSystemCap));
   if (signal) activeBatchSignals.add(signal);
 
   let activeInFlight = 0;
