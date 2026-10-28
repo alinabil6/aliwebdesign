@@ -8149,3 +8149,81 @@ body.light-mode .t2i-prompt-badge {
   border-color: #BFDBFE;
   color: #2563EB;
 }
+
+/* ── Pixel to Pixel Mode Toggle (Design | Poster) ── */
+.p2p-mode-toggle {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(10, 15, 26, 0.6);
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  width: 100%;
+}
+
+.p2p-mode-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #1e293b;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.p2p-mode-btn:hover {
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+.p2p-mode-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+}
+
+:root[data-theme="light"] .p2p-mode-toggle {
+  background: rgba(241, 245, 249, 0.8);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+:root[data-theme="light"] .p2p-mode-btn {
+  background: #e2e8f0;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+:root[data-theme="light"] .p2p-mode-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+.mode-pill.mode-poster {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+}
+.mode-pill.mode-design {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+

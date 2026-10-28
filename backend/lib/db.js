@@ -106,6 +106,7 @@ ensureColumn("browser_accounts", "generation_count", "INTEGER NOT NULL DEFAULT 0
 ensureColumn("browser_accounts", "last_used_at", "TEXT");
 // Fleet control: 1 = participates in generation, 0 = disabled (never picked).
 ensureColumn("browser_accounts", "active", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("designs", "mode", "TEXT");
 
 // ────────────────────────────────────────────────
 // Startup lock clear — hung statuses never persist.
@@ -388,10 +389,10 @@ const designStmts = {
   insert: db.prepare(
     `INSERT INTO designs
        (id, feature, parent_id, source_image_path, style_image_path,
-        output_image_path, prompt_used, user_input, folder)
+        output_image_path, prompt_used, user_input, folder, mode)
      VALUES
        (@id, @feature, @parent_id, @source_image_path, @style_image_path,
-        @output_image_path, @prompt_used, @user_input, @folder)`
+        @output_image_path, @prompt_used, @user_input, @folder, @mode)`
   ),
   get: db.prepare(`SELECT * FROM designs WHERE id = ?`),
   list: db.prepare(
@@ -421,6 +422,7 @@ export function insertDesign(design) {
     source_image_path: null,
     style_image_path: null,
     user_input: null,
+    mode: null,
     ...design,
   });
   return getDesignById(design.id);

@@ -39,19 +39,23 @@ router.post("/pixel-to-pixel", upload.single("source"), async (req, res) => {
     const bgColor = rawBg === "transparent" || /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawBg) ? rawBg : "";
     const style = resolveStyle(req);
     const count = Math.min(100, Math.max(1, parseInt(req.body.count, 10) || 1));
-    const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
+    const rawMode = String(req.body.mode || "design").trim().toLowerCase();
+    const mode = rawMode === "poster" ? "poster" : "design";
+    const aspectRatio = mode === "poster" ? "4:5" : String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
 
     const tasks = Array.from({ length: count }, (_, v) => ({
       prompt: buildPrompt({
-        bg_color: bgColor,
+        bg_color: mode === "poster" ? "" : bgColor,
         style_directive: style.style_directive,
         style_name: style.style_name,
         variant: v,
         aspectRatio,
+        mode,
       }),
       imagePaths: [source.abs],
       aspectRatio,
-      bgColor,
+      bgColor: mode === "poster" ? "" : bgColor,
+      mode: mode === "poster" ? "Poster" : "Design",
     }));
 
     // Streaming (NDJSON) vs classic JSON response. The client requests
@@ -101,9 +105,11 @@ router.post("/pixel-to-pixel", upload.single("source"), async (req, res) => {
               output_image_path: out.rel,
               prompt_used: task.prompt,
               user_input: style.style_id,
+              mode: task.mode || (mode === "poster" ? "Poster" : "Design"),
             });
             const decorated = {
               ...design,
+              mode: task.mode || (mode === "poster" ? "Poster" : "Design"),
               account_id: account?.id || null,
               account_email: account?.email || null,
               generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),
@@ -168,9 +174,11 @@ router.post("/pixel-to-pixel", upload.single("source"), async (req, res) => {
             output_image_path: out.rel,
             prompt_used: task.prompt,
             user_input: style.style_id,
+            mode: task.mode || (mode === "poster" ? "Poster" : "Design"),
           });
           const decorated = {
             ...design,
+            mode: task.mode || (mode === "poster" ? "Poster" : "Design"),
             account_id: account?.id || null,
             account_email: account?.email || null,
             generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),

@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.15";
+const APP_VERSION = "1.0.17";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -1227,6 +1227,12 @@ function viewMount(name) {
 
 /* ── Pixel to Pixel Workspace ───────────────────────────────── */
 function renderPixelToPixel() {
+  const P2P_MODE_KEY = "mf_p2p_mode";
+  let currentMode = "design";
+  try {
+    const saved = localStorage.getItem(P2P_MODE_KEY);
+    if (saved === "poster" || saved === "design") currentMode = saved;
+  } catch (_) {}
   let sourceFiles = [];
   let selectedBg = "#FFFFFF";
   let abortController = null;
@@ -1291,6 +1297,25 @@ function renderPixelToPixel() {
         </div>
 
         <div class="card" style="background: var(--bg-surface, var(--color-panel, #ffffff)); border: 1px solid var(--color-border, transparent); border-radius: 18px; padding: 1.5rem; display: flex; flex-direction: column;">
+          <div class="field" style="margin-bottom: 1.25rem;">
+            <div class="stage-head" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <span class="field-label" style="font-weight: 600; font-size: 0.95rem; color: var(--color-text, currentColor);">Mode</span>
+              <span class="stage-counter" id="p2pModeDesc" style="font-size: 0.8rem; color: #94a3b8; font-weight: 500;">
+                ${currentMode === "poster" ? "Painterly illustration (4:5)" : "Vector graphic redraw"}
+              </span>
+            </div>
+            <div class="p2p-mode-toggle" id="p2pModeToggle">
+              <button type="button" class="p2p-mode-btn ${currentMode === 'design' ? 'active' : ''}" data-mode="design" id="p2pModeBtnDesign">
+                <i data-lucide="layers" style="width: 14px; height: 14px;"></i>
+                <span>Design</span>
+              </button>
+              <button type="button" class="p2p-mode-btn ${currentMode === 'poster' ? 'active' : ''}" data-mode="poster" id="p2pModeBtnPoster">
+                <i data-lucide="image" style="width: 14px; height: 14px;"></i>
+                <span>Poster</span>
+              </button>
+            </div>
+          </div>
+
           ${renderShapeSelector("p2p")}
 
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
@@ -1379,11 +1404,35 @@ function renderPixelToPixel() {
   const accountLine = $("#p2pAccountLine");
   const getP2pShape = bindShapeSelector("p2p");
 
+  function setMode(mode) {
+    currentMode = mode === "poster" ? "poster" : "design";
+    try { localStorage.setItem(P2P_MODE_KEY, currentMode); } catch (_) {}
+    const btns = viewMount("pixel-to-pixel").querySelectorAll(".p2p-mode-btn");
+    btns.forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.mode === currentMode);
+    });
+    const desc = $("#p2pModeDesc");
+    if (desc) {
+      desc.textContent = currentMode === "poster" ? "Painterly illustration (4:5)" : "Vector graphic redraw";
+    }
+    syncSummary();
+  }
+
+  const modeToggle = $("#p2pModeToggle");
+  if (modeToggle) {
+    modeToggle.addEventListener("click", (e) => {
+      const btn = e.target.closest(".p2p-mode-btn");
+      if (!btn || !btn.dataset.mode) return;
+      setMode(btn.dataset.mode);
+    });
+  }
+
   function syncSummary() {
     const count = sourceFiles.length;
     const vCount = parseInt(varCountInput.value, 10) || 1;
+    const outType = currentMode === "poster" ? "posters" : "clean versions";
     counterBadge.textContent = count + " / 100";
-    statusSummary.textContent = count + " designs in, " + (count * vCount) + " clean versions out";
+    statusSummary.textContent = count + " designs in, " + (count * vCount) + " " + outType + " out";
     generateBtn.disabled = count === 0 || !!abortController;
   }
 
@@ -1546,6 +1595,7 @@ function renderPixelToPixel() {
           fd.append("bg_color", selectedBg);
           fd.append("aspectRatio", getP2pShape());
           if (manualStyle) fd.append("manualStyle", manualStyle);
+          fd.append("mode", currentMode);
 
           try {
             // Stream each finished design back as it completes on the fleet.
@@ -1554,6 +1604,9 @@ function renderPixelToPixel() {
               { method: "POST", body: fd, signal: abortController.signal },
               (payload) => {
                 if (payload.event === "design" && payload.design) {
+                  if (!payload.design.mode) {
+                    payload.design.mode = currentMode === "poster" ? "Poster" : "Design";
+                  }
                   const globalSlot = loopIdx * vCount + (payload.slotIndex || 0);
                   resolvePlaceholder(`p2p-slot-${globalSlot}`, payload.design);
                   generatedResults.push(payload.design);
@@ -5591,6 +5644,13 @@ function resultCard(d) {
       <i data-lucide="timer" style="width:12px;height:12px;"></i> ${esc(d.generation_time)}
     </span>` : "";
 
+  const modeVal = d.mode || (d.feature === "pixel-to-pixel" ? (d.prompt_used && d.prompt_used.includes("painterly illustration") ? "Poster" : "Design") : null);
+  const isPosterMode = String(modeVal).toLowerCase() === "poster";
+  const modeBadge = modeVal ? `
+    <span class="mode-pill ${isPosterMode ? 'mode-poster' : 'mode-design'}" title="Mode: ${esc(modeVal)}">
+      <i data-lucide="${isPosterMode ? 'image' : 'layers'}" style="width:12px;height:12px;"></i> ${esc(modeVal)}
+    </span>` : "";
+
   const compressBadge = d.compression ? (() => {
     const orig = d.compression.beforeBytes ?? d.compression.originalBytes;
     const comp = d.compression.afterBytes ?? d.compression.compressedBytes;
@@ -5612,6 +5672,7 @@ function resultCard(d) {
       <div class="result-meta" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
         <span>${esc(label)} · ${esc((d.created_at || "").slice(0, 16))}</span>
         <div style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          ${modeBadge}
           ${timeBadge}
           ${d.account_email ? `<span class="account-pill" title="Generated by ${esc(d.account_email)}" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#10b981;background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:9999px;font-weight:500;"><i data-lucide="check-circle-2" style="width:12px;height:12px;"></i> ${esc(d.account_email.split('@')[0])}</span>` : ""}
         </div>
