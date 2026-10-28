@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.18";
+const APP_VERSION = "1.0.19";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -170,10 +170,10 @@ function renderShapeSelector(prefix, activeId = "1:1") {
   `;
 }
 
-function bindShapeSelector(prefix, onChange) {
-  const buttons = $$(`#${prefix}Shapes .shape-btn`);
+function bindShapeSelector(prefix, onChange, defaultRatio = "1:1") {
+  const buttons = $(`#${prefix}Shapes .shape-btn`);
   const label = $(`#${prefix}ShapeLabel`);
-  let selected = "1:1";
+  let selected = defaultRatio || "1:1";
   function applyRatio(ratio) {
     selected = ratio || "1:1";
     buttons.forEach((b) => {
@@ -5248,7 +5248,7 @@ function renderArtStyleNiche() {
 
 function renderDesignToDesign() {
   let sourceFiles = [];
-  let selectedBg = "transparent";
+  let selectedBg = "#000000";
   let abortController = null;
   let magicStyle = null;
   // Hoisted so the Stop handler can mark every pending slot and stop the
@@ -5259,10 +5259,10 @@ function renderDesignToDesign() {
   // d2d's own palette — same pattern as Niche Variations' row, plus a pure
   // black (#000000) entry that is distinct from the existing dark-grey #111827.
   const D2D_BG_SWATCHES = [
+    { label: "Black", value: "#000000", color: "#000000" },
     { label: "Transparent", value: "transparent", isTransparent: true },
     { label: "White", value: "#FFFFFF", color: "#FFFFFF" },
     { label: "Dark grey", value: "#111827", color: "#111827" },
-    { label: "Black", value: "#000000", color: "#000000" },
     { label: "Cream", value: "#F5F0E6", color: "#F5F0E6" },
     { label: "Navy", value: "#1E3A8A", color: "#1E3A8A" },
     { label: "Forest", value: "#14532D", color: "#14532D" },
@@ -5302,7 +5302,7 @@ function renderDesignToDesign() {
         </section>
 
         <section class="d2d-panel">
-          ${renderShapeSelector("d2d")}
+          ${renderShapeSelector("d2d", "4:5")}
 
           <div class="stage-head">
             <span class="stage-title">Background colour</span>
@@ -5312,7 +5312,7 @@ function renderDesignToDesign() {
           <div class="field">
             <div class="swatch-row" id="d2dSwatches">
               ${D2D_BG_SWATCHES.map((s) => `
-                <button type="button" class="swatch ${s.isTransparent ? 'transparent active' : ''}"
+                <button type="button" class="swatch ${s.value === '#000000' ? 'active' : ''} ${s.isTransparent ? 'transparent' : ''}"
                   data-val="${s.value}"
                   title="${s.label}"
                   aria-label="${s.label}"
@@ -5373,7 +5373,7 @@ function renderDesignToDesign() {
 
   renderIcons();
 
-  const getD2dShape = bindShapeSelector("d2d");
+  const getD2dShape = bindShapeSelector("d2d", null, "4:5");
   const dropzone = $("#d2dDrop");
   const fileInput = $("#d2dFileInput");
   const thumbsRow = $("#d2dThumbs");
@@ -5486,12 +5486,12 @@ function renderDesignToDesign() {
     selectedBg = val;
   });
 
-  // Reset clears back to transparent, which is the view's opening state.
+  // Reset clears back to #000000 black, which is the view's opening state.
   $("#d2dResetBg").addEventListener("click", () => {
-    selectedBg = "transparent";
-    $$("#d2dSwatches .swatch").forEach((b) => b.classList.remove("active"));
+    selectedBg = "#000000";
+    $("#d2dSwatches .swatch").forEach((b) => b.classList.remove("active"));
     d2dCustomSwatch.classList.remove("active");
-    $("#d2dSwatches .swatch[data-val='transparent']")?.classList.add("active");
+    $("#d2dSwatches .swatch[data-val='#000000']")?.classList.add("active");
   });
 
   $("#d2dOpenLibrary").addEventListener("click", (e) => {

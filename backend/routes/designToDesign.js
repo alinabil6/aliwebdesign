@@ -38,9 +38,9 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
     // bg_color arrives as a multipart field; only "transparent" or a 3/6-digit
     // hex is honored — anything else falls back to the default neutral background.
     const rawBg = String(req.body.bg_color || "").trim();
-    const bgColor = rawBg === "transparent" || /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawBg) ? rawBg : "";
+    const bgColor = rawBg === "transparent" || /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawBg) ? rawBg : "#000000";
     const style = resolveStyle(req);
-    const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
+    const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "4:5").trim();
 
     // Redraw versions per design — same 1–100 clamp as Niche Variations.
     const count = Math.min(100, Math.max(1, parseInt(req.body.count, 10) || 1));
