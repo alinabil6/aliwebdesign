@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.19";
+const APP_VERSION = "1.0.20";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -171,7 +171,7 @@ function renderShapeSelector(prefix, activeId = "1:1") {
 }
 
 function bindShapeSelector(prefix, onChange, defaultRatio = "1:1") {
-  const buttons = $(`#${prefix}Shapes .shape-btn`);
+  const buttons = $$(`#${prefix}Shapes .shape-btn`);
   const label = $(`#${prefix}ShapeLabel`);
   let selected = defaultRatio || "1:1";
   function applyRatio(ratio) {
@@ -189,6 +189,7 @@ function bindShapeSelector(prefix, onChange, defaultRatio = "1:1") {
       if (typeof onChange === "function") onChange(selected);
     });
   });
+  applyRatio(selected);
   const getter = () => selected;
   getter.set = (ratio) => {
     applyRatio(ratio);
@@ -5489,7 +5490,7 @@ function renderDesignToDesign() {
   // Reset clears back to #000000 black, which is the view's opening state.
   $("#d2dResetBg").addEventListener("click", () => {
     selectedBg = "#000000";
-    $("#d2dSwatches .swatch").forEach((b) => b.classList.remove("active"));
+    $$("#d2dSwatches .swatch").forEach((b) => b.classList.remove("active"));
     d2dCustomSwatch.classList.remove("active");
     $("#d2dSwatches .swatch[data-val='#000000']")?.classList.add("active");
   });
