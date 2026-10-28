@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.17";
+const APP_VERSION = "1.0.18";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();

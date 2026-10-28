@@ -241,9 +241,10 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
         const isHardQuota = msg.includes("daily limit") || msg.includes("reached your limit") || msg.includes("quota exceeded");
         const isHardPolicy = msg.includes("third-party content providers") || msg.includes("interests of third-party");
         const isTimeout = msg.includes("timed out") || Boolean(err?.isTimeout) || err?.name === "GenerationTimeoutError";
+        const isAttachmentFailed = msg.includes("image_attachment_failed") || msg.includes("attachment failed");
 
-        if (account && (isTimeout || isAuthDrop)) {
-          console.log(`[fleet] Closing profile context for ${account.id} due to ${isTimeout ? "timeout" : "auth drop"}...`);
+        if (account && (isTimeout || isAuthDrop || isAttachmentFailed)) {
+          console.log(`[fleet] Closing profile context for ${account.id} due to ${isTimeout ? "timeout" : isAuthDrop ? "auth drop" : "attachment failure"}...`);
           pendingTeardown = closeProfile(account.id).catch(() => {});
         }
 
@@ -254,6 +255,9 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           if (isHardQuota) {
             quarantine(account.id, 15 * 60 * 1000);
             console.warn(`[fleet] Account ${account.id} hit daily limit. Benched for 15 minutes.`);
+          } else if (isAttachmentFailed) {
+            quarantine(account.id, 8 * 1000);
+            console.warn(`[fleet] Account ${account.id} had image attachment failure. Quarantined for 8s to reset.`);
           } else if (allUsable.length > 1) {
             if (isTimeout) {
               quarantine(account.id, 30 * 1000);

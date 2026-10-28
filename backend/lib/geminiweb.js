@@ -74,15 +74,23 @@ export const SELECTORS = {
     'button[aria-label*="Tools" i]',
     'button[aria-label*="Outils" i]',
     'button[aria-label*="Add files" i]',
+    'button[aria-label*="Add images" i]',
+    'button[aria-label*="Attach" i]',
+    'button[aria-label*="Ajouter" i]',
+    'button[aria-label*="Importer" i]',
     '[data-test-id*="tools" i]',
+    '[data-test-id*="tool-picker" i]',
+    'button.input-area-tool-picker-button',
     'button.menu-placeholder-button',
     'button[aria-label*="Upload" i]:not(nav *):not(aside *)',
     'button[aria-label*="Add" i]:not(nav *):not(aside *)',
     'button:has(mat-icon.upload-icon)',
     'button:has(mat-icon[data-mat-icon-name*="add"]):not(nav *):not(aside *)',
+    'button:has(mat-icon:has-text("add"))',
+    'button:has(mat-icon:has-text("add_circle"))',
+    'button:has(mat-icon:has-text("attach_file"))',
+    'button:has(mat-icon:has-text("plus"))',
     '[aria-label*="Upload" i]:not(nav *):not(aside *)',
-    'mat-icon.upload-icon',
-    'mat-icon:has-text("plus")',
   ],
   uploadMenuItem: [
     '[data-test-id*="local-images-files-uploader" i]',
@@ -176,26 +184,94 @@ async function dismissModals(page) {
   } catch {}
 }
 
-const PREVIEW_SELECTOR = ".file-preview, .uploaded-image, mat-chip, [aria-label*='Remove' i], [aria-label*='Supprimer' i], [aria-label*='Delete' i], img[src^='blob:'], img[src^='data:'], input-area-v2 img, input-container img, .uploader-preview, [class*='thumbnail']";
+const PREVIEW_SELECTOR = ".file-preview, .uploaded-image, mat-chip, [aria-label*='Remove' i], [aria-label*='Supprimer' i], [aria-label*='Delete' i], [data-test-id*='remove-attachment'], [data-test-id*='file-preview'], [data-test-id*='image-preview'], img[src^='blob:'], img[src^='data:'], input-area-v2 img, input-container img, [class*='input-area'] img, [class*='uploader'] img, .uploader-preview, [class*='thumbnail'], [class*='attachment-preview']";
 
-async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 3000, expectedCount = 1) {
-  const loc = page.locator(PREVIEW_SELECTOR);
-  const deadline = Date.now() + maxMs;
-  while (Date.now() < deadline) {
-    const n = await loc.count().catch(() => 0);
-    if (n >= beforePreviewCount + expectedCount) return true;
-    await page.waitForTimeout(100);
+/**
+ * Deep DOM inspection to determine if an attachment preview chip/image is actively mounted in the composer.
+ */
+export async function isAttachmentMountedInComposer(page) {
+  try {
+    return await page.evaluate(() => {
+      // 1. Remove buttons on uploaded chips (Gemini puts a remove button on attached preview chips)
+      const removeButtons = document.querySelectorAll(
+        'button[aria-label*="Remove" i]:not(nav *):not(aside *), button[aria-label*="Supprimer" i]:not(nav *):not(aside *), button[aria-label*="Delete" i]:not(nav *):not(aside *), [data-test-id*="remove-attachment"]'
+      );
+      for (const btn of removeButtons) {
+        if (btn.offsetWidth > 0 || btn.offsetHeight > 0 || btn.getClientRects().length > 0) {
+          return true;
+        }
+      }
+
+      // 2. Preview images with blob: or data: URLs, or images located in composer input container
+      const imgs = document.querySelectorAll(
+        'input-area-v2 img, input-container img, [class*="input-area"] img, [class*="composer"] img, .file-preview img, .uploaded-image img, .uploader-preview img, img[src^="blob:"], img[src^="data:"]'
+      );
+      for (const img of imgs) {
+        if (img.closest('header, nav, aside, .gb_A, [aria-label*="Google Account"]')) continue;
+        if (img.offsetWidth > 0 || img.offsetHeight > 0 || img.getClientRects().length > 0) {
+          return true;
+        }
+      }
+
+      // 3. Mat-chip or file preview chip containers
+      const chips = document.querySelectorAll(
+        '.file-preview, .uploaded-image, .uploader-preview, mat-chip[class*="file"], [data-test-id*="file-preview"], [data-test-id*="image-preview"], [class*="attachment-preview"]'
+      );
+      for (const chip of chips) {
+        if (chip.offsetWidth > 0 || chip.offsetHeight > 0 || chip.getClientRects().length > 0) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+  } catch (_) {
+    return false;
   }
-  return (await loc.count().catch(() => 0)) > beforePreviewCount;
 }
 
-async function waitForUploadCompletion(page, maxMs = 3500) {
+export async function getAttachmentPreviewCount(page) {
+  try {
+    return await page.evaluate((selector) => {
+      let count = 0;
+      document.querySelectorAll(selector).forEach((el) => {
+        if (el.closest('header, nav, aside, .gb_A, [aria-label*="Google Account"]')) return;
+        if (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0) {
+          count++;
+        }
+      });
+      return count;
+    }, PREVIEW_SELECTOR);
+  } catch (_) {
+    return 0;
+  }
+}
+
+async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 5000, expectedCount = 1) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    if (page.isClosed()) return false;
+    const currentCount = await getAttachmentPreviewCount(page);
+    if (currentCount > beforePreviewCount) return true;
+    const isMounted = await isAttachmentMountedInComposer(page);
+    if (isMounted) return true;
+    await page.waitForTimeout(150);
+  }
+  return await isAttachmentMountedInComposer(page);
+}
+
+async function waitForUploadCompletion(page, maxMs = 15000) {
   try {
     await page.waitForFunction(() => {
       const uploadSpinners = document.querySelectorAll(
         '.upload-progress, mat-progress-spinner.upload-progress, mat-progress-spinner:not(aside *):not(nav *), [role="progressbar"]:not(aside *):not(nav *)'
       );
-      return uploadSpinners.length === 0;
+      for (const spinner of uploadSpinners) {
+        if (spinner.offsetWidth > 0 || spinner.offsetHeight > 0 || spinner.getClientRects().length > 0) {
+          return false;
+        }
+      }
+      return true;
     }, { timeout: maxMs });
   } catch (_) {}
 }
@@ -203,76 +279,106 @@ async function waitForUploadCompletion(page, maxMs = 3500) {
 async function attachReferenceImages(page, imagePaths, signal = null) {
   if (!imagePaths || imagePaths.length === 0) return;
   if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+
+  // 0. Pre-flight verification: Ensure files exist on disk and have non-zero size
+  for (const p of imagePaths) {
+    if (!fs.existsSync(p)) {
+      throw new Error(`IMAGE_ATTACHMENT_FAILED: Source reference file does not exist on disk: ${p}`);
+    }
+    const stat = fs.statSync(p);
+    if (stat.size === 0) {
+      throw new Error(`IMAGE_ATTACHMENT_FAILED: Source reference file is empty (0 bytes): ${p}`);
+    }
+  }
+
   await dismissModals(page);
-  const beforePreview = await page.locator(PREVIEW_SELECTOR).count().catch(() => 0);
 
   // 1. Ensure composer editor is mounted and focused
   const editor = await findVisibleElement(page, SELECTORS.promptInput, 15000);
   if (!editor) throw new Error("Gemini composer not ready for image attachment");
 
-  const fileInputSelector = SELECTORS.fileInput.join(", ");
-  let chooserHandled = false;
+  const beforePreview = await getAttachmentPreviewCount(page);
+  let isMounted = false;
+  const maxAttempts = 3;
 
-  // 2. Step A: Check if input[type="file"] is ALREADY in DOM (e.g. from previous task)
-  let directInput = page.locator(fileInputSelector).last();
-  if ((await directInput.count().catch(() => 0)) > 0) {
-    try {
-      await directInput.setInputFiles(imagePaths, { timeout: 3000 });
-      chooserHandled = true;
-      console.log(`[geminiweb] Attached ${imagePaths.length} file(s) via existing input[type='file']`);
-    } catch (_) {}
-  }
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+    console.log(`[geminiweb] Attaching ${imagePaths.length} reference image(s) (attempt ${attempt}/${maxAttempts})...`);
 
-  // 3. Step B: Open Tools menu and trigger FileChooser via Upload menu item
-  if (!chooserHandled) {
-    const attachBtn = await getVisibleAttachButton(page, 10000);
-    if (attachBtn) {
-      console.log("[geminiweb] Opening tools menu via attach button...");
-      await attachBtn.click({ timeout: 3000 }).catch(() => {});
-      await page.waitForTimeout(350);
+    let fileChooserFired = false;
 
-      const uploadItem = await getVisibleUploadItem(page, 5000);
-      if (uploadItem) {
-        console.log("[geminiweb] Clicking upload menu item with filechooser listener...");
-        try {
-          const [fc] = await Promise.all([
-            page.waitForEvent("filechooser", { timeout: 8000 }).catch(() => null),
-            uploadItem.click({ timeout: 3000 }).catch(() => {}),
-          ]);
-          if (fc) {
-            console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via upload item filechooser.`);
-            await fc.setFiles(imagePaths);
-            chooserHandled = true;
-          }
-        } catch (_) {}
+    // Strategy A: Check if "Upload files" menu item is ALREADY visible (e.g. from an existing open menu)
+    let uploadItem = await getVisibleUploadItem(page, 800);
+
+    // If not visible, open the Attach (+) tools menu
+    if (!uploadItem) {
+      const attachBtn = await getVisibleAttachButton(page, 5000);
+      if (attachBtn) {
+        console.log("[geminiweb] Clicking attach button (+) to open upload menu...");
+        await attachBtn.click({ timeout: 3000, force: true }).catch(() => {});
+        await page.waitForTimeout(300);
+        uploadItem = await getVisibleUploadItem(page, 4000);
       }
     }
-  }
 
-  // 4. Step C: Fallback to direct input if newly mounted
-  if (!chooserHandled) {
-    await page.waitForTimeout(250);
-    const activeInput = page.locator(fileInputSelector).last();
-    if ((await activeInput.count().catch(() => 0)) > 0) {
+    // Trigger native filechooser via upload menu item click
+    if (uploadItem) {
+      console.log("[geminiweb] Clicking upload menu item with filechooser listener...");
       try {
-        await activeInput.setInputFiles(imagePaths, { timeout: 5000 });
-        chooserHandled = true;
-        console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via newly mounted input[type='file'].`);
+        const [fc] = await Promise.all([
+          page.waitForEvent("filechooser", { timeout: 8000 }).catch(() => null),
+          uploadItem.click({ timeout: 3000, force: true }).catch(() => {}),
+        ]);
+        if (fc) {
+          console.log(`[geminiweb] Bound ${imagePaths.length} file(s) via upload item filechooser.`);
+          await fc.setFiles(imagePaths);
+          fileChooserFired = true;
+        }
       } catch (err) {
-        console.warn("[geminiweb] setInputFiles fallback warning:", err?.message);
+        console.warn(`[geminiweb] filechooser handling error:`, err?.message);
       }
+    }
+
+    // Strategy B: Fallback to direct setInputFiles only if filechooser didn't handle it
+    if (!fileChooserFired) {
+      try {
+        const fileInputs = page.locator(SELECTORS.fileInput.join(", "));
+        const count = await fileInputs.count().catch(() => 0);
+        if (count > 0) {
+          console.log(`[geminiweb] Direct setInputFiles fallback on ${count} candidate input(s)...`);
+          await fileInputs.last().setInputFiles(imagePaths, { timeout: 4000 }).catch(() => {});
+        }
+      } catch (err) {
+        console.warn(`[geminiweb] Direct setInputFiles fallback error:`, err?.message);
+      }
+    }
+
+    // Wait and verify if attachment preview appeared in the composer
+    isMounted = await waitForAttachmentPreview(page, beforePreview, 5000, imagePaths.length);
+    if (isMounted) {
+      console.log(`[geminiweb] Attachment preview verified in composer on attempt ${attempt}.`);
+      break;
+    }
+
+    console.warn(`[geminiweb] Attachment preview not detected after attempt ${attempt}. Resetting state for retry...`);
+    // Press Escape to dismiss any stuck menus or tooltips, and wait briefly
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(400);
+    await dismissModals(page);
+  }
+
+  // ── STRICT HARD GATE: Enforce that the image is 100% mounted in the composer! ──
+  if (!isMounted) {
+    const finalCheck = await isAttachmentMountedInComposer(page);
+    if (!finalCheck) {
+      console.error(`[geminiweb] CRITICAL: Reference image failed to mount in Gemini composer after ${maxAttempts} attempts.`);
+      throw new Error(`IMAGE_ATTACHMENT_FAILED: Failed to attach reference image to Gemini composer after ${maxAttempts} attempts. Aborting generation to prevent out-of-context output.`);
     }
   }
 
-  if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-
-  // 5. Verify attachment mounted in DOM and wait for upload completion
-  const mounted = await waitForAttachmentPreview(page, beforePreview, 8000, imagePaths.length);
-  if (!mounted) {
-    console.warn("[geminiweb] Attachment preview chip not immediately detected, waiting for upload settling...");
-  }
-  await waitForUploadCompletion(page, 10000);
-  console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s) successfully.`);
+  // Wait for upload progress (spinner/progressbar) to complete
+  await waitForUploadCompletion(page, 15000);
+  console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s) successfully and verified in composer.`);
 }
 
 async function fillPrompt(page, promptText) {
@@ -475,6 +581,18 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
     async () => {
       try {
         if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+        // Immediate pre-flight verification before page activation
+        if (imagePaths?.length) {
+          for (const p of imagePaths) {
+            if (!fs.existsSync(p)) {
+              throw new Error(`IMAGE_ATTACHMENT_FAILED: Source reference file does not exist on disk: ${p}`);
+            }
+            const stat = fs.statSync(p);
+            if (stat.size === 0) {
+              throw new Error(`IMAGE_ATTACHMENT_FAILED: Source reference file is empty (0 bytes): ${p}`);
+            }
+          }
+        }
         await ensureGeminiApp(page);
         await dismissModals(page);
         await page.waitForTimeout(200);
@@ -483,6 +601,10 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
 
         if (imagePaths?.length) {
           await attachReferenceImages(page, imagePaths, signal);
+          const isAttached = await isAttachmentMountedInComposer(page);
+          if (!isAttached) {
+            throw new Error(`IMAGE_ATTACHMENT_FAILED: Reference image not detected in composer. Aborting prompt submission to prevent out-of-context generation.`);
+          }
         }
 
         if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
@@ -632,11 +754,27 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
     async () => {
       try {
         if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+        // Immediate pre-flight verification before page activation
+        if (imagePaths?.length) {
+          for (const p of imagePaths) {
+            if (!fs.existsSync(p)) {
+              throw new Error(`IMAGE_ATTACHMENT_FAILED: Source reference file does not exist on disk: ${p}`);
+            }
+            const stat = fs.statSync(p);
+            if (stat.size === 0) {
+              throw new Error(`IMAGE_ATTACHMENT_FAILED: Source reference file is empty (0 bytes): ${p}`);
+            }
+          }
+        }
         await ensureGeminiApp(page);
         await dismissModals(page);
 
         if (imagePaths?.length) {
           await attachReferenceImages(page, imagePaths, signal);
+          const isAttached = await isAttachmentMountedInComposer(page);
+          if (!isAttached) {
+            throw new Error(`IMAGE_ATTACHMENT_FAILED: Reference image not detected in composer. Aborting prompt submission to prevent out-of-context generation.`);
+          }
         }
 
         if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
