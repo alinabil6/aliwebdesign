@@ -8119,20 +8119,19 @@ body.light-mode .doc-mail-btn:hover {
   gap: 4px;
 }
 
-/* Prompt section header & navigation fix */
+/* Prompt section header & dedicated multi-prompt toolbar */
 .t2i-prompt-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .t2i-prompt-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-  flex-wrap: nowrap; /* PREVENTS WRAPPING COMPLETELY */
+  gap: 12px;
+  margin-bottom: 2px;
 }
 
 .t2i-prompt-title-group {
@@ -8140,7 +8139,6 @@ body.light-mode .doc-mail-btn:hover {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex-shrink: 1;
 }
 
 .t2i-prompt-badge {
@@ -8159,15 +8157,53 @@ body.light-mode .doc-mail-btn:hover {
   white-space: nowrap;
 }
 
-.t2i-prompt-nav {
+.t2i-header-add-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 7px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.t2i-header-add-btn:hover {
+  background: #38bdf8;
+  border-color: #38bdf8;
+  color: #070b14;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+}
+
+.t2i-header-add-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Dedicated Multi-Prompt Toolbar Row (spans 100% full width, zero collision) */
+.t2i-prompt-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   background: rgba(15, 23, 42, 0.55);
   border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08));
-  padding: 3px 5px;
+  padding: 4px 6px;
   border-radius: 10px;
-  flex-shrink: 0;
+  margin-bottom: 2px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.t2i-prompt-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
 }
 
 .t2i-nav-btn {
@@ -8238,13 +8274,15 @@ body.light-mode .doc-mail-btn:hover {
 }
 
 .t2i-nav-pills {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
-  max-width: 180px;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 0 2px;
+  scroll-behavior: smooth;
+  padding: 1px 2px;
 }
 
 .t2i-nav-pills::-webkit-scrollbar {

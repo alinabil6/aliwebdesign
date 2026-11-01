@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.21";
+const APP_VERSION = "1.0.22";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -2748,26 +2748,34 @@ function renderTextToImage() {
             <div class="t2i-prompt-header">
               <div class="t2i-prompt-title-group">
                 <span class="t2i-section-label">PROMPT</span>
-                <span class="t2i-prompt-badge" id="t2iPromptBadge">Prompt 1 of 1</span>
+                <span class="t2i-prompt-badge hidden" id="t2iPromptBadge">Prompt 1 of 1</span>
               </div>
-              <div class="t2i-prompt-nav">
-                <button type="button" class="t2i-nav-btn" id="t2iPrevPromptBtn" title="Previous prompt" disabled>
-                  <i data-lucide="chevron-left"></i>
-                </button>
-                <div class="t2i-nav-pills" id="t2iNavPills">
-                  <button type="button" class="t2i-pill-btn active" data-index="0" title="Prompt 1">1</button>
-                </div>
-                <button type="button" class="t2i-nav-btn" id="t2iNextPromptBtn" title="Next prompt" disabled>
-                  <i data-lucide="chevron-right"></i>
-                </button>
-                <button type="button" class="t2i-nav-btn t2i-add-btn" id="t2iAddPromptBtn" title="Add another prompt (+)">
-                  <i data-lucide="plus"></i>
-                </button>
-                <button type="button" class="t2i-nav-btn t2i-del-btn hidden" id="t2iDelPromptBtn" title="Remove this prompt">
-                  <i data-lucide="trash-2"></i>
+              <div class="t2i-prompt-header-actions">
+                <button type="button" class="t2i-header-add-btn" id="t2iAddPromptBtn" title="Add another prompt to run in parallel (+)">
+                  <i data-lucide="plus"></i> Add Prompt
                 </button>
               </div>
             </div>
+
+            <!-- Dedicated Multi-Prompt Toolbar Row (visible when prompts > 1) -->
+            <div class="t2i-prompt-nav-row hidden" id="t2iPromptNavRow">
+              <button type="button" class="t2i-nav-btn" id="t2iPrevPromptBtn" title="Previous prompt" disabled>
+                <i data-lucide="chevron-left"></i>
+              </button>
+              <div class="t2i-nav-pills" id="t2iNavPills">
+                <button type="button" class="t2i-pill-btn active" data-index="0" title="Prompt 1">1</button>
+              </div>
+              <button type="button" class="t2i-nav-btn" id="t2iNextPromptBtn" title="Next prompt" disabled>
+                <i data-lucide="chevron-right"></i>
+              </button>
+              <button type="button" class="t2i-nav-btn t2i-add-btn" id="t2iPillAddBtn" title="Add another prompt (+)">
+                <i data-lucide="plus"></i>
+              </button>
+              <button type="button" class="t2i-nav-btn t2i-del-btn" id="t2iDelPromptBtn" title="Remove this prompt">
+                <i data-lucide="trash-2"></i>
+              </button>
+            </div>
+
             <textarea id="t2iPrompt" class="prompt-editor" placeholder="Please enter a prompt…" required></textarea>
             <div class="t2i-prompt-footer">
               <span class="t2i-prompt-footer-hint">
@@ -2855,7 +2863,9 @@ function renderTextToImage() {
   const prevBtn = $("#t2iPrevPromptBtn");
   const nextBtn = $("#t2iNextPromptBtn");
   const addBtn = $("#t2iAddPromptBtn");
+  const pillAddBtn = $("#t2iPillAddBtn");
   const delBtn = $("#t2iDelPromptBtn");
+  const promptNavRow = $("#t2iPromptNavRow");
   const pillsContainer = $("#t2iNavPills");
   const badgeEl = $("#t2iPromptBadge");
   const queueCountEl = $("#t2iPromptQueueCount");
@@ -3138,20 +3148,22 @@ function renderTextToImage() {
       }
     }
 
+    if (promptNavRow) {
+      promptNavRow.classList.toggle("hidden", t2iPrompts.length <= 1);
+    }
+
     if (badgeEl) {
-      badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length}`;
+      if (t2iPrompts.length > 1) {
+        badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length}`;
+        badgeEl.classList.remove("hidden");
+      } else {
+        badgeEl.textContent = "Prompt 1 of 1";
+        badgeEl.classList.add("hidden");
+      }
     }
 
     if (prevBtn) prevBtn.disabled = t2iActiveIndex <= 0;
     if (nextBtn) nextBtn.disabled = t2iActiveIndex >= t2iPrompts.length - 1;
-
-    if (delBtn) {
-      if (t2iPrompts.length > 1) {
-        delBtn.classList.remove("hidden");
-      } else {
-        delBtn.classList.add("hidden");
-      }
-    }
 
     if (pillsContainer) {
       pillsContainer.innerHTML = t2iPrompts.map((p, idx) => {
@@ -3223,6 +3235,10 @@ function renderTextToImage() {
         saveCurrentPromptToProfile();
         t2iActiveIndex--;
         updatePromptUI(true);
+        setTimeout(() => {
+          const activePill = pillsContainer?.querySelector(`.t2i-pill-btn[data-index="${t2iActiveIndex}"]`);
+          activePill?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        }, 50);
       }
     });
   }
@@ -3235,33 +3251,49 @@ function renderTextToImage() {
         saveCurrentPromptToProfile();
         t2iActiveIndex++;
         updatePromptUI(true);
+        setTimeout(() => {
+          const activePill = pillsContainer?.querySelector(`.t2i-pill-btn[data-index="${t2iActiveIndex}"]`);
+          activePill?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        }, 50);
       }
     });
   }
 
-  if (addBtn) {
-    addBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      saveCurrentPromptToProfile();
-      const cur = t2iPrompts[t2iActiveIndex];
-      t2iPrompts.push({
-        text: "",
-        aspectRatio: cur?.aspectRatio || "1:1",
-        count: cur?.count || 3,
-        manualStyle: "",
-        magicStyle: null,
-        bgColor: cur?.bgColor || "transparent",
-        referenceImage: cur?.referenceImage || null,
-        referencePreviewUrl: cur?.referencePreviewUrl || null,
-        referenceName: cur?.referenceName || "",
-        referenceSize: cur?.referenceSize || 0,
-      });
-      t2iActiveIndex = t2iPrompts.length - 1;
-      updatePromptUI(true);
-      renderIcons();
+  function handleAddPrompt() {
+    saveCurrentPromptToProfile();
+    const cur = t2iPrompts[t2iActiveIndex];
+    t2iPrompts.push({
+      text: "",
+      aspectRatio: cur?.aspectRatio || "1:1",
+      count: cur?.count || 3,
+      manualStyle: "",
+      magicStyle: null,
+      bgColor: cur?.bgColor || "transparent",
+      referenceImage: cur?.referenceImage || null,
+      referencePreviewUrl: cur?.referencePreviewUrl || null,
+      referenceName: cur?.referenceName || "",
+      referenceSize: cur?.referenceSize || 0,
     });
+    t2iActiveIndex = t2iPrompts.length - 1;
+    updatePromptUI(true);
+    renderIcons();
+    setTimeout(() => {
+      const activePill = pillsContainer?.querySelector(`.t2i-pill-btn[data-index="${t2iActiveIndex}"]`);
+      activePill?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }, 50);
   }
+
+  addBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleAddPrompt();
+  });
+
+  pillAddBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleAddPrompt();
+  });
 
   if (delBtn) {
     delBtn.addEventListener("click", (e) => {
@@ -3273,6 +3305,11 @@ function renderTextToImage() {
         t2iActiveIndex = t2iPrompts.length - 1;
       }
       updatePromptUI(true);
+      renderIcons();
+      setTimeout(() => {
+        const activePill = pillsContainer?.querySelector(`.t2i-pill-btn[data-index="${t2iActiveIndex}"]`);
+        activePill?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }, 50);
     });
   }
 
