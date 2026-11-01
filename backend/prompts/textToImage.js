@@ -19,11 +19,12 @@ export function buildPrompt({
   bg_color = "",
   aspectRatio = "1:1",
   hasReferenceImage = false,
+  referenceCount = 0,
 }) {
   const bg = buildBackgroundBlock(bg_color);
   const style = VARIANT_STYLES[variant % VARIANT_STYLES.length];
   const concept = String(prompt || "").trim();
-  const arDirective = buildAspectRatioDirective(aspectRatio, { hasReferenceImage: Boolean(hasReferenceImage) });
+  const arDirective = buildAspectRatioDirective(aspectRatio, { hasReferenceImage: Boolean(hasReferenceImage || referenceCount > 0) });
 
   const styleClause = style_directive
     ? `Artistic technique: ${style_name || style}. ${style_directive}.`
@@ -33,7 +34,23 @@ export function buildPrompt({
     ? String(bg)
     : "Background canvas: Clean solid monochrome backdrop for clean silhouette clipping.";
 
-  if (hasReferenceImage) {
+  const effectiveCount = Math.max(referenceCount || 0, hasReferenceImage ? 1 : 0);
+
+  // Multi-reference combination prompt
+  if (effectiveCount > 1) {
+    return [
+      `Generate a fresh, commercial 2D vector apparel graphic synthesizing and combining all ${effectiveCount} attached reference designs, executing the following concept: ${concept}.`,
+      `Multi-Reference Combination & Synthesis: Analyze and combine the visual subjects, distinct art styles, color palettes, illustrative motifs, and aesthetic cues across all ${effectiveCount} attached reference images into a unified, original composition for: ${concept}. Seamlessly fuse their key artistic elements, harmonious textures, and visual hooks into a single cohesive artwork with a prominent focal point, dynamic silhouette, and apparel-ready framing.`,
+      styleClause,
+      "Typography: If lettering is explicitly requested in the concept, render sharp legible vector typography integrated into the emblem. If no text is requested in the concept, render 100% graphic-only artwork with strictly zero letters, numbers, words, or text.",
+      arDirective,
+      bgBlock,
+      UNIVERSAL_FOOTER
+    ].filter(Boolean).join("\n\n").trim();
+  }
+
+  // Single-reference prompt
+  if (effectiveCount === 1) {
     return [
       `Generate a fresh, commercial 2D vector apparel graphic inspired by the attached reference design, executing the following concept: ${concept}.`,
       `Visual Subject & Reference Guidance: Draw direct inspiration from the composition, visual aesthetic, mood, and illustrative character of the attached reference design, while generating the new subject: ${concept}. Maintain balanced visual weight, dynamic silhouette, and apparel-ready framing.`,

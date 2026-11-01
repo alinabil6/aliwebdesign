@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.22";
+const APP_VERSION = "1.0.23";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -622,7 +622,7 @@ function setActiveDropzone(dz) {
 // Track dropzone hover state for mouse-targeted drop/paste operations
 document.addEventListener("mouseover", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer"
   );
   if (dz) {
     lastHoveredDropzone = dz;
@@ -631,7 +631,7 @@ document.addEventListener("mouseover", (e) => {
 
 document.addEventListener("mouseout", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer"
   );
   if (dz && (!e.relatedTarget || !dz.contains(e.relatedTarget))) {
     if (lastHoveredDropzone === dz) lastHoveredDropzone = null;
@@ -641,7 +641,7 @@ document.addEventListener("mouseout", (e) => {
 // Track click/focus on dropzones or their parent stage cards so clipboard pastes go to the clicked slot
 document.addEventListener("mousedown", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer"
   );
   if (dz) {
     setActiveDropzone(dz);
@@ -2630,6 +2630,7 @@ function normalizeT2iProfile(p) {
       manualStyle: "",
       magicStyle: null,
       bgColor: "transparent",
+      referenceImages: [],
       referenceImage: null,
       referencePreviewUrl: null,
       referenceName: "",
@@ -2644,11 +2645,21 @@ function normalizeT2iProfile(p) {
       manualStyle: "",
       magicStyle: null,
       bgColor: "transparent",
+      referenceImages: [],
       referenceImage: null,
       referencePreviewUrl: null,
       referenceName: "",
       referenceSize: 0,
     };
+  }
+  let refs = Array.isArray(p.referenceImages) ? p.referenceImages.filter(Boolean) : [];
+  if (refs.length === 0 && p.referenceImage) {
+    refs = [{
+      file: p.referenceImage,
+      previewUrl: p.referencePreviewUrl || (p.referenceImage instanceof Blob ? URL.createObjectURL(p.referenceImage) : ""),
+      name: p.referenceName || p.referenceImage.name || "reference.png",
+      size: p.referenceSize || p.referenceImage.size || 0,
+    }];
   }
   return {
     text: p.text || "",
@@ -2657,10 +2668,11 @@ function normalizeT2iProfile(p) {
     manualStyle: p.manualStyle || "",
     magicStyle: p.magicStyle || null,
     bgColor: p.bgColor || "transparent",
-    referenceImage: p.referenceImage || null,
-    referencePreviewUrl: p.referencePreviewUrl || null,
-    referenceName: p.referenceName || "",
-    referenceSize: p.referenceSize || (p.referenceImage?.size || 0),
+    referenceImages: refs,
+    referenceImage: refs[0]?.file || null,
+    referencePreviewUrl: refs[0]?.previewUrl || null,
+    referenceName: refs[0]?.name || "",
+    referenceSize: refs[0]?.size || 0,
   };
 }
 
@@ -2701,44 +2713,48 @@ function renderTextToImage() {
 
       <div class="t2i-workspace">
         <section class="t2i-panel">
-          <!-- Reference Design Section (Image 2 UX) -->
+          <!-- Reference Designs Section (Multi-Image Support) -->
           <div class="t2i-ref-section">
             <div class="t2i-section-label-row">
-              <span class="t2i-section-label">IMAGE</span>
+              <div class="t2i-ref-label-group">
+                <span class="t2i-section-label">REFERENCE IMAGES</span>
+                <span class="t2i-ref-count-badge hidden" id="t2iRefCountBadge">0 images</span>
+              </div>
               <span class="t2i-section-badge">OPTIONAL</span>
             </div>
-            <div class="t2i-ref-dropzone" id="t2iRefDrop" tabindex="0" role="button" aria-label="Upload reference image">
-              <input type="file" id="t2iRefInput" accept="image/png,image/jpeg,image/webp,image/jpg" style="display:none;" />
+
+            <!-- Empty Dropzone State -->
+            <div class="t2i-ref-dropzone" id="t2iRefDrop" tabindex="0" role="button" aria-label="Upload reference images">
+              <input type="file" id="t2iRefInput" accept="image/png,image/jpeg,image/webp,image/jpg" multiple style="display:none;" />
               
-              <!-- Empty State -->
               <div class="t2i-ref-empty" id="t2iRefEmpty">
                 <div class="t2i-ref-icon-box">
                   <i data-lucide="image-plus"></i>
                 </div>
                 <div class="t2i-ref-text-group">
-                  <span class="t2i-ref-title">Upload image</span>
-                  <span class="t2i-ref-sub">PNG, JPG · Paste from clipboard</span>
+                  <span class="t2i-ref-title">Upload reference images</span>
+                  <span class="t2i-ref-sub">PNG, JPG · Click, drop multiple, or paste (Ctrl+V)</span>
                 </div>
               </div>
+            </div>
 
-              <!-- Preview State -->
-              <div class="t2i-ref-preview hidden" id="t2iRefPreview">
-                <div class="t2i-ref-thumb-wrap">
-                  <img id="t2iRefThumb" src="" alt="Reference thumbnail" />
-                </div>
-                <div class="t2i-ref-meta">
-                  <span class="t2i-ref-filename" id="t2iRefFilename">reference.png</span>
-                  <span class="t2i-ref-filesize" id="t2iRefFilesize">0 KB</span>
-                  <span class="t2i-ref-status-tag"><i data-lucide="check-circle-2"></i> Attached to prompt</span>
-                </div>
+            <!-- Active Multi-Image Container -->
+            <div class="t2i-ref-active-container hidden" id="t2iRefActiveContainer" tabindex="0">
+              <div class="t2i-ref-active-header">
+                <span class="t2i-ref-status-tag" id="t2iRefStatusTag">
+                  <i data-lucide="layers"></i> <span id="t2iRefStatusText">1 image attached</span>
+                </span>
                 <div class="t2i-ref-actions">
-                  <button type="button" class="btn secondary btn-xs" id="t2iRefReplaceBtn" title="Change reference image">
-                    <i data-lucide="refresh-cw"></i> Replace
+                  <button type="button" class="btn secondary btn-xs" id="t2iRefAddMoreBtn" title="Add more reference images">
+                    <i data-lucide="plus"></i> Add more
                   </button>
-                  <button type="button" class="btn secondary btn-xs danger" id="t2iRefRemoveBtn" title="Remove reference image">
-                    <i data-lucide="trash-2"></i> Remove
+                  <button type="button" class="btn secondary btn-xs danger" id="t2iRefClearBtn" title="Remove all reference images">
+                    <i data-lucide="trash-2"></i> Delete all
                   </button>
                 </div>
+              </div>
+              <div class="t2i-ref-thumbs-strip" id="t2iRefThumbsStrip">
+                <!-- Dynamically populated thumbnails and add button -->
               </div>
             </div>
           </div>
@@ -2879,13 +2895,12 @@ function renderTextToImage() {
   // Reference image DOM elements
   const refDropzone = $("#t2iRefDrop");
   const refInput = $("#t2iRefInput");
-  const refEmpty = $("#t2iRefEmpty");
-  const refPreview = $("#t2iRefPreview");
-  const refThumb = $("#t2iRefThumb");
-  const refFilename = $("#t2iRefFilename");
-  const refFilesize = $("#t2iRefFilesize");
-  const refReplaceBtn = $("#t2iRefReplaceBtn");
-  const refRemoveBtn = $("#t2iRefRemoveBtn");
+  const refActiveContainer = $("#t2iRefActiveContainer");
+  const refStatusText = $("#t2iRefStatusText");
+  const refCountBadge = $("#t2iRefCountBadge");
+  const refThumbsStrip = $("#t2iRefThumbsStrip");
+  const refAddMoreBtn = $("#t2iRefAddMoreBtn");
+  const refClearBtn = $("#t2iRefClearBtn");
 
   function formatRefSize(bytes) {
     if (!bytes || bytes <= 0) return "0 KB";
@@ -2894,31 +2909,114 @@ function renderTextToImage() {
   }
 
   function renderRefState(profile) {
-    if (!refDropzone) return;
-    if (profile?.referenceImage && profile?.referencePreviewUrl) {
-      if (refThumb) refThumb.src = profile.referencePreviewUrl;
-      if (refFilename) refFilename.textContent = profile.referenceName || "reference.png";
-      if (refFilesize) refFilesize.textContent = formatRefSize(profile.referenceSize || profile.referenceImage.size);
-      if (refEmpty) refEmpty.classList.add("hidden");
-      if (refPreview) refPreview.classList.remove("hidden");
-      refDropzone.classList.add("has-image");
+    const refs = profile?.referenceImages || [];
+    const count = refs.length;
+
+    if (count === 0) {
+      if (refDropzone) refDropzone.classList.remove("hidden");
+      if (refActiveContainer) refActiveContainer.classList.add("hidden");
+      if (refCountBadge) refCountBadge.classList.add("hidden");
+      if (refThumbsStrip) refThumbsStrip.innerHTML = "";
     } else {
-      if (refThumb) refThumb.src = "";
-      if (refPreview) refPreview.classList.add("hidden");
-      if (refEmpty) refEmpty.classList.remove("hidden");
-      refDropzone.classList.remove("has-image");
+      if (refDropzone) refDropzone.classList.add("hidden");
+      if (refActiveContainer) refActiveContainer.classList.remove("hidden");
+      if (refCountBadge) {
+        refCountBadge.textContent = `${count} image${count === 1 ? "" : "s"}`;
+        refCountBadge.classList.remove("hidden");
+      }
+      if (refStatusText) {
+        refStatusText.textContent = count > 1 ? `${count} reference images combined` : "1 reference image attached";
+      }
+
+      if (refThumbsStrip) {
+        refThumbsStrip.innerHTML = refs.map((r, idx) => `
+          <div class="t2i-ref-thumb-card" data-idx="${idx}" title="${esc(r.name || "reference.png")} (${formatRefSize(r.size)})">
+            <img src="${r.previewUrl}" alt="Ref ${idx + 1}" />
+            <button type="button" class="t2i-ref-thumb-del" data-del-ref="${idx}" title="Remove this reference image">
+              <i data-lucide="x"></i>
+            </button>
+            <span class="t2i-ref-thumb-idx">${idx + 1}</span>
+          </div>
+        `).join("") + `
+          <button type="button" class="t2i-ref-add-card" id="t2iRefStripAddBtn" title="Add another reference image (+)">
+            <i data-lucide="plus"></i>
+            <span>Add</span>
+          </button>
+        `;
+
+        // Wire delete buttons
+        refThumbsStrip.querySelectorAll(".t2i-ref-thumb-del").forEach((delBtn) => {
+          delBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const delIdx = parseInt(delBtn.dataset.delRef, 10);
+            removeRefFile(delIdx);
+          });
+        });
+
+        // Wire strip add button
+        const stripAddBtn = refThumbsStrip.querySelector("#t2iRefStripAddBtn");
+        stripAddBtn?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          refInput?.click();
+        });
+      }
     }
     renderIcons();
   }
 
-  function handleRefFile(file) {
-    if (!file || !file.type?.startsWith("image/")) return;
+  function addRefFiles(newFiles) {
+    if (!newFiles || newFiles.length === 0) return;
     const current = t2iPrompts[t2iActiveIndex];
     if (!current) return;
-    current.referenceImage = file;
-    current.referenceName = file.name || "reference.png";
-    current.referenceSize = file.size || 0;
-    current.referencePreviewUrl = URL.createObjectURL(file);
+    if (!Array.isArray(current.referenceImages)) current.referenceImages = [];
+
+    const incoming = Array.isArray(newFiles) ? newFiles : Array.from(newFiles);
+    for (const f of incoming) {
+      if (f && f.type?.startsWith("image/")) {
+        current.referenceImages.push({
+          file: f,
+          previewUrl: URL.createObjectURL(f),
+          name: f.name || "reference.png",
+          size: f.size || 0,
+        });
+      }
+    }
+
+    // Synchronize legacy single-file fields
+    current.referenceImage = current.referenceImages[0]?.file || null;
+    current.referencePreviewUrl = current.referenceImages[0]?.previewUrl || null;
+    current.referenceName = current.referenceImages[0]?.name || "";
+    current.referenceSize = current.referenceImages[0]?.size || 0;
+
+    t2iPromptsState = t2iPrompts;
+    renderRefState(current);
+    updatePromptUI(false);
+  }
+
+  function removeRefFile(idx) {
+    const current = t2iPrompts[t2iActiveIndex];
+    if (!current || !Array.isArray(current.referenceImages)) return;
+    current.referenceImages.splice(idx, 1);
+    current.referenceImage = current.referenceImages[0]?.file || null;
+    current.referencePreviewUrl = current.referenceImages[0]?.previewUrl || null;
+    current.referenceName = current.referenceImages[0]?.name || "";
+    current.referenceSize = current.referenceImages[0]?.size || 0;
+    t2iPromptsState = t2iPrompts;
+    renderRefState(current);
+    updatePromptUI(false);
+  }
+
+  function clearAllRefFiles() {
+    const current = t2iPrompts[t2iActiveIndex];
+    if (!current) return;
+    current.referenceImages = [];
+    current.referenceImage = null;
+    current.referencePreviewUrl = null;
+    current.referenceName = "";
+    current.referenceSize = 0;
+    if (refInput) refInput.value = "";
     t2iPromptsState = t2iPrompts;
     renderRefState(current);
     updatePromptUI(false);
@@ -2928,34 +3026,29 @@ function renderTextToImage() {
     bindDropAndPasteZone({
       dropzoneEl: refDropzone,
       inputEl: refInput,
-      onFileReceived: (files) => {
-        if (files && files.length > 0) {
-          handleRefFile(files[0]);
-        }
-      },
-    });
-
-    refReplaceBtn?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      refInput?.click();
-    });
-
-    refRemoveBtn?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const current = t2iPrompts[t2iActiveIndex];
-      if (current) {
-        current.referenceImage = null;
-        current.referencePreviewUrl = null;
-        current.referenceName = "";
-        current.referenceSize = 0;
-        t2iPromptsState = t2iPrompts;
-        renderRefState(current);
-        updatePromptUI(false);
-      }
+      onFileReceived: addRefFiles,
     });
   }
+
+  if (refActiveContainer) {
+    bindDropAndPasteZone({
+      dropzoneEl: refActiveContainer,
+      inputEl: null,
+      onFileReceived: addRefFiles,
+    });
+  }
+
+  refAddMoreBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    refInput?.click();
+  });
+
+  refClearBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearAllRefFiles();
+  });
 
   const getT2iShape = bindShapeSelector("t2i", (newRatio) => {
     if (t2iPrompts[t2iActiveIndex]) {
@@ -3262,6 +3355,7 @@ function renderTextToImage() {
   function handleAddPrompt() {
     saveCurrentPromptToProfile();
     const cur = t2iPrompts[t2iActiveIndex];
+    const inheritedRefs = (cur?.referenceImages || []).map(r => ({ ...r }));
     t2iPrompts.push({
       text: "",
       aspectRatio: cur?.aspectRatio || "1:1",
@@ -3269,10 +3363,11 @@ function renderTextToImage() {
       manualStyle: "",
       magicStyle: null,
       bgColor: cur?.bgColor || "transparent",
-      referenceImage: cur?.referenceImage || null,
-      referencePreviewUrl: cur?.referencePreviewUrl || null,
-      referenceName: cur?.referenceName || "",
-      referenceSize: cur?.referenceSize || 0,
+      referenceImages: inheritedRefs,
+      referenceImage: inheritedRefs[0]?.file || null,
+      referencePreviewUrl: inheritedRefs[0]?.previewUrl || null,
+      referenceName: inheritedRefs[0]?.name || "",
+      referenceSize: inheritedRefs[0]?.size || 0,
     });
     t2iActiveIndex = t2iPrompts.length - 1;
     updatePromptUI(true);
@@ -3331,19 +3426,23 @@ function renderTextToImage() {
       return alert("Please enter at least one design idea description first.");
     }
 
-    const promptsPayload = activeProfiles.map((p, idx) => ({
-      prompt: p.text.trim(),
-      aspectRatio: p.aspectRatio || "1:1",
-      count: Math.min(100, Math.max(1, parseInt(p.count, 10) || 1)),
-      manualStyle: p.manualStyle || "",
-      magicStyle: p.magicStyle || null,
-      style_id: p.magicStyle?.id || null,
-      style_name: p.magicStyle?.name || null,
-      style_directive: p.magicStyle?.directive || null,
-      bg_color: p.bgColor || "transparent",
-      hasReference: Boolean(p.referenceImage),
-      referenceKey: p.referenceImage ? `ref_${idx}` : null,
-    }));
+    const promptsPayload = activeProfiles.map((p, idx) => {
+      const refs = p.referenceImages?.length ? p.referenceImages : (p.referenceImage ? [p.referenceImage] : []);
+      return {
+        prompt: p.text.trim(),
+        aspectRatio: p.aspectRatio || "1:1",
+        count: Math.min(100, Math.max(1, parseInt(p.count, 10) || 1)),
+        manualStyle: p.manualStyle || "",
+        magicStyle: p.magicStyle || null,
+        style_id: p.magicStyle?.id || null,
+        style_name: p.magicStyle?.name || null,
+        style_directive: p.magicStyle?.directive || null,
+        bg_color: p.bgColor || "transparent",
+        hasReference: refs.length > 0,
+        referenceCount: refs.length,
+        referenceKey: refs.length > 0 ? `ref_${idx}` : null,
+      };
+    });
 
     const totalCount = promptsPayload.reduce((sum, p) => sum + (p.count || 1), 0);
     const count = totalCount;
@@ -3414,9 +3513,13 @@ function renderTextToImage() {
       appendMagicStyle(fd, promptsPayload[0].magicStyle);
     }
     activeProfiles.forEach((p, idx) => {
-      if (p.referenceImage) {
-        fd.append(`ref_${idx}`, p.referenceImage, p.referenceName || `ref_${idx}.png`);
-      }
+      const refs = p.referenceImages?.length ? p.referenceImages : (p.referenceImage ? [{ file: p.referenceImage, name: p.referenceName }] : []);
+      refs.forEach((refItem, imgIdx) => {
+        if (refItem.file) {
+          fd.append(`ref_${idx}_${imgIdx}`, refItem.file, refItem.name || `ref_${idx}_${imgIdx}.png`);
+          fd.append(`ref_${idx}`, refItem.file, refItem.name || `ref_${idx}_${imgIdx}.png`);
+        }
+      });
     });
 
     let completedSlots = 0;

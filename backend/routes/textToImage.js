@@ -22,11 +22,14 @@ function formatDuration(ms) {
 // multipart: prompt (text), prompts (JSON array of strings or prompt profile objects), count (1–100), manualStyle (optional), reference images (optional: ref_0, reference, etc.)
 router.post("/text-to-image", upload.any(), async (req, res) => {
   try {
-    // Map uploaded files by fieldname
-    const filesByField = {};
+    // Map uploaded files by fieldname (supporting multiple files per field)
+    const filesByField = new Map();
     if (Array.isArray(req.files)) {
       for (const f of req.files) {
-        filesByField[f.fieldname] = f;
+        if (!filesByField.has(f.fieldname)) {
+          filesByField.set(f.fieldname, []);
+        }
+        filesByField.get(f.fieldname).push(f);
       }
     }
 
@@ -71,13 +74,25 @@ router.post("/text-to-image", upload.any(), async (req, res) => {
 
       if (typeof item === "string") {
         text = item.trim();
-        hasReference = Boolean(filesByField[`ref_${pIdx}`] || filesByField[`reference_${pIdx}`] || filesByField["reference"] || filesByField["source"]);
+        hasReference = Boolean(
+          filesByField.has(`ref_${pIdx}`) ||
+          filesByField.has(`reference_${pIdx}`) ||
+          filesByField.has("reference") ||
+          filesByField.has("source")
+        );
       } else if (item && typeof item === "object") {
         text = String(item.prompt || item.text || "").trim();
         itemRatio = String(item.aspectRatio || item.aspect_ratio || defaultGlobalRatio).trim();
         itemCount = Math.min(100, Math.max(1, parseInt(item.count || item.variations, 10) || defaultGlobalCount));
         itemBg = item.bg_color !== undefined ? item.bg_color : (item.bgColor !== undefined ? item.bgColor : defaultGlobalBg);
-        hasReference = Boolean(item.hasReference || item.has_reference || item.referenceKey || filesByField[`ref_${pIdx}`] || filesByField[`reference_${pIdx}`]);
+        hasReference = Boolean(
+          item.hasReference ||
+          item.has_reference ||
+          item.referenceCount > 0 ||
+          item.referenceKey ||
+          filesByField.has(`ref_${pIdx}`) ||
+          filesByField.has(`reference_${pIdx}`)
+        );
 
         // Resolve per-prompt style
         if (item.manualStyle || item.style_directive || item.style_name || item.style_id || item.magicStyle) {
@@ -94,24 +109,55 @@ router.post("/text-to-image", upload.any(), async (req, res) => {
 
       if (!text) continue;
 
-      // Check if reference file is attached for this prompt
-      const promptRefFile =
-        filesByField[`ref_${pIdx}`] ||
-        filesByField[`reference_${pIdx}`] ||
-        (hasReference ? (filesByField["reference"] || filesByField["source"] || filesByField["image"] || req.files?.[0]) : null);
+      // Collect ALL reference files attached for this prompt
+      const promptRefFiles = [];
 
-      let sourceAbs = null;
-      let sourceRel = null;
+      // 1. Direct field matches (ref_0, reference_0)
+      if (filesByField.has(`ref_${pIdx}`)) {
+        promptRefFiles.push(...filesByField.get(`ref_${pIdx}`));
+      }
+      if (filesByField.has(`reference_${pIdx}`)) {
+        promptRefFiles.push(...filesByField.get(`reference_${pIdx}`));
+      }
 
-      if (promptRefFile && promptRefFile.path) {
-        let storedRef = storedFileCache.get(promptRefFile.path);
-        if (!storedRef) {
-          const ext = path.extname(promptRefFile.originalname || promptRefFile.path || ".png") || ".png";
-          storedRef = storeInLibrary(promptRefFile.path, `${uuidv4()}-reference${ext}`);
-          storedFileCache.set(promptRefFile.path, storedRef);
+      // 2. Indexed field matches (ref_0_0, ref_0_1, etc.)
+      if (Array.isArray(req.files)) {
+        for (const f of req.files) {
+          if (
+            (f.fieldname.startsWith(`ref_${pIdx}_`) || f.fieldname.startsWith(`reference_${pIdx}_`)) &&
+            !promptRefFiles.includes(f)
+          ) {
+            promptRefFiles.push(f);
+          }
         }
-        sourceAbs = storedRef.abs;
-        sourceRel = storedRef.rel;
+      }
+
+      // 3. Fallbacks if single prompt or global reference
+      if (promptRefFiles.length === 0 && (hasReference || rawPrompts.length === 1)) {
+        for (const key of ["reference", "source", "image"]) {
+          if (filesByField.has(key)) {
+            promptRefFiles.push(...filesByField.get(key));
+          }
+        }
+        if (promptRefFiles.length === 0 && Array.isArray(req.files) && req.files.length > 0 && rawPrompts.length === 1) {
+          promptRefFiles.push(...req.files);
+        }
+      }
+
+      const sourceAbsList = [];
+      const sourceRelList = [];
+
+      for (const promptRefFile of promptRefFiles) {
+        if (promptRefFile && promptRefFile.path) {
+          let storedRef = storedFileCache.get(promptRefFile.path);
+          if (!storedRef) {
+            const ext = path.extname(promptRefFile.originalname || promptRefFile.path || ".png") || ".png";
+            storedRef = storeInLibrary(promptRefFile.path, `${uuidv4()}-reference${ext}`);
+            storedFileCache.set(promptRefFile.path, storedRef);
+          }
+          sourceAbsList.push(storedRef.abs);
+          sourceRelList.push(storedRef.rel);
+        }
       }
 
       normalizedPrompts.push({
@@ -121,8 +167,10 @@ router.post("/text-to-image", upload.any(), async (req, res) => {
         bgColor: itemBg,
         style: itemStyle,
         styleId: itemStyle.style_id,
-        sourceAbs,
-        sourceRel,
+        sourceAbsList,
+        sourceRelList,
+        sourceAbs: sourceAbsList[0] || null,
+        sourceRel: sourceRelList[0] || null,
       });
     }
 
@@ -139,7 +187,10 @@ router.post("/text-to-image", upload.any(), async (req, res) => {
     const tasks = [];
     for (let pIdx = 0; pIdx < normalizedPrompts.length; pIdx++) {
       const pProfile = normalizedPrompts[pIdx];
-      const hasRef = Boolean(pProfile.sourceAbs);
+      const refCount = pProfile.sourceAbsList?.length || (pProfile.sourceAbs ? 1 : 0);
+      const hasRef = refCount > 0;
+      const allImagePaths = pProfile.sourceAbsList?.length ? pProfile.sourceAbsList : (pProfile.sourceAbs ? [pProfile.sourceAbs] : []);
+
       for (let v = 0; v < pProfile.count; v++) {
         tasks.push({
           originalPrompt: pProfile.prompt,
@@ -153,9 +204,10 @@ router.post("/text-to-image", upload.any(), async (req, res) => {
             bg_color: pProfile.bgColor,
             aspectRatio: pProfile.aspectRatio,
             hasReferenceImage: hasRef,
+            referenceCount: refCount,
           }),
-          imagePaths: hasRef ? [pProfile.sourceAbs] : [],
-          sourceRel: pProfile.sourceRel || null,
+          imagePaths: allImagePaths,
+          sourceRel: pProfile.sourceRelList?.[0] || pProfile.sourceRel || null,
           aspectRatio: pProfile.aspectRatio,
           bgColor: pProfile.bgColor,
           styleId: pProfile.styleId,
