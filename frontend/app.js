@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.20";
+const APP_VERSION = "1.0.21";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -622,7 +622,7 @@ function setActiveDropzone(dz) {
 // Track dropzone hover state for mouse-targeted drop/paste operations
 document.addEventListener("mouseover", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop"
   );
   if (dz) {
     lastHoveredDropzone = dz;
@@ -631,7 +631,7 @@ document.addEventListener("mouseover", (e) => {
 
 document.addEventListener("mouseout", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop"
   );
   if (dz && (!e.relatedTarget || !dz.contains(e.relatedTarget))) {
     if (lastHoveredDropzone === dz) lastHoveredDropzone = null;
@@ -641,7 +641,7 @@ document.addEventListener("mouseout", (e) => {
 // Track click/focus on dropzones or their parent stage cards so clipboard pastes go to the clicked slot
 document.addEventListener("mousedown", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop"
   );
   if (dz) {
     setActiveDropzone(dz);
@@ -2630,6 +2630,10 @@ function normalizeT2iProfile(p) {
       manualStyle: "",
       magicStyle: null,
       bgColor: "transparent",
+      referenceImage: null,
+      referencePreviewUrl: null,
+      referenceName: "",
+      referenceSize: 0,
     };
   }
   if (!p || typeof p !== "object") {
@@ -2640,6 +2644,10 @@ function normalizeT2iProfile(p) {
       manualStyle: "",
       magicStyle: null,
       bgColor: "transparent",
+      referenceImage: null,
+      referencePreviewUrl: null,
+      referenceName: "",
+      referenceSize: 0,
     };
   }
   return {
@@ -2649,6 +2657,10 @@ function normalizeT2iProfile(p) {
     manualStyle: p.manualStyle || "",
     magicStyle: p.magicStyle || null,
     bgColor: p.bgColor || "transparent",
+    referenceImage: p.referenceImage || null,
+    referencePreviewUrl: p.referencePreviewUrl || null,
+    referenceName: p.referenceName || "",
+    referenceSize: p.referenceSize || (p.referenceImage?.size || 0),
   };
 }
 
@@ -2689,20 +2701,63 @@ function renderTextToImage() {
 
       <div class="t2i-workspace">
         <section class="t2i-panel">
-          <label class="field">
+          <!-- Reference Design Section (Image 2 UX) -->
+          <div class="t2i-ref-section">
+            <div class="t2i-section-label-row">
+              <span class="t2i-section-label">IMAGE</span>
+              <span class="t2i-section-badge">OPTIONAL</span>
+            </div>
+            <div class="t2i-ref-dropzone" id="t2iRefDrop" tabindex="0" role="button" aria-label="Upload reference image">
+              <input type="file" id="t2iRefInput" accept="image/png,image/jpeg,image/webp,image/jpg" style="display:none;" />
+              
+              <!-- Empty State -->
+              <div class="t2i-ref-empty" id="t2iRefEmpty">
+                <div class="t2i-ref-icon-box">
+                  <i data-lucide="image-plus"></i>
+                </div>
+                <div class="t2i-ref-text-group">
+                  <span class="t2i-ref-title">Upload image</span>
+                  <span class="t2i-ref-sub">PNG, JPG · Paste from clipboard</span>
+                </div>
+              </div>
+
+              <!-- Preview State -->
+              <div class="t2i-ref-preview hidden" id="t2iRefPreview">
+                <div class="t2i-ref-thumb-wrap">
+                  <img id="t2iRefThumb" src="" alt="Reference thumbnail" />
+                </div>
+                <div class="t2i-ref-meta">
+                  <span class="t2i-ref-filename" id="t2iRefFilename">reference.png</span>
+                  <span class="t2i-ref-filesize" id="t2iRefFilesize">0 KB</span>
+                  <span class="t2i-ref-status-tag"><i data-lucide="check-circle-2"></i> Attached to prompt</span>
+                </div>
+                <div class="t2i-ref-actions">
+                  <button type="button" class="btn secondary btn-xs" id="t2iRefReplaceBtn" title="Change reference image">
+                    <i data-lucide="refresh-cw"></i> Replace
+                  </button>
+                  <button type="button" class="btn secondary btn-xs danger" id="t2iRefRemoveBtn" title="Remove reference image">
+                    <i data-lucide="trash-2"></i> Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Prompt Section -->
+          <div class="t2i-prompt-section">
             <div class="t2i-prompt-header">
               <div class="t2i-prompt-title-group">
-                <span class="field-label" style="margin-bottom:0;">Design idea</span>
+                <span class="t2i-section-label">PROMPT</span>
                 <span class="t2i-prompt-badge" id="t2iPromptBadge">Prompt 1 of 1</span>
               </div>
               <div class="t2i-prompt-nav">
-                <button type="button" class="t2i-nav-btn" id="t2iPrevPromptBtn" title="Previous prompt (Return back)" disabled>
+                <button type="button" class="t2i-nav-btn" id="t2iPrevPromptBtn" title="Previous prompt" disabled>
                   <i data-lucide="chevron-left"></i>
                 </button>
                 <div class="t2i-nav-pills" id="t2iNavPills">
                   <button type="button" class="t2i-pill-btn active" data-index="0" title="Prompt 1">1</button>
                 </div>
-                <button type="button" class="t2i-nav-btn" id="t2iNextPromptBtn" title="Next prompt (Move on)" disabled>
+                <button type="button" class="t2i-nav-btn" id="t2iNextPromptBtn" title="Next prompt" disabled>
                   <i data-lucide="chevron-right"></i>
                 </button>
                 <button type="button" class="t2i-nav-btn t2i-add-btn" id="t2iAddPromptBtn" title="Add another prompt (+)">
@@ -2713,7 +2768,7 @@ function renderTextToImage() {
                 </button>
               </div>
             </div>
-            <textarea id="t2iPrompt" class="prompt-editor" placeholder="e.g. a cozy winter cabin wrapped in pine, 70s retro diner sign, kawaii strawberry mascot…" required></textarea>
+            <textarea id="t2iPrompt" class="prompt-editor" placeholder="Please enter a prompt…" required></textarea>
             <div class="t2i-prompt-footer">
               <span class="t2i-prompt-footer-hint">
                 <i data-lucide="layers" style="width:12px;height:12px;color:var(--color-ion);"></i>
@@ -2721,7 +2776,7 @@ function renderTextToImage() {
               </span>
               <span class="t2i-prompt-footer-count" id="t2iPromptQueueCount">1 prompt</span>
             </div>
-          </label>
+          </div>
 
           <label class="field">
             <span class="field-label">Variations (1–100)</span>
@@ -2811,17 +2866,96 @@ function renderTextToImage() {
   const t2iCustomSwatch = $("#t2iCustomSwatch");
   const t2iResetBgBtn = $("#t2iResetBg");
 
+  // Reference image DOM elements
+  const refDropzone = $("#t2iRefDrop");
+  const refInput = $("#t2iRefInput");
+  const refEmpty = $("#t2iRefEmpty");
+  const refPreview = $("#t2iRefPreview");
+  const refThumb = $("#t2iRefThumb");
+  const refFilename = $("#t2iRefFilename");
+  const refFilesize = $("#t2iRefFilesize");
+  const refReplaceBtn = $("#t2iRefReplaceBtn");
+  const refRemoveBtn = $("#t2iRefRemoveBtn");
+
+  function formatRefSize(bytes) {
+    if (!bytes || bytes <= 0) return "0 KB";
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    return Math.round(bytes / 1024) + " KB";
+  }
+
+  function renderRefState(profile) {
+    if (!refDropzone) return;
+    if (profile?.referenceImage && profile?.referencePreviewUrl) {
+      if (refThumb) refThumb.src = profile.referencePreviewUrl;
+      if (refFilename) refFilename.textContent = profile.referenceName || "reference.png";
+      if (refFilesize) refFilesize.textContent = formatRefSize(profile.referenceSize || profile.referenceImage.size);
+      if (refEmpty) refEmpty.classList.add("hidden");
+      if (refPreview) refPreview.classList.remove("hidden");
+      refDropzone.classList.add("has-image");
+    } else {
+      if (refThumb) refThumb.src = "";
+      if (refPreview) refPreview.classList.add("hidden");
+      if (refEmpty) refEmpty.classList.remove("hidden");
+      refDropzone.classList.remove("has-image");
+    }
+    renderIcons();
+  }
+
+  function handleRefFile(file) {
+    if (!file || !file.type?.startsWith("image/")) return;
+    const current = t2iPrompts[t2iActiveIndex];
+    if (!current) return;
+    current.referenceImage = file;
+    current.referenceName = file.name || "reference.png";
+    current.referenceSize = file.size || 0;
+    current.referencePreviewUrl = URL.createObjectURL(file);
+    t2iPromptsState = t2iPrompts;
+    renderRefState(current);
+    updatePromptUI(false);
+  }
+
+  if (refDropzone) {
+    bindDropAndPasteZone({
+      dropzoneEl: refDropzone,
+      inputEl: refInput,
+      onFileReceived: (files) => {
+        if (files && files.length > 0) {
+          handleRefFile(files[0]);
+        }
+      },
+    });
+
+    refReplaceBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      refInput?.click();
+    });
+
+    refRemoveBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const current = t2iPrompts[t2iActiveIndex];
+      if (current) {
+        current.referenceImage = null;
+        current.referencePreviewUrl = null;
+        current.referenceName = "";
+        current.referenceSize = 0;
+        t2iPromptsState = t2iPrompts;
+        renderRefState(current);
+        updatePromptUI(false);
+      }
+    });
+  }
+
   const getT2iShape = bindShapeSelector("t2i", (newRatio) => {
     if (t2iPrompts[t2iActiveIndex]) {
       t2iPrompts[t2iActiveIndex].aspectRatio = newRatio;
       t2iPromptsState = t2iPrompts;
-      if (badgeEl) {
-        badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length} • Shape: ${newRatio}`;
-      }
       const pill = pillsContainer?.querySelector(`.t2i-pill-btn[data-index="${t2iActiveIndex}"]`);
       if (pill) {
         const text = (t2iPrompts[t2iActiveIndex].text || "").trim();
-        pill.title = `Prompt ${t2iActiveIndex + 1} [${newRatio}]${text ? ': ' + esc(text.slice(0, 30)) : ' (empty)'}`;
+        const hasRef = Boolean(t2iPrompts[t2iActiveIndex].referenceImage);
+        pill.title = `Prompt ${t2iActiveIndex + 1} [${newRatio}]${hasRef ? ' (Image attached)' : ''}${text ? ': ' + esc(text.slice(0, 30)) : ' (empty)'}`;
       }
     }
   });
@@ -2829,7 +2963,10 @@ function renderTextToImage() {
   magicStyle = setupMagicStyle({
     btn: $("#t2iMagicBtn"),
     container: $("#t2iMagicStyle"),
-    getContext: () => ({ prompt: $("#t2iPrompt")?.value?.trim() || "", imageFile: null }),
+    getContext: () => ({
+      prompt: $("#t2iPrompt")?.value?.trim() || "",
+      imageFile: t2iPrompts[t2iActiveIndex]?.referenceImage || null,
+    }),
     onStyle: (name) => {
       const input = $("#t2iManualStyle");
       if (input) input.value = name;
@@ -2966,6 +3103,7 @@ function renderTextToImage() {
 
   function loadPromptProfileToUI(profile) {
     if (!profile) return;
+    renderRefState(profile);
     if (promptTextarea) {
       promptTextarea.value = profile.text || "";
     }
@@ -3000,9 +3138,8 @@ function renderTextToImage() {
       }
     }
 
-    const currentRatio = currentProfile?.aspectRatio || "1:1";
     if (badgeEl) {
-      badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length} • Shape: ${currentRatio}`;
+      badgeEl.textContent = `Prompt ${t2iActiveIndex + 1} of ${t2iPrompts.length}`;
     }
 
     if (prevBtn) prevBtn.disabled = t2iActiveIndex <= 0;
@@ -3020,9 +3157,11 @@ function renderTextToImage() {
       pillsContainer.innerHTML = t2iPrompts.map((p, idx) => {
         const text = (p?.text || "").trim();
         const hasText = text.length > 0;
+        const hasRef = Boolean(p?.referenceImage);
         const ratio = p?.aspectRatio || "1:1";
         const isActive = idx === t2iActiveIndex;
-        return `<button type="button" class="t2i-pill-btn ${isActive ? 'active' : ''} ${hasText ? 'has-text' : ''}" data-index="${idx}" title="Prompt ${idx + 1} [${ratio}]${hasText ? ': ' + esc(text.slice(0, 30)) : ' (empty)'}">${idx + 1}</button>`;
+        const refLabel = hasRef ? " [Image attached]" : "";
+        return `<button type="button" class="t2i-pill-btn ${isActive ? 'active' : ''} ${hasText ? 'has-text' : ''} ${hasRef ? 'has-ref' : ''}" data-index="${idx}" title="Prompt ${idx + 1} [${ratio}]${refLabel}${hasText ? ': ' + esc(text.slice(0, 30)) : ' (empty)'}">${idx + 1}</button>`;
       }).join("");
 
       pillsContainer.querySelectorAll(".t2i-pill-btn").forEach((pill) => {
@@ -3105,13 +3244,18 @@ function renderTextToImage() {
       e.preventDefault();
       e.stopPropagation();
       saveCurrentPromptToProfile();
+      const cur = t2iPrompts[t2iActiveIndex];
       t2iPrompts.push({
         text: "",
-        aspectRatio: "1:1",
-        count: t2iPrompts[t2iActiveIndex]?.count || 3,
+        aspectRatio: cur?.aspectRatio || "1:1",
+        count: cur?.count || 3,
         manualStyle: "",
         magicStyle: null,
-        bgColor: "transparent",
+        bgColor: cur?.bgColor || "transparent",
+        referenceImage: cur?.referenceImage || null,
+        referencePreviewUrl: cur?.referencePreviewUrl || null,
+        referenceName: cur?.referenceName || "",
+        referenceSize: cur?.referenceSize || 0,
       });
       t2iActiveIndex = t2iPrompts.length - 1;
       updatePromptUI(true);
@@ -3150,7 +3294,7 @@ function renderTextToImage() {
       return alert("Please enter at least one design idea description first.");
     }
 
-    const promptsPayload = activeProfiles.map((p) => ({
+    const promptsPayload = activeProfiles.map((p, idx) => ({
       prompt: p.text.trim(),
       aspectRatio: p.aspectRatio || "1:1",
       count: Math.min(100, Math.max(1, parseInt(p.count, 10) || 1)),
@@ -3160,6 +3304,8 @@ function renderTextToImage() {
       style_name: p.magicStyle?.name || null,
       style_directive: p.magicStyle?.directive || null,
       bg_color: p.bgColor || "transparent",
+      hasReference: Boolean(p.referenceImage),
+      referenceKey: p.referenceImage ? `ref_${idx}` : null,
     }));
 
     const totalCount = promptsPayload.reduce((sum, p) => sum + (p.count || 1), 0);
@@ -3230,6 +3376,11 @@ function renderTextToImage() {
     if (promptsPayload[0].magicStyle) {
       appendMagicStyle(fd, promptsPayload[0].magicStyle);
     }
+    activeProfiles.forEach((p, idx) => {
+      if (p.referenceImage) {
+        fd.append(`ref_${idx}`, p.referenceImage, p.referenceName || `ref_${idx}.png`);
+      }
+    });
 
     let completedSlots = 0;
 

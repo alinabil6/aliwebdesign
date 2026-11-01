@@ -1,7 +1,7 @@
 import { Router } from "express";
-import multer from "multer";
+import path from "path";
 import { v4 as uuidv4 } from "uuid";
-import { storeInLibrary } from "../lib/files.js";
+import { upload, storeInLibrary, removeFileSafe } from "../lib/files.js";
 import { insertDesign } from "../lib/db.js";
 import { hasReadyAccount } from "../lib/accounts.js";
 import { runFleetBatch } from "../lib/queue.js";
@@ -10,8 +10,6 @@ import { resolveStyle } from "../lib/styleResolver.js";
 import { formatImageToAspectRatio } from "../lib/aspectRatioEnforcer.js";
 
 const router = Router();
-// multipart form fields only — no file uploads on this endpoint.
-const form = multer().none();
 
 function formatDuration(ms) {
   const totalSec = Math.max(1, Math.round((ms || 0) / 1000));
@@ -21,9 +19,17 @@ function formatDuration(ms) {
 }
 
 // POST /api/generate/text-to-image
-// multipart: prompt (text), prompts (JSON array of strings or prompt profile objects), count (1–100), manualStyle (optional)
-router.post("/text-to-image", form, async (req, res) => {
+// multipart: prompt (text), prompts (JSON array of strings or prompt profile objects), count (1–100), manualStyle (optional), reference images (optional: ref_0, reference, etc.)
+router.post("/text-to-image", upload.any(), async (req, res) => {
   try {
+    // Map uploaded files by fieldname
+    const filesByField = {};
+    if (Array.isArray(req.files)) {
+      for (const f of req.files) {
+        filesByField[f.fieldname] = f;
+      }
+    }
+
     // Parse prompts: support array of prompt objects OR array of strings
     // via req.body.prompts (JSON or array), or single prompt via req.body.prompt.
     let rawPrompts = [];
@@ -51,50 +57,73 @@ router.post("/text-to-image", form, async (req, res) => {
     const defaultGlobalBg = req.body.bg_color || req.body.background_color || "";
     const defaultGlobalRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
 
+    const storedFileCache = new Map();
+
     const normalizedPrompts = [];
-    for (const item of rawPrompts) {
+    for (let pIdx = 0; pIdx < rawPrompts.length; pIdx++) {
+      const item = rawPrompts[pIdx];
+      let text = "";
+      let itemRatio = defaultGlobalRatio;
+      let itemCount = defaultGlobalCount;
+      let itemBg = defaultGlobalBg;
+      let itemStyle = defaultGlobalStyle;
+      let hasReference = false;
+
       if (typeof item === "string") {
-        const text = item.trim();
-        if (text) {
-          normalizedPrompts.push({
-            prompt: text,
-            aspectRatio: defaultGlobalRatio,
-            count: defaultGlobalCount,
-            bgColor: defaultGlobalBg,
-            style: defaultGlobalStyle,
-            styleId: defaultGlobalStyle.style_id,
-          });
-        }
+        text = item.trim();
+        hasReference = Boolean(filesByField[`ref_${pIdx}`] || filesByField[`reference_${pIdx}`] || filesByField["reference"] || filesByField["source"]);
       } else if (item && typeof item === "object") {
-        const text = String(item.prompt || item.text || "").trim();
-        if (text) {
-          const itemRatio = String(item.aspectRatio || item.aspect_ratio || defaultGlobalRatio).trim();
-          const itemCount = Math.min(100, Math.max(1, parseInt(item.count || item.variations, 10) || defaultGlobalCount));
-          const itemBg = item.bg_color !== undefined ? item.bg_color : (item.bgColor !== undefined ? item.bgColor : defaultGlobalBg);
+        text = String(item.prompt || item.text || "").trim();
+        itemRatio = String(item.aspectRatio || item.aspect_ratio || defaultGlobalRatio).trim();
+        itemCount = Math.min(100, Math.max(1, parseInt(item.count || item.variations, 10) || defaultGlobalCount));
+        itemBg = item.bg_color !== undefined ? item.bg_color : (item.bgColor !== undefined ? item.bgColor : defaultGlobalBg);
+        hasReference = Boolean(item.hasReference || item.has_reference || item.referenceKey || filesByField[`ref_${pIdx}`] || filesByField[`reference_${pIdx}`]);
 
-          // Resolve per-prompt style
-          let itemStyle = defaultGlobalStyle;
-          if (item.manualStyle || item.style_directive || item.style_name || item.style_id || item.magicStyle) {
-            const manualStyle = String(item.manualStyle || "").trim();
-            const magicStyle = item.magicStyle || {};
-            const styleDirective = String(item.style_directive || magicStyle.directive || "").trim();
-            const styleName = String(item.style_name || magicStyle.name || "").trim() || null;
-            const styleId = String(item.style_id || magicStyle.id || "").trim() || null;
-            itemStyle = resolveStyle({
-              body: { manualStyle, style_directive: styleDirective, style_name: styleName, style_id: styleId },
-            });
-          }
-
-          normalizedPrompts.push({
-            prompt: text,
-            aspectRatio: itemRatio,
-            count: itemCount,
-            bgColor: itemBg,
-            style: itemStyle,
-            styleId: itemStyle.style_id,
+        // Resolve per-prompt style
+        if (item.manualStyle || item.style_directive || item.style_name || item.style_id || item.magicStyle) {
+          const manualStyle = String(item.manualStyle || "").trim();
+          const magicStyle = item.magicStyle || {};
+          const styleDirective = String(item.style_directive || magicStyle.directive || "").trim();
+          const styleName = String(item.style_name || magicStyle.name || "").trim() || null;
+          const styleId = String(item.style_id || magicStyle.id || "").trim() || null;
+          itemStyle = resolveStyle({
+            body: { manualStyle, style_directive: styleDirective, style_name: styleName, style_id: styleId },
           });
         }
       }
+
+      if (!text) continue;
+
+      // Check if reference file is attached for this prompt
+      const promptRefFile =
+        filesByField[`ref_${pIdx}`] ||
+        filesByField[`reference_${pIdx}`] ||
+        (hasReference ? (filesByField["reference"] || filesByField["source"] || filesByField["image"] || req.files?.[0]) : null);
+
+      let sourceAbs = null;
+      let sourceRel = null;
+
+      if (promptRefFile && promptRefFile.path) {
+        let storedRef = storedFileCache.get(promptRefFile.path);
+        if (!storedRef) {
+          const ext = path.extname(promptRefFile.originalname || promptRefFile.path || ".png") || ".png";
+          storedRef = storeInLibrary(promptRefFile.path, `${uuidv4()}-reference${ext}`);
+          storedFileCache.set(promptRefFile.path, storedRef);
+        }
+        sourceAbs = storedRef.abs;
+        sourceRel = storedRef.rel;
+      }
+
+      normalizedPrompts.push({
+        prompt: text,
+        aspectRatio: itemRatio,
+        count: itemCount,
+        bgColor: itemBg,
+        style: itemStyle,
+        styleId: itemStyle.style_id,
+        sourceAbs,
+        sourceRel,
+      });
     }
 
     if (normalizedPrompts.length === 0) {
@@ -110,6 +139,7 @@ router.post("/text-to-image", form, async (req, res) => {
     const tasks = [];
     for (let pIdx = 0; pIdx < normalizedPrompts.length; pIdx++) {
       const pProfile = normalizedPrompts[pIdx];
+      const hasRef = Boolean(pProfile.sourceAbs);
       for (let v = 0; v < pProfile.count; v++) {
         tasks.push({
           originalPrompt: pProfile.prompt,
@@ -122,8 +152,10 @@ router.post("/text-to-image", form, async (req, res) => {
             style_name: pProfile.style.style_name,
             bg_color: pProfile.bgColor,
             aspectRatio: pProfile.aspectRatio,
+            hasReferenceImage: hasRef,
           }),
-          imagePaths: [],
+          imagePaths: hasRef ? [pProfile.sourceAbs] : [],
+          sourceRel: pProfile.sourceRel || null,
           aspectRatio: pProfile.aspectRatio,
           bgColor: pProfile.bgColor,
           styleId: pProfile.styleId,
@@ -176,12 +208,14 @@ router.post("/text-to-image", form, async (req, res) => {
             const design = insertDesign({
               id: uuidv4(),
               feature: "text-to-image",
+              source_image_path: task.sourceRel || null,
               output_image_path: out.rel,
               prompt_used: task.prompt,
               user_input: effectiveStyleId ? `${promptLabel} [style:${effectiveStyleId}]` : promptLabel,
             });
             const decorated = {
               ...design,
+              source_image_path: task.sourceRel || null,
               account_id: account?.id || null,
               account_email: account?.email || null,
               prompt_index: task.promptIndex,
@@ -242,12 +276,14 @@ router.post("/text-to-image", form, async (req, res) => {
           const design = insertDesign({
             id: uuidv4(),
             feature: "text-to-image",
+            source_image_path: task.sourceRel || null,
             output_image_path: out.rel,
             prompt_used: task.prompt,
             user_input: effectiveStyleId ? `${promptLabel} [style:${effectiveStyleId}]` : promptLabel,
           });
           const decorated = {
             ...design,
+            source_image_path: task.sourceRel || null,
             account_id: account?.id || null,
             account_email: account?.email || null,
             prompt_index: task.promptIndex,
@@ -277,6 +313,12 @@ router.post("/text-to-image", form, async (req, res) => {
       } catch (_) { /* connection already closed */ }
     } else {
       res.status(500).json({ error: "Generation failed" });
+    }
+  } finally {
+    if (Array.isArray(req.files)) {
+      for (const f of req.files) {
+        removeFileSafe(f.path);
+      }
     }
   }
 });

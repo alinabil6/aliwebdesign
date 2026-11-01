@@ -7912,45 +7912,262 @@ body.light-mode .doc-mail-btn:hover {
 }
 
 
-/* ── Text to Image: Multi-Prompt Navigation & Badges ──────── */
+/* ── Text to Image: Reference Design Dropzone (v1.0.21) ──────── */
+.t2i-ref-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.t2i-section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.t2i-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-60, #94a3b8);
+}
+
+.t2i-section-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-ink-40, #64748b);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 7px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.t2i-ref-dropzone {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1.5px dashed rgba(34, 197, 94, 0.38);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 72px;
+  outline: none;
+}
+
+.t2i-ref-dropzone:hover,
+.t2i-ref-dropzone:focus-visible {
+  border-color: rgba(34, 197, 94, 0.7);
+  background: rgba(16, 185, 129, 0.06);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.12);
+}
+
+.t2i-ref-dropzone.drag-over,
+.t2i-ref-dropzone.drag {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+  box-shadow: 0 0 24px rgba(34, 197, 94, 0.25);
+  transform: scale(1.005);
+}
+
+.t2i-ref-dropzone.paste-active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.3);
+}
+
+.t2i-ref-dropzone.has-image {
+  border-style: solid;
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.t2i-ref-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.t2i-ref-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #22c55e;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.t2i-ref-dropzone:hover .t2i-ref-icon-box {
+  transform: scale(1.05);
+  background: rgba(34, 197, 94, 0.22);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
+}
+
+.t2i-ref-icon-box svg {
+  width: 22px;
+  height: 22px;
+}
+
+.t2i-ref-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.t2i-ref-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--color-ink, #f1f5f9);
+}
+
+.t2i-ref-sub {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-ink-60, #94a3b8);
+}
+
+.t2i-ref-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+
+.t2i-ref-thumb-wrap {
+  width: 54px;
+  height: 54px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #030712;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.t2i-ref-thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.t2i-ref-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.t2i-ref-filename {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-ink, #f1f5f9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.t2i-ref-filesize {
+  font-size: 11px;
+  color: var(--color-ink-60, #94a3b8);
+}
+
+.t2i-ref-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #10b981;
+}
+
+.t2i-ref-status-tag svg {
+  width: 12px;
+  height: 12px;
+}
+
+.t2i-ref-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-xs {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  line-height: 1.3;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Prompt section header & navigation fix */
+.t2i-prompt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .t2i-prompt-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 2px;
-  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: nowrap; /* PREVENTS WRAPPING COMPLETELY */
 }
 
 .t2i-prompt-title-group {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .t2i-prompt-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  padding: 2px 9px;
+  padding: 2px 8px;
   border-radius: 9999px;
   background: rgba(56, 189, 248, 0.12);
   color: #38bdf8;
   border: 1px solid rgba(56, 189, 248, 0.28);
   letter-spacing: 0.02em;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .t2i-prompt-nav {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   background: rgba(15, 23, 42, 0.55);
   border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08));
   padding: 3px 5px;
   border-radius: 10px;
+  flex-shrink: 0;
 }
 
 .t2i-nav-btn {
@@ -8077,6 +8294,19 @@ body.light-mode .doc-mail-btn:hover {
   border-radius: 50%;
   background: #22c55e;
   box-shadow: 0 0 4px #22c55e;
+}
+
+
+.t2i-pill-btn.has-ref::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 4px #38bdf8;
 }
 
 .t2i-prompt-footer {

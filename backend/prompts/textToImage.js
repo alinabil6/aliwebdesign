@@ -17,12 +17,13 @@ export function buildPrompt({
   style_directive = "",
   style_name = "",
   bg_color = "",
-  aspectRatio = "1:1"
+  aspectRatio = "1:1",
+  hasReferenceImage = false,
 }) {
   const bg = buildBackgroundBlock(bg_color);
   const style = VARIANT_STYLES[variant % VARIANT_STYLES.length];
   const concept = String(prompt || "").trim();
-  const arDirective = buildAspectRatioDirective(aspectRatio, { hasReferenceImage: false });
+  const arDirective = buildAspectRatioDirective(aspectRatio, { hasReferenceImage: Boolean(hasReferenceImage) });
 
   const styleClause = style_directive
     ? `Artistic technique: ${style_name || style}. ${style_directive}.`
@@ -31,6 +32,18 @@ export function buildPrompt({
   const bgBlock = bg
     ? String(bg)
     : "Background canvas: Clean solid monochrome backdrop for clean silhouette clipping.";
+
+  if (hasReferenceImage) {
+    return [
+      `Generate a fresh, commercial 2D vector apparel graphic inspired by the attached reference design, executing the following concept: ${concept}.`,
+      `Visual Subject & Reference Guidance: Draw direct inspiration from the composition, visual aesthetic, mood, and illustrative character of the attached reference design, while generating the new subject: ${concept}. Maintain balanced visual weight, dynamic silhouette, and apparel-ready framing.`,
+      styleClause,
+      "Typography: If lettering is explicitly requested in the concept, render sharp legible vector typography integrated into the emblem. If no text is requested in the concept, render 100% graphic-only artwork with strictly zero letters, numbers, words, or text.",
+      arDirective,
+      bgBlock,
+      UNIVERSAL_FOOTER
+    ].filter(Boolean).join("\n\n").trim();
+  }
 
   return [
     `Generate a full-color 2D vector t-shirt graphic illustration directly of: ${concept}.`,
