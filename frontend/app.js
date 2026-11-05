@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.25";
+const APP_VERSION = "1.0.26";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -2278,10 +2278,10 @@ function renderHome() {
                 <div class="pillar-title">Text to Image</div>
                 <div class="pillar-desc">Prompt-driven generation with multi-variation batches.</div>
               </div>
-              <div class="home-pillar-card luxury-enter" data-go="accounts">
-                <div class="pillar-icon"><i data-lucide="users"></i></div>
-                <div class="pillar-title">Gemini Accounts</div>
-                <div class="pillar-desc">Monitor session health, usage limits, and active browser profiles.</div>
+              <div class="home-pillar-card luxury-enter" data-go="mockups">
+                <div class="pillar-icon"><i data-lucide="shirt"></i></div>
+                <div class="pillar-title">Mockup Creator</div>
+                <div class="pillar-desc">Commercial apparel mockups with 100% frozen artwork placement.</div>
               </div>
             </div>
 
@@ -2306,11 +2306,6 @@ function renderHome() {
                 <div class="pillar-icon"><i data-lucide="palette"></i></div>
                 <div class="pillar-title">Art Style + Niche</div>
                 <div class="pillar-desc">Explore curated art styles, typography rules, and trending niches.</div>
-              </div>
-              <div class="home-pillar-card" data-go="mockups">
-                <div class="pillar-icon"><i data-lucide="shirt"></i></div>
-                <div class="pillar-title">Mockup Creator</div>
-                <div class="pillar-desc">Commercial apparel mockups with 100% frozen artwork placement.</div>
               </div>
             </div>
           </div>
@@ -7554,7 +7549,7 @@ async function renderLibrary() {
       const act = actBtn.dataset.act;
 
       if (act === "expand") {
-        openLightbox(mockup);
+        openExpandModal(mockup);
       } else if (act === "move") {
         openMoveModal(mockup);
       } else if (act === "open") {
@@ -8002,6 +7997,8 @@ const FEATURE_LABELS = {
   "design-to-design": "Design to Design",
   "pixel-to-pixel": "Pixel to Pixel",
   "art-style-niche": "Art Style + Niche",
+  "prepare-designs": "Prepare Designs",
+  "mockups": "Mockup Creator",
 };
 
 // SQLite's datetime('now') is "YYYY-MM-DD HH:MM:SS" in UTC with no marker, so
@@ -8075,29 +8072,32 @@ function metaItem(label, valueHtml) {
 // different design, which would otherwise print the wrong dimensions.
 let expandLoadToken = 0;
 
+const openLightbox = (d) => openExpandModal(d);
+
 function openExpandModal(d) {
   const m = $("#expandModal");
   if (!m) return;
 
-  const featureLabel = FEATURE_LABELS[d.feature] || (d.feature || "design").replace(/-/g, " ");
+  const isMockup = d.isMockup || d.feature === "mockups" || libraryActiveTab === "mockups";
+  const featureLabel = isMockup ? "Mockup Creator" : (FEATURE_LABELS[d.feature] || (d.feature || "design").replace(/-/g, " "));
   const prompt = d.prompt_used || d.user_input || "";
   const designId = String(d.id || "");
   const ext = (String(d.output_image_path).match(/\.(\w{2,5})$/) || [null, "png"])[1].toUpperCase();
 
   // Header: mode title + MMM DD, YYYY, h:mm A timestamp
-  $("#expandTitle").textContent = d.feature ? (FEATURE_LABELS[d.feature] || d.feature) : (d.mode || "Design Preview");
+  $("#expandTitle").textContent = isMockup ? "Mockup Creator" : (d.feature ? (FEATURE_LABELS[d.feature] || d.feature) : (d.mode || "Design Preview"));
   const dateObj = d.created_at ? new Date(d.created_at) : new Date();
   const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const timeStr = dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   $("#expandMeta").textContent = `${dateStr}, ${timeStr}`;
-  $("#expandPrompt").textContent = prompt || "No prompt recorded for this design.";
+  $("#expandPrompt").textContent = prompt || (isMockup ? (d.user_input || "Commercial Apparel Mockup") : "No prompt recorded for this design.");
 
   $("#expandMetaGrid").innerHTML = [
-    metaItem("Mode", `<span class="badge badge-mode">${esc(FEATURE_LABELS[d.feature] || d.mode || "Design")}</span>`),
+    metaItem("Mode", `<span class="badge badge-mode">${esc(isMockup ? "Apparel Mockup" : (FEATURE_LABELS[d.feature] || d.mode || "Design"))}</span>`),
     metaItem("Dimensions", `<span id="expandDims">${esc(d.width || 1024)} × ${esc(d.height || 1024)} px PNG</span>`),
     metaItem("Folder", `<span class="badge badge-folder">${esc(d.folder || "Unsorted")}</span>`),
     metaItem("Design ID", `<span class="id-chip"><code title="${esc(designId)}">${esc(designId.slice(0, 8))}...</code><button type="button" class="copy-btn" id="expandCopyId" aria-label="Copy design ID" title="Copy design ID"><i data-lucide="copy"></i></button></span>`),
-    metaItem("Commercial", `<span class="badge badge-success">✓ Print Ready</span>`),
+    metaItem("Commercial", `<span class="badge badge-success">${isMockup ? "✓ Commercial Ready" : "✓ Print Ready"}</span>`),
   ].join("");
 
   // Real pixel dimensions come off the decoded bitmap, not the DB.
@@ -8121,20 +8121,31 @@ function openExpandModal(d) {
   if (img.complete) showDims(); // cached images may never fire onload
 
   const copyPrompt = $("#expandCopyPrompt");
-  copyPrompt.classList.toggle("hidden", !prompt);
-  copyPrompt.onclick = () => copyWithFeedback(copyPrompt, prompt, "prompt");
+  if (copyPrompt) {
+    copyPrompt.classList.toggle("hidden", !prompt);
+    copyPrompt.onclick = () => copyWithFeedback(copyPrompt, prompt, "prompt");
+  }
 
   const copyId = $("#expandCopyId");
-  copyId.onclick = () => copyWithFeedback(copyId, designId, "design ID");
+  if (copyId) {
+    copyId.onclick = () => copyWithFeedback(copyId, designId, isMockup ? "mockup ID" : "design ID");
+  }
 
   const dl = $("#expandDownload");
-  dl.href = designImageUrl(d);
-  dl.setAttribute("download", designFileName(d));
+  if (dl) {
+    dl.href = designImageUrl(d);
+    dl.setAttribute("download", designFileName(d));
+  }
 
-  $("#expandEdit").onclick = () => {
-    m.classList.add("hidden");
-    openEditModal(d);
-  };
+  const editBtn = $("#expandEdit");
+  if (editBtn) {
+    editBtn.style.display = isMockup ? "none" : "";
+    editBtn.onclick = () => {
+      m.classList.add("hidden");
+      openEditModal(d);
+    };
+  }
+
   m.classList.remove("hidden");
   renderIcons();
 }
