@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.23";
+const APP_VERSION = "1.0.24";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -622,7 +622,7 @@ function setActiveDropzone(dz) {
 // Track dropzone hover state for mouse-targeted drop/paste operations
 document.addEventListener("mouseover", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer, #mockupGarmentDrop, #mockupArtworkDrop"
   );
   if (dz) {
     lastHoveredDropzone = dz;
@@ -631,7 +631,7 @@ document.addEventListener("mouseover", (e) => {
 
 document.addEventListener("mouseout", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer, #mockupGarmentDrop, #mockupArtworkDrop"
   );
   if (dz && (!e.relatedTarget || !dz.contains(e.relatedTarget))) {
     if (lastHoveredDropzone === dz) lastHoveredDropzone = null;
@@ -641,7 +641,7 @@ document.addEventListener("mouseout", (e) => {
 // Track click/focus on dropzones or their parent stage cards so clipboard pastes go to the clicked slot
 document.addEventListener("mousedown", (e) => {
   const dz = e.target.closest?.(
-    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer"
+    ".multi-dropzone, .prepare-drop-area, .app-dropzone, #p2pDropZone, #d2dDrop, #nvDrop, #prepDrop, #asDropStyle, #asDropNiche, #mlDrop, #mlRefDrop, #t2iRefDrop, #t2iRefActiveContainer, #mockupGarmentDrop, #mockupArtworkDrop"
   );
   if (dz) {
     setActiveDropzone(dz);
@@ -1199,6 +1199,8 @@ const views = {
   accounts: renderAccounts,
   "pixel-to-pixel": renderPixelToPixel,
   "prepare": renderPrepareDesigns,
+  mockups: renderMockupCreator,
+  "mockup-creator": renderMockupCreator,
 };
 
 // A view that starts a timer or a poll registers its teardown here, so leaving
@@ -2304,6 +2306,11 @@ function renderHome() {
                 <div class="pillar-icon"><i data-lucide="palette"></i></div>
                 <div class="pillar-title">Art Style + Niche</div>
                 <div class="pillar-desc">Explore curated art styles, typography rules, and trending niches.</div>
+              </div>
+              <div class="home-pillar-card" data-go="mockups">
+                <div class="pillar-icon"><i data-lucide="shirt"></i></div>
+                <div class="pillar-title">Mockup Creator</div>
+                <div class="pillar-desc">Commercial apparel mockups with 100% frozen artwork placement.</div>
               </div>
             </div>
           </div>
@@ -5927,6 +5934,701 @@ function renderDesignToDesign() {
   });
 }
 
+/* ── Mockup Creator View ────────────────────────────────── */
+
+function renderMockupCreator() {
+  const mount = viewMount("mockups");
+
+  mount.innerHTML = `
+    <div class="view">
+      <header class="view-header" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+        <div>
+          <h1 class="page-title">Mockup Creator</h1>
+          <p class="page-sub">Generate photorealistic commercial apparel mockups with 100% frozen artwork placement.</p>
+        </div>
+        <button type="button" class="btn secondary btn-sm" id="mockupOpenLibBtn">
+          <i data-lucide="shirt"></i> Mockup Library
+        </button>
+      </header>
+
+      <div class="mockup-workspace">
+        <!-- Controls Column -->
+        <div class="mockup-panel">
+          <!-- Garment / Mockup Reference (Multi-Mockup Support) -->
+          <div>
+            <div class="mockup-section-label-row" style="display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="mockup-section-label">Garment / Apparel Reference</span>
+                <span class="mockup-ref-count-badge hidden" id="mockupGarmentCountBadge" style="font-size:10px;font-weight:700;color:#38bdf8;background:rgba(56,189,248,0.12);padding:2px 8px;border-radius:9999px;">0 mockups</span>
+              </div>
+              <span id="mockupGarmentReqBadge" style="font-size:10px;font-weight:700;color:#38bdf8;background:rgba(56,189,248,0.12);padding:2px 8px;border-radius:9999px;">REQUIRED</span>
+            </div>
+
+            <!-- Empty Dropzone State -->
+            <div class="mockup-dropzone" id="mockupGarmentDrop" tabindex="0" role="button" aria-label="Upload garment or mockup references">
+              <input type="file" id="mockupGarmentInput" accept="image/*" multiple style="display:none;" />
+              <div class="mockup-drop-empty" id="mockupGarmentEmpty">
+                <div class="mockup-drop-icon"><i data-lucide="shirt"></i></div>
+                <div class="mockup-drop-texts">
+                  <div class="mockup-drop-title">Upload Garment Photos</div>
+                  <div class="mockup-drop-sub">PNG, JPG · Click, drop multiple mockups, or paste (Ctrl+V)</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Multi-Garment Container -->
+            <div class="mockup-ref-active-container hidden" id="mockupGarmentActive" tabindex="0">
+              <div class="mockup-ref-header">
+                <span class="mockup-ref-status-tag" id="mockupGarmentStatusTag">
+                  <i data-lucide="layers"></i> <span id="mockupGarmentStatusText">1 mockup attached</span>
+                </span>
+                <div class="mockup-ref-actions">
+                  <button type="button" class="btn secondary btn-xs" id="mockupGarmentAddMoreBtn" title="Add more mockup references">
+                    <i data-lucide="plus"></i> Add more
+                  </button>
+                  <button type="button" class="btn secondary btn-xs danger" id="mockupGarmentClearBtn" title="Remove all mockup references">
+                    <i data-lucide="trash-2"></i> Delete all
+                  </button>
+                </div>
+              </div>
+              <div class="mockup-ref-thumbs-strip" id="mockupGarmentThumbsStrip">
+                <!-- Dynamically populated thumbnails and add button -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Artwork Design Dropzone (Optional) -->
+          <div>
+            <div class="mockup-section-label-row">
+              <span class="mockup-section-label">Artwork to Place</span>
+              <span style="font-size:10px;font-weight:700;color:#10b981;background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:9999px;">FROZEN PIXELS • ZERO REDRAW</span>
+            </div>
+            <div class="mockup-dropzone" id="mockupArtworkDrop" tabindex="0" role="button" aria-label="Upload Artwork Graphic">
+              <input type="file" id="mockupArtworkInput" accept="image/*" style="display:none;" />
+              <div class="mockup-drop-empty" id="mockupArtworkEmpty">
+                <div class="mockup-drop-icon" style="background:rgba(16,185,129,0.14);border-color:rgba(16,185,129,0.3);color:#10b981;"><i data-lucide="sparkles"></i></div>
+                <div class="mockup-drop-texts">
+                  <div class="mockup-drop-title">Upload Artwork Graphic (Optional)</div>
+                  <div class="mockup-drop-sub">PNG with transparency • 100% frozen onto fabric</div>
+                </div>
+              </div>
+              <div class="mockup-preview hidden" id="mockupArtworkPreview">
+                <div class="mockup-thumb-wrap">
+                  <img id="mockupArtworkThumb" alt="Artwork Preview" />
+                </div>
+                <div class="mockup-meta">
+                  <div class="mockup-filename" id="mockupArtworkName">artwork.png</div>
+                  <div class="mockup-filesize" id="mockupArtworkSize">540 KB</div>
+                  <div class="mockup-status-tag" style="color:#10b981;"><i data-lucide="shield-check"></i> Frozen Immutable Asset</div>
+                </div>
+                <div class="mockup-actions">
+                  <button type="button" class="btn secondary btn-sm" id="mockupArtworkReplaceBtn" title="Replace Artwork">Replace</button>
+                  <button type="button" class="icon-btn danger btn-sm" id="mockupArtworkRemoveBtn" title="Remove Artwork"><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Product Options (Product Type + Garment Color) -->
+          <div style="display:grid;grid-template-columns:1fr;gap:12px;">
+            <div>
+              <div class="mockup-section-label-row">
+                <span class="mockup-section-label">Product Type</span>
+              </div>
+              <select id="mockupProductType" class="mockup-select">
+                <option value="Unisex T-Shirt" selected>Unisex T-Shirt</option>
+                <option value="Heavyweight Boxy Tee">Heavyweight Boxy Tee</option>
+                <option value="Oversized Streetwear Tee">Oversized Streetwear Tee</option>
+                <option value="Crewneck Sweatshirt">Crewneck Sweatshirt</option>
+                <option value="Pullover Hoodie">Pullover Hoodie</option>
+                <option value="Long Sleeve T-Shirt">Long Sleeve T-Shirt</option>
+                <option value="Tank Top">Tank Top</option>
+                <option value="Canvas Tote Bag">Canvas Tote Bag</option>
+              </select>
+            </div>
+
+            <div>
+              <div class="mockup-section-label-row" style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="mockup-section-label">Garment Color</span>
+                  <span id="mockupColorName" style="font-size:11px;font-weight:600;color:var(--color-ink-60,#94a3b8);">White (#FFFFFF)</span>
+                </div>
+                <button type="button" class="btn secondary btn-sm" id="mockupResetColor" style="padding:1px 8px;font-size:10px;height:20px;display:inline-flex;align-items:center;gap:4px;" title="Reset garment color to White"><i data-lucide="rotate-ccw" style="width:10px;height:10px;"></i> Reset</button>
+              </div>
+              <div class="color-swatches" id="mockupSwatches" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="swatch active" data-color="White" data-hex="#FFFFFF" style="background:#FFFFFF;border:2px solid #38bdf8;width:24px;height:24px;border-radius:50%;cursor:pointer;box-shadow:0 0 8px rgba(56,189,248,0.5);" title="White"></button>
+                <button type="button" class="swatch" data-color="Black" data-hex="#111111" style="background:#111111;border:1px solid rgba(255,255,255,0.2);width:24px;height:24px;border-radius:50%;cursor:pointer;" title="Black"></button>
+                <button type="button" class="swatch" data-color="Natural Cream" data-hex="#F5F0E6" style="background:#F5F0E6;border:1px solid rgba(255,255,255,0.2);width:24px;height:24px;border-radius:50%;cursor:pointer;" title="Natural Cream"></button>
+                <button type="button" class="swatch" data-color="Pepper Charcoal" data-hex="#3E3E3E" style="background:#3E3E3E;border:1px solid rgba(255,255,255,0.2);width:24px;height:24px;border-radius:50%;cursor:pointer;" title="Pepper Charcoal"></button>
+                <button type="button" class="swatch" data-color="Terracotta" data-hex="#C66B4E" style="background:#C66B4E;border:1px solid rgba(255,255,255,0.2);width:24px;height:24px;border-radius:50%;cursor:pointer;" title="Terracotta"></button>
+                <button type="button" class="swatch" data-color="Sage Green" data-hex="#879F84" style="background:#879F84;border:1px solid rgba(255,255,255,0.2);width:24px;height:24px;border-radius:50%;cursor:pointer;" title="Sage Green"></button>
+                <button type="button" class="swatch" data-color="Navy Blue" data-hex="#1B2942" style="background:#1B2942;border:1px solid rgba(255,255,255,0.2);width:24px;height:24px;border-radius:50%;cursor:pointer;" title="Navy Blue"></button>
+                <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;" title="Custom Color">
+                  <input type="color" id="mockupCustomColor" value="#FFFFFF" style="opacity:0;position:absolute;width:24px;height:24px;pointer-events:none;" />
+                  <span id="mockupCustomColorIcon" style="width:24px;height:24px;border-radius:50%;border:1px dashed rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;">+</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Scene Direction (Optional) -->
+          <div>
+            <div class="mockup-section-label-row">
+              <span class="mockup-section-label">Scene & Background (Optional)</span>
+            </div>
+            <textarea id="mockupScenePrompt" class="mockup-scene-textarea" placeholder="e.g. Minimalist wooden flatlay with soft diffuse daylight, or clean industrial concrete floor with natural sun shadows..."></textarea>
+            <div class="mockup-chips" id="mockupChips">
+              <button type="button" class="mockup-chip" data-scene="Clean studio flatlay on neutral seamless background with soft daylight">Studio Flatlay</button>
+              <button type="button" class="mockup-chip" data-scene="Warm rustic wooden table flatlay with gentle natural sunbeams and minimal props">Wooden Table</button>
+              <button type="button" class="mockup-chip" data-scene="Urban streetwear lifestyle setting, modern textured concrete backdrop">Urban Streetwear</button>
+              <button type="button" class="mockup-chip" data-scene="Minimalist neutral editorial aesthetic with balanced ambient shadows">Minimalist Neutral</button>
+              <button type="button" class="mockup-chip" data-scene="Wooden hanger hanging against a textured plaster gallery wall">Hanger Display</button>
+              <button type="button" class="mockup-chip" data-scene="Warm sunlit indoor studio with soft window light and organic shadows">Warm Sunlit Room</button>
+            </div>
+          </div>
+
+          <!-- Canvas Aspect Ratio -->
+          <div>
+            <div class="mockup-section-label-row">
+              <span class="mockup-section-label">Canvas Shape</span>
+            </div>
+            ${renderShapeSelector("mockup", "1:1")}
+          </div>
+
+          <!-- Variations Count -->
+          <div>
+            <div class="mockup-section-label-row" style="display:flex;align-items:center;justify-content:space-between;">
+              <span class="mockup-section-label" id="mockupVariationsLabel">Variations</span>
+              <span id="mockupTotalTasksPreview" style="font-size:11px;font-weight:600;color:#38bdf8;">1 mockup to generate</span>
+            </div>
+            <input type="number" id="mockupCount" min="1" max="100" value="3" class="input" style="width:100px;" />
+          </div>
+
+          <!-- Action Buttons & Progress -->
+          <div style="display:flex;gap:10px;align-items:center;margin-top:4px;">
+            <button class="btn primary" id="mockupGenerateBtn" style="flex:1;">
+              <i data-lucide="sparkles"></i> Generate Mockups
+            </button>
+            <button class="btn secondary" id="mockupStopBtn" disabled>
+              <i data-lucide="square"></i> Stop
+            </button>
+          </div>
+
+          <!-- Integrated Stable Status Card -->
+          <div class="mockup-status-card" id="mockupStatusCard" style="display:none;">
+            <div class="progress-bar"><div class="progress-fill" id="mockupProgressFill" style="width:0%;"></div></div>
+            <div class="mockup-status-row">
+              <span class="mockup-status-label" id="mockupProgressText">Starting parallel fleet mockup generation…</span>
+            </div>
+            <div class="mockup-fleet-row">
+              <span class="mockup-fleet-indicator"></span>
+              <span class="mockup-fleet-text" id="mockupAccountText">Fleet active: Connecting accounts…</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Output Canvas Column -->
+        <div class="mockup-output-panel">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-weight:700;font-size:14px;color:var(--color-ink,#f1f5f9);">Output Canvas</span>
+              <span class="results-count" id="mockupOutCount">0 generated</span>
+            </div>
+            <a href="#" id="mockupOpenLibLink" style="font-size:12px;color:#38bdf8;text-decoration:none;font-weight:500;">Open Mockup Library →</a>
+          </div>
+
+          <div class="canvas-empty" id="mockupEmpty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center;color:var(--color-ink-60,#94a3b8);">
+            <i data-lucide="shirt" style="width:52px;height:52px;stroke-width:1.2;opacity:0.35;margin-bottom:12px;"></i>
+            <div style="font-size:14px;font-weight:600;color:var(--color-ink,#f1f5f9);">Generated mockups will appear here</div>
+            <div style="font-size:12px;margin-top:4px;max-width:320px;">Upload garment references and optional graphic to produce photorealistic commercial merchandise photos.</div>
+          </div>
+
+          <div class="results-grid" id="mockupResultsGrid"></div>
+        </div>
+      </div>
+    </div>`;
+
+  renderIcons();
+
+  let garmentFiles = []; // Array of { file, previewUrl, name, size }
+  let artworkFile = null;
+  let selectedGarmentColor = "White (#FFFFFF)";
+  let abortController = null;
+  let generatedResults = [];
+  let tracker = null;
+
+  const garmentDrop = $("#mockupGarmentDrop");
+  const garmentInput = $("#mockupGarmentInput");
+  const garmentActiveContainer = $("#mockupGarmentActive");
+  const garmentCountBadge = $("#mockupGarmentCountBadge");
+  const garmentReqBadge = $("#mockupGarmentReqBadge");
+  const garmentStatusText = $("#mockupGarmentStatusText");
+  const garmentThumbsStrip = $("#mockupGarmentThumbsStrip");
+  const garmentAddMoreBtn = $("#mockupGarmentAddMoreBtn");
+  const garmentClearBtn = $("#mockupGarmentClearBtn");
+
+  const artworkDrop = $("#mockupArtworkDrop");
+  const artworkInput = $("#mockupArtworkInput");
+  const artworkEmpty = $("#mockupArtworkEmpty");
+  const artworkPreview = $("#mockupArtworkPreview");
+  const artworkThumb = $("#mockupArtworkThumb");
+  const artworkName = $("#mockupArtworkName");
+  const artworkSize = $("#mockupArtworkSize");
+
+  const generateBtn = $("#mockupGenerateBtn");
+  const stopBtn = $("#mockupStopBtn");
+  const statusCard = $("#mockupStatusCard");
+  const progressFill = $("#mockupProgressFill");
+  const progressText = $("#mockupProgressText");
+  const accountText = $("#mockupAccountText");
+  const resultsGrid = $("#mockupResultsGrid");
+  const emptyState = $("#mockupEmpty");
+  const outCounter = $("#mockupOutCount");
+  let accountPoll = null;
+
+  async function refreshAccountLine() {
+    try {
+      const data = await api("/api/accounts");
+      const busy = (data.accounts || []).filter((a) => a.status === "generating" || a.status === "running");
+      if (accountText) {
+        if (busy.length > 0) {
+          const names = busy.map((a) => (a.email || "").trim() || "Google account");
+          accountText.textContent = names.length === 1
+            ? `Fleet active: Generating on ${names[0]}`
+            : `Fleet active: Generating on ${names[0]} +${names.length - 1} more`;
+        } else {
+          accountText.textContent = "Fleet active: Finalizing output…";
+        }
+      }
+      refreshTopBar();
+    } catch {
+      // Keep steady, do not collapse
+    }
+  }
+
+  function startAccountPoll() {
+    refreshAccountLine();
+    if (!accountPoll) {
+      accountPoll = setInterval(refreshAccountLine, 2000);
+    }
+  }
+
+  function stopAccountPoll() {
+    if (accountPoll) {
+      clearInterval(accountPoll);
+      accountPoll = null;
+    }
+    refreshTopBar();
+  }
+
+  viewTeardown = () => {
+    stopAccountPoll();
+    if (abortController) {
+      try { abortController.abort(); } catch (_) {}
+    }
+    for (const g of garmentFiles) {
+      if (g && g.previewUrl) {
+        try { URL.revokeObjectURL(g.previewUrl); } catch (_) {}
+      }
+    }
+  };
+
+  const getMockupShape = bindShapeSelector("mockup", null, "1:1");
+
+  function formatRefSize(bytes) {
+    if (!bytes || bytes <= 0) return "0 KB";
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    return Math.round(bytes / 1024) + " KB";
+  }
+
+  function updateVariationsUI() {
+    const vPerGarment = Math.min(20, Math.max(1, parseInt($("#mockupCount").value, 10) || 1));
+    const count = garmentFiles.length;
+    const totalTasks = count > 0 ? count * vPerGarment : vPerGarment;
+    const labelEl = $("#mockupVariationsLabel");
+    const previewEl = $("#mockupTotalTasksPreview");
+    if (labelEl) {
+      labelEl.textContent = count > 1 ? "Variations per mockup" : "Variations";
+    }
+    if (previewEl) {
+      if (count > 1) {
+        previewEl.textContent = `${count} mockups × ${vPerGarment} = ${totalTasks} total generated`;
+      } else {
+        previewEl.textContent = `${totalTasks} mockup${totalTasks === 1 ? "" : "s"} to generate`;
+      }
+    }
+  }
+
+  $("#mockupCount")?.addEventListener("input", updateVariationsUI);
+
+  function renderGarmentState() {
+    const count = garmentFiles.length;
+    if (count === 0) {
+      if (garmentDrop) garmentDrop.classList.remove("hidden");
+      if (garmentActiveContainer) garmentActiveContainer.classList.add("hidden");
+      if (garmentCountBadge) garmentCountBadge.classList.add("hidden");
+      if (garmentReqBadge) {
+        garmentReqBadge.textContent = "REQUIRED";
+        garmentReqBadge.style.color = "#38bdf8";
+      }
+      if (garmentThumbsStrip) garmentThumbsStrip.innerHTML = "";
+    } else {
+      if (garmentDrop) garmentDrop.classList.add("hidden");
+      if (garmentActiveContainer) garmentActiveContainer.classList.remove("hidden");
+      if (garmentCountBadge) {
+        garmentCountBadge.textContent = `${count} mockup${count === 1 ? "" : "s"}`;
+        garmentCountBadge.classList.remove("hidden");
+      }
+      if (garmentReqBadge) {
+        garmentReqBadge.textContent = `${count} READY`;
+        garmentReqBadge.style.color = "#10b981";
+      }
+      if (garmentStatusText) {
+        garmentStatusText.textContent = count > 1 ? `${count} mockups ready for generation` : "1 mockup attached";
+      }
+
+      if (garmentThumbsStrip) {
+        garmentThumbsStrip.innerHTML = garmentFiles.map((r, idx) => `
+          <div class="mockup-ref-thumb-card" data-idx="${idx}" title="${esc(r.name || "mockup.png")} (${formatRefSize(r.size)})">
+            <img src="${r.previewUrl}" alt="Mockup ${idx + 1}" />
+            <button type="button" class="mockup-ref-thumb-del" data-del-garment="${idx}" title="Remove this mockup reference">
+              <i data-lucide="x"></i>
+            </button>
+            <span class="mockup-ref-thumb-idx">${idx + 1}</span>
+          </div>
+        `).join("") + `
+          <button type="button" class="mockup-ref-add-card" id="mockupGarmentStripAddBtn" title="Add another mockup reference (+)">
+            <i data-lucide="plus"></i>
+            <span>Add</span>
+          </button>
+        `;
+
+        garmentThumbsStrip.querySelectorAll(".mockup-ref-thumb-del").forEach((delBtn) => {
+          delBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const delIdx = parseInt(delBtn.dataset.delGarment, 10);
+            removeGarmentFile(delIdx);
+          });
+        });
+
+        const stripAddBtn = garmentThumbsStrip.querySelector("#mockupGarmentStripAddBtn");
+        stripAddBtn?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          garmentInput?.click();
+        });
+      }
+    }
+    updateVariationsUI();
+    renderIcons();
+  }
+
+  function addGarmentFiles(newFiles) {
+    if (!newFiles || newFiles.length === 0) return;
+    const incoming = Array.isArray(newFiles) ? newFiles : Array.from(newFiles);
+    for (const f of incoming) {
+      if (f && f.type?.startsWith("image/")) {
+        garmentFiles.push({
+          file: f,
+          previewUrl: URL.createObjectURL(f),
+          name: f.name || "mockup.png",
+          size: f.size || 0,
+        });
+      }
+    }
+    renderGarmentState();
+  }
+
+  function removeGarmentFile(index) {
+    if (index >= 0 && index < garmentFiles.length) {
+      const removed = garmentFiles.splice(index, 1)[0];
+      if (removed && removed.previewUrl) {
+        try { URL.revokeObjectURL(removed.previewUrl); } catch (_) {}
+      }
+      renderGarmentState();
+    }
+  }
+
+  function clearAllGarments() {
+    for (const g of garmentFiles) {
+      if (g && g.previewUrl) {
+        try { URL.revokeObjectURL(g.previewUrl); } catch (_) {}
+      }
+    }
+    garmentFiles = [];
+    if (garmentInput) garmentInput.value = "";
+    renderGarmentState();
+  }
+
+  function setArtwork(file) {
+    if (!file) return;
+    artworkFile = file;
+    artworkEmpty.classList.add("hidden");
+    artworkPreview.classList.remove("hidden");
+    artworkDrop.classList.add("has-file");
+    artworkThumb.src = URL.createObjectURL(file);
+    artworkName.textContent = file.name || "artwork.png";
+    artworkSize.textContent = formatRefSize(file.size);
+    renderIcons();
+  }
+
+  function clearArtwork() {
+    artworkFile = null;
+    artworkInput.value = "";
+    artworkEmpty.classList.remove("hidden");
+    artworkPreview.classList.add("hidden");
+    artworkDrop.classList.remove("has-file");
+  }
+
+  // Bind Drop and Paste Support for Garment & Artwork
+  if (garmentDrop) {
+    bindDropAndPasteZone({
+      dropzoneEl: garmentDrop,
+      inputEl: garmentInput,
+      onFileReceived: addGarmentFiles,
+    });
+  }
+
+  if (garmentActiveContainer) {
+    bindDropAndPasteZone({
+      dropzoneEl: garmentActiveContainer,
+      inputEl: null,
+      onFileReceived: addGarmentFiles,
+    });
+  }
+
+  if (artworkDrop) {
+    bindDropAndPasteZone({
+      dropzoneEl: artworkDrop,
+      inputEl: artworkInput,
+      onFileReceived: (files) => {
+        if (files && files.length) setArtwork(files[0]);
+      },
+    });
+  }
+
+  garmentAddMoreBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    garmentInput?.click();
+  });
+
+  garmentClearBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearAllGarments();
+  });
+
+  artworkDrop?.addEventListener("click", (e) => {
+    if (e.target.closest("#mockupArtworkReplaceBtn")) {
+      e.preventDefault();
+      e.stopPropagation();
+      artworkInput?.click();
+      return;
+    }
+    if (e.target.closest("#mockupArtworkRemoveBtn")) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearArtwork();
+      return;
+    }
+  });
+
+  // Color Swatches
+  $$("#mockupSwatches .swatch").forEach((swatch) => {
+    swatch.addEventListener("click", () => {
+      $$("#mockupSwatches .swatch").forEach((s) => {
+        s.classList.remove("active");
+        s.style.border = "1px solid rgba(255,255,255,0.2)";
+        s.style.boxShadow = "none";
+      });
+      swatch.classList.add("active");
+      swatch.style.border = "2px solid #38bdf8";
+      swatch.style.boxShadow = "0 0 8px rgba(56,189,248,0.5)";
+      selectedGarmentColor = `${swatch.dataset.color} (${swatch.dataset.hex})`;
+      $("#mockupColorName").textContent = selectedGarmentColor;
+    });
+  });
+
+  const customColorInput = $("#mockupCustomColor");
+  const customColorIcon = $("#mockupCustomColorIcon");
+  customColorInput?.addEventListener("input", (e) => {
+    const hex = e.target.value.toUpperCase();
+    $$("#mockupSwatches .swatch").forEach((s) => {
+      s.classList.remove("active");
+      s.style.border = "1px solid rgba(255,255,255,0.2)";
+      s.style.boxShadow = "none";
+    });
+    if (customColorIcon) {
+      customColorIcon.style.background = hex;
+      customColorIcon.style.borderColor = "#38bdf8";
+      customColorIcon.style.boxShadow = "0 0 8px rgba(56,189,248,0.5)";
+      customColorIcon.textContent = "";
+    }
+    selectedGarmentColor = `Custom (${hex})`;
+    $("#mockupColorName").textContent = selectedGarmentColor;
+  });
+
+  $("#mockupResetColor")?.addEventListener("click", () => {
+    $$("#mockupSwatches .swatch").forEach((s) => {
+      s.classList.remove("active");
+      s.style.border = "1px solid rgba(255,255,255,0.2)";
+      s.style.boxShadow = "none";
+    });
+    const whiteSwatch = $("#mockupSwatches .swatch[data-color='White']");
+    if (whiteSwatch) {
+      whiteSwatch.classList.add("active");
+      whiteSwatch.style.border = "2px solid #38bdf8";
+      whiteSwatch.style.boxShadow = "0 0 8px rgba(56,189,248,0.5)";
+    }
+    selectedGarmentColor = "White (#FFFFFF)";
+    $("#mockupColorName").textContent = selectedGarmentColor;
+  });
+
+  // Scene Suggestion Chips
+  $$("#mockupChips .mockup-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const sceneArea = $("#mockupScenePrompt");
+      if (sceneArea) {
+        sceneArea.value = chip.dataset.scene || "";
+        sceneArea.focus();
+      }
+    });
+  });
+
+  // Library Navigation Shortcuts
+  $("#mockupOpenLibBtn")?.addEventListener("click", () => {
+    libraryActiveTab = "mockups";
+    showView("designs");
+  });
+  $("#mockupOpenLibLink")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    libraryActiveTab = "mockups";
+    showView("designs");
+  });
+
+  // Generate Mockups Handler
+  generateBtn?.addEventListener("click", async () => {
+    if (garmentFiles.length === 0) {
+      alert("Please upload at least one garment or apparel reference photo.");
+      return;
+    }
+
+    const vPerGarment = Math.min(20, Math.max(1, parseInt($("#mockupCount").value, 10) || 1));
+    const totalTasks = garmentFiles.length * vPerGarment;
+    const shape = getMockupShape();
+
+    generateBtn.disabled = true;
+    stopBtn.disabled = false;
+    abortController = new AbortController();
+
+    emptyState.classList.add("hidden");
+    resultsGrid.innerHTML = "";
+    generatedResults = [];
+    outCounter.textContent = "0 generated";
+
+    renderPlaceholders(resultsGrid, totalTasks, "mockup-slot");
+
+    if (statusCard) statusCard.style.display = "flex";
+    if (progressText) progressText.textContent = "Starting parallel fleet mockup generation…";
+    if (accountText) accountText.textContent = "Fleet active: Connecting accounts…";
+    tracker = new GenerationProgressTracker({
+      barEl: progressFill,
+      labelEl: progressText,
+      totalItems: totalTasks,
+    });
+    for (let i = 0; i < totalTasks; i++) {
+      tracker.startItem(i);
+    }
+    startAccountPoll();
+
+    const fd = new FormData();
+    garmentFiles.forEach((gf) => {
+      fd.append("garment", gf.file);
+    });
+    if (artworkFile) fd.append("artwork", artworkFile);
+    fd.append("productType", $("#mockupProductType").value);
+    fd.append("garmentColor", selectedGarmentColor);
+    fd.append("scenePrompt", $("#mockupScenePrompt").value.trim());
+    fd.append("variationsPerGarment", vPerGarment);
+    fd.append("count", vPerGarment);
+    fd.append("aspectRatio", shape);
+
+    try {
+      await fetchStreamNDJSON(
+        "/api/generate/mockup-creator",
+        { method: "POST", body: fd, signal: abortController.signal },
+        (payload) => {
+          if (payload.event === "design" && payload.design) {
+            const slotId = `mockup-slot-${payload.slotIndex || 0}`;
+            resolvePlaceholder(slotId, payload.design);
+            generatedResults.push(payload.design);
+            outCounter.textContent = `${generatedResults.length} generated`;
+            if (tracker && typeof tracker.finishItem === "function") {
+              tracker.finishItem(payload.slotIndex || 0);
+            }
+          } else if (payload.event === "slot_retrying") {
+            const slotId = `mockup-slot-${payload.slotIndex || 0}`;
+            updatePlaceholderStatus(slotId, `Re-routing to account (${payload.attempt || 1})…`);
+          } else if (payload.event === "slot_failed") {
+            const slotId = `mockup-slot-${payload.slotIndex || 0}`;
+            failPlaceholder(slotId, payload.error || "Generation failed");
+            if (tracker && typeof tracker.finishItem === "function") {
+              tracker.finishItem(payload.slotIndex || 0);
+            }
+          } else if (payload.event === "error") {
+            console.error("Mockup generation error:", payload.error);
+            for (let s = 0; s < totalTasks; s++) {
+              failPlaceholder(`mockup-slot-${s}`, payload.error || "Failed");
+              if (tracker && typeof tracker.finishItem === "function") {
+                tracker.finishItem(s);
+              }
+            }
+          }
+        }
+      );
+      tracker.completeAll();
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        alert("Mockup generation encountered an issue: " + err.message);
+      }
+      cancelAllPlaceholders(resultsGrid, err.name === "AbortError" ? "Cancelled" : (err.message || "Failed"));
+    } finally {
+      generateBtn.disabled = false;
+      stopBtn.disabled = true;
+      stopAccountPoll();
+      refreshTopBar();
+      setTimeout(() => { if (!abortController && statusCard) statusCard.style.display = "none"; }, 3500);
+      abortController = null;
+      refreshAccountsData();
+    }
+  });
+
+  // Stop Button Handler
+  stopBtn?.addEventListener("click", () => {
+    stopBtn.disabled = true;
+    if (abortController) {
+      try { abortController.abort(); } catch (_) {}
+    }
+    cancelAllPlaceholders(resultsGrid, "Cancelled");
+    if (tracker && typeof tracker.stop === "function") {
+      tracker.stop();
+    }
+    stopAccountPoll();
+    generateBtn.disabled = false;
+    if (progressText) progressText.textContent = "Generation stopped";
+    if (accountText) accountText.textContent = "Fleet standby";
+    setTimeout(() => { if (!abortController && statusCard) statusCard.style.display = "none"; }, 2000);
+
+    fetch("/api/generate/cancel", { method: "POST" })
+      .catch((err) => console.warn("Cancel signal delivery failed:", err))
+      .finally(() => {
+        refreshTopBar();
+      });
+  });
+}
+
 /* ── Result Card Template ────────────────────────────────── */
 
 function resultCard(d) {
@@ -6674,6 +7376,181 @@ function listingLibraryCard(l) {
 async function renderLibrary() {
   const mount = viewMount("designs");
 
+  if (libraryActiveTab === "mockups") {
+    const query = new URLSearchParams({
+      feature: "mockups",
+      page: libraryState.page || 1,
+      pageSize: 1000,
+    });
+
+    let data = { rows: [], total: 0, page: 1 };
+    try {
+      data = await api(`/api/designs?${query}`);
+    } catch (err) {
+      console.error("Failed to load mockups:", err);
+    }
+
+    libraryState.total = data.total || 0;
+    libraryState.page = data.page || 1;
+    designById.clear();
+    (data.rows || []).forEach((d) => designById.set(d.id, d));
+
+    const hasItems = (data.rows || []).length > 0;
+
+    mount.innerHTML = `
+      <div class="view">
+        <div class="library-toolbar">
+          <div class="library-header-group">
+            <header class="view-header" style="margin-bottom:0;">
+              <h1 class="page-title">My Library <span class="results-count" style="font-size:14px; margin-left:8px;">${libraryState.total}</span></h1>
+            </header>
+
+            <div class="library-nav-tabs">
+              <button type="button" class="lib-nav-tab" id="libTabDesigns">
+                <i data-lucide="layout-grid"></i> My Designs
+              </button>
+              <button type="button" class="lib-nav-tab" id="libTabListings">
+                <i data-lucide="list-checks"></i> My Listings
+              </button>
+              <button type="button" class="lib-nav-tab active" id="libTabMockups">
+                <i data-lucide="shirt"></i> Mockup Library
+              </button>
+            </div>
+          </div>
+
+          <div class="lib-filters">
+            <button class="btn secondary btn-sm" id="libSelectBtn">
+              <i data-lucide="${isSelectMode ? 'x' : 'check-square'}"></i> ${isSelectMode ? 'Cancel' : 'Select'}
+            </button>
+            <button class="icon-btn" id="libRefreshBtn" title="Refresh library"><i data-lucide="refresh-cw"></i></button>
+          </div>
+        </div>
+
+        <div class="batch-bar ${isSelectMode ? '' : 'hidden'}" id="batchBar">
+          <div class="batch-info"><span id="batchCount">${selectedDesignIds.size}</span> item(s) selected</div>
+          <div class="batch-actions">
+            <button class="btn secondary btn-sm" id="batchSelectAll">Select all</button>
+            <button class="btn secondary btn-sm" id="batchSaveBtn"><i data-lucide="folder-down"></i> <span id="batchSaveLabel">Save all</span></button>
+            <button class="btn secondary btn-sm" id="batchDeselectAll">Deselect all</button>
+            <button class="btn primary btn-sm danger" id="batchDeleteBtn" style="background:#EF4444;" ${selectedDesignIds.size === 0 ? 'disabled' : ''}>
+              <i data-lucide="trash-2"></i> Delete selected
+            </button>
+          </div>
+        </div>
+
+        ${hasItems ? `
+          <div class="results-grid library-grid ${isSelectMode ? 'selecting' : ''}" id="libraryGrid">
+            ${(data.rows || []).map(designCard).join("")}
+          </div>
+        ` : `
+          <div class="library-empty" style="padding:60px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;">
+            <i data-lucide="shirt" style="width:56px;height:56px;opacity:0.3;stroke-width:1.2;"></i>
+            <h3 style="font-size:18px;font-weight:600;color:var(--color-ink,#f1f5f9);margin:0;">No mockups created yet</h3>
+            <p style="font-size:13px;color:var(--color-ink-60,#94a3b8);margin:0;max-width:360px;">Create photorealistic apparel mockups with frozen artwork placement.</p>
+            <button type="button" class="btn primary btn-sm" id="emptyGoToMockupCreator" style="margin-top:8px;">
+              <i data-lucide="plus"></i> Create Mockup
+            </button>
+          </div>
+        `}
+      </div>`;
+
+    renderIcons();
+    updateBatchSaveLabel();
+
+    $("#libTabDesigns")?.addEventListener("click", () => {
+      libraryActiveTab = "designs";
+      renderLibrary();
+    });
+    $("#libTabListings")?.addEventListener("click", () => {
+      libraryActiveTab = "listings";
+      renderLibrary();
+    });
+    $("#libTabMockups")?.addEventListener("click", () => {
+      libraryActiveTab = "mockups";
+      renderLibrary();
+    });
+    $("#emptyGoToMockupCreator")?.addEventListener("click", () => showView("mockups"));
+    $("#libRefreshBtn")?.addEventListener("click", () => renderLibrary());
+
+    $("#libSelectBtn")?.addEventListener("click", () => {
+      isSelectMode = !isSelectMode;
+      if (!isSelectMode) selectedDesignIds.clear();
+      renderLibrary();
+    });
+
+    $("#batchSelectAll")?.addEventListener("click", () => {
+      designById.forEach((_, id) => selectedDesignIds.add(id));
+      renderLibrary();
+    });
+
+    $("#batchDeselectAll")?.addEventListener("click", () => {
+      selectedDesignIds.clear();
+      renderLibrary();
+    });
+
+    $("#batchSaveBtn")?.addEventListener("click", (e) => {
+      const btn = e.currentTarget;
+      if (btn.disabled) return;
+      saveDesignsBatch(btn);
+    });
+
+    $("#batchDeleteBtn")?.addEventListener("click", async () => {
+      if (selectedDesignIds.size === 0) return;
+      if (!confirm(`Permanently delete ${selectedDesignIds.size} mockup(s)?`)) return;
+
+      for (const id of selectedDesignIds) {
+        await api(`/api/designs/${id}`, { method: "DELETE" }).catch(() => {});
+      }
+      selectedDesignIds.clear();
+      isSelectMode = false;
+      await renderLibrary();
+    });
+
+    $("#libraryGrid")?.addEventListener("click", async (e) => {
+      const card = e.target.closest(".design-card");
+      if (!card) return;
+      const id = card.dataset.id;
+      const design = designById.get(id);
+
+      if (isSelectMode) {
+        if (selectedDesignIds.has(id)) {
+          selectedDesignIds.delete(id);
+          card.classList.remove("selected");
+        } else {
+          selectedDesignIds.add(id);
+          card.classList.add("selected");
+        }
+        const countEl = $("#batchCount");
+        if (countEl) countEl.textContent = selectedDesignIds.size;
+        const delBtn = $("#batchDeleteBtn");
+        if (delBtn) delBtn.disabled = selectedDesignIds.size === 0;
+        updateBatchSaveLabel();
+        return;
+      }
+
+      const actBtn = e.target.closest("[data-act]");
+      if (!actBtn) return;
+      const act = actBtn.dataset.act;
+
+      if (act === "expand") {
+        openLightbox(design);
+      } else if (act === "edit") {
+        openEditModal(design);
+      } else if (act === "move") {
+        openMoveModal(design);
+      } else if (act === "open") {
+        window.open(`/library/${design.output_image_path}`, "_blank");
+      } else if (act === "delete") {
+        if (confirm("Delete this mockup?")) {
+          await api(`/api/designs/${id}`, { method: "DELETE" });
+          renderLibrary();
+        }
+      }
+    });
+
+    return;
+  }
+
   if (libraryActiveTab === "listings") {
     const query = new URLSearchParams({
       ...(listingsLibraryState.platform ? { platform: listingsLibraryState.platform } : {}),
@@ -6710,6 +7587,9 @@ async function renderLibrary() {
               </button>
               <button type="button" class="lib-nav-tab active" id="libTabListings">
                 <i data-lucide="list-checks"></i> My Listings
+              </button>
+              <button type="button" class="lib-nav-tab" id="libTabMockups">
+                <i data-lucide="shirt"></i> Mockup Library
               </button>
             </div>
           </div>
@@ -6778,6 +7658,10 @@ async function renderLibrary() {
     });
     $("#libTabListings")?.addEventListener("click", () => {
       libraryActiveTab = "listings";
+      renderLibrary();
+    });
+    $("#libTabMockups")?.addEventListener("click", () => {
+      libraryActiveTab = "mockups";
       renderLibrary();
     });
     $("#emptyGoToMagicListing")?.addEventListener("click", () => showView("magicListing"));
@@ -6941,6 +7825,9 @@ async function renderLibrary() {
             <button type="button" class="lib-nav-tab" id="libTabListings">
               <i data-lucide="list-checks"></i> My Listings
             </button>
+            <button type="button" class="lib-nav-tab" id="libTabMockups">
+              <i data-lucide="shirt"></i> Mockup Library
+            </button>
           </div>
         </div>
 
@@ -6956,6 +7843,7 @@ async function renderLibrary() {
             <option value="niche-variations" ${libraryState.feature === 'niche-variations' ? 'selected' : ''}>Niche Variations</option>
             <option value="design-to-design" ${libraryState.feature === 'design-to-design' ? 'selected' : ''}>Design to Design</option>
             <option value="art-style-niche" ${libraryState.feature === 'art-style-niche' ? 'selected' : ''}>Art Style + Niche</option>
+            <option value="mockups" ${libraryState.feature === 'mockups' ? 'selected' : ''}>Mockup Creator</option>
           </select>
 
           <button class="btn secondary btn-sm" id="libSelectBtn">
@@ -6991,6 +7879,10 @@ async function renderLibrary() {
   });
   $("#libTabListings")?.addEventListener("click", () => {
     libraryActiveTab = "listings";
+    renderLibrary();
+  });
+  $("#libTabMockups")?.addEventListener("click", () => {
+    libraryActiveTab = "mockups";
     renderLibrary();
   });
 

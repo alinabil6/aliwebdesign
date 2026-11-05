@@ -66,6 +66,11 @@
         <span class="nav-text">Art Style + Niche</span>
       </button>
 
+      <button class="nav-btn" data-view="mockups" data-label="Mockup Creator">
+        <span class="nav-icon"><i data-lucide="shirt"></i></span>
+        <span class="nav-text">Mockup Creator</span>
+      </button>
+
       <button class="nav-btn" data-view="designs" data-label="My Library">
         <span class="nav-icon"><i data-lucide="library"></i></span>
         <span class="nav-text">My Library</span>
@@ -221,7 +226,7 @@
   <div class="about-modal-backdrop" id="aboutModal" role="dialog" aria-modal="true" aria-labelledby="aboutModalTitle">
     <div class="about-modal-content">
       <header class="about-modal-header">
-        <h2 class="about-modal-title gradient-text" id="aboutModalTitle">Magic Fabrica Studio <span class="doc-version-pill" style="font-size:0.75rem;vertical-align:middle;margin-left:8px;">v1.0.23</span></h2>
+        <h2 class="about-modal-title gradient-text" id="aboutModalTitle">Magic Fabrica Studio <span class="doc-version-pill" style="font-size:0.75rem;vertical-align:middle;margin-left:8px;">v1.0.24</span></h2>
         <button class="about-modal-close" id="aboutModalClose" title="Close" aria-label="Close about dialog">✕</button>
       </header>
       <p class="about-modal-sub">Autonomous Creative & POD Engine — a high-throughput, autonomous print-on-demand studio
@@ -312,6 +317,19 @@
             <p>Autonomous SEO metadata, title, and bullet generation for multi-platform POD publishing.</p>
           </div>
         </div>
+        <div class="about-feature-card">
+          <div class="about-feature-icon">
+            <!-- Shirt icon matching the sidebar Mockup Creator tab -->
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"></path>
+            </svg>
+          </div>
+          <div class="about-feature-text">
+            <h4>Mockup Creator</h4>
+            <p>Generate photorealistic commercial apparel mockups with 100% frozen artwork placement and multi-garment references.</p>
+          </div>
+        </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1.25rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.08);">
         <button type="button" class="btn secondary btn-sm" id="aboutCheckUpdateBtn" style="display:inline-flex;align-items:center;gap:6px;">
@@ -353,7 +371,7 @@
           <div class="doc-brand-meta">
             <div class="doc-title-row">
               <h2 class="doc-modal-title" id="docModalTitle"><span class="gradient-text">Magic Fabrica Studio</span></h2>
-              <span class="doc-version-pill">v1.0.23</span>
+              <span class="doc-version-pill">v1.0.24</span>
               <span class="doc-guide-pill">Official Guide</span>
             </div>
             <p class="doc-modal-sub">Comprehensive Workflow Guide &amp; Autonomous POD Production Manual</p>
@@ -407,7 +425,8 @@
             </p>
             <div class="doc-pills-row">
               <span class="doc-feature-pill"><i data-lucide="layers"></i> Fleet Load-Balancing</span>
-              <span class="doc-feature-pill"><i data-lucide="cpu"></i> 5 Generative Engines</span>
+              <span class="doc-feature-pill"><i data-lucide="cpu"></i> 6 Generative Engines</span>
+              <span class="doc-feature-pill"><i data-lucide="shirt"></i> Mockup Creator</span>
               <span class="doc-feature-pill"><i data-lucide="scissors"></i> Transparent Print-Prep</span>
               <span class="doc-feature-pill"><i data-lucide="tag"></i> Autonomous SEO</span>
             </div>
@@ -450,7 +469,7 @@
               <div class="doc-stage-badge">
                 <span class="doc-stage-num">Stage 2</span>
                 <span class="doc-stage-name">Create &amp; Scale Artwork</span>
-                <span class="doc-stage-tag doc-tag-cyan">5 Creative Engines</span>
+                <span class="doc-stage-tag doc-tag-cyan">6 Creative Engines</span>
               </div>
               <p class="doc-stage-desc">
                 Select the generative tool matching your production entry point:
@@ -508,6 +527,17 @@
                   </div>
                   <p>
                     Aesthetic cross-pollination. Upload your <strong>Subject/Niche</strong> image in the left frame and an <strong>Art Style</strong> reference in the right frame. The engine infuses the visual DNA of the reference onto the subject.
+                  </p>
+                </div>
+
+                <div class="doc-engine-item">
+                  <div class="doc-engine-header">
+                    <i data-lucide="shirt" class="doc-engine-icon"></i>
+                    <strong>Mockup Creator</strong>
+                    <span class="doc-engine-sub">Commercial Apparel</span>
+                  </div>
+                  <p>
+                    Generate ultra-realistic commercial merchandise photos with zero artwork redraw. Upload multiple garment references, attach your graphic with transparent backdrop, select product cuts and colors, and produce studio-grade product photos in parallel.
                   </p>
                 </div>
               </div>

@@ -260,7 +260,7 @@ async function waitForAttachmentPreview(page, beforePreviewCount, maxMs = 5000, 
   return await isAttachmentMountedInComposer(page);
 }
 
-async function waitForUploadCompletion(page, maxMs = 15000) {
+async function waitForUploadCompletion(page, maxMs = 30000) {
   try {
     await page.waitForFunction(() => {
       const uploadSpinners = document.querySelectorAll(
@@ -377,7 +377,7 @@ async function attachReferenceImages(page, imagePaths, signal = null) {
   }
 
   // Wait for upload progress (spinner/progressbar) to complete
-  await waitForUploadCompletion(page, 15000);
+  await waitForUploadCompletion(page, 30000);
   console.log(`[geminiweb] Uploaded ${imagePaths.length} reference image(s) successfully and verified in composer.`);
 }
 
