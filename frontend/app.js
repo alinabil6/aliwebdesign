@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.24";
+const APP_VERSION = "1.0.25";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -5947,7 +5947,7 @@ function renderMockupCreator() {
           <p class="page-sub">Generate photorealistic commercial apparel mockups with 100% frozen artwork placement.</p>
         </div>
         <button type="button" class="btn secondary btn-sm" id="mockupOpenLibBtn">
-          <i data-lucide="shirt"></i> Mockup Library
+          <i data-lucide="shirt"></i> My Mockups
         </button>
       </header>
 
@@ -6134,7 +6134,7 @@ function renderMockupCreator() {
               <span style="font-weight:700;font-size:14px;color:var(--color-ink,#f1f5f9);">Output Canvas</span>
               <span class="results-count" id="mockupOutCount">0 generated</span>
             </div>
-            <a href="#" id="mockupOpenLibLink" style="font-size:12px;color:#38bdf8;text-decoration:none;font-weight:500;">Open Mockup Library →</a>
+            <a href="#" id="mockupOpenLibLink" style="font-size:12px;color:#38bdf8;text-decoration:none;font-weight:500;">Open My Mockups →</a>
           </div>
 
           <div class="canvas-empty" id="mockupEmpty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center;color:var(--color-ink-60,#94a3b8);">
@@ -7075,6 +7075,10 @@ async function startAddAccount(browser) {
 let libraryActiveTab = "designs";
 const libraryState = { folder: "", feature: "", page: 1, total: 0 };
 const listingsLibraryState = { platform: "", search: "", page: 1, total: 0 };
+const mockupsLibraryState = { folder: "", page: 1, total: 0 };
+const mockupById = new Map();
+let isMockupSelectMode = false;
+const selectedMockupIds = new Set();
 const designById = new Map();
 const listingById = new Map();
 let isSelectMode = false;
@@ -7083,16 +7087,14 @@ const selectedDesignIds = new Set();
 const selectedListingIds = new Set();
 
 function designCard(d) {
-  const isSelected = selectedDesignIds.has(d.id);
-  const label = (d.feature || "design").replace(/-/g, " ");
-  const cleanTitle = d.user_input && d.user_input !== d.feature ? d.user_input : label;
+  const isMockup = d.isMockup || d.feature === "mockups" || libraryActiveTab === "mockups";
+  const isSelected = isMockup ? selectedMockupIds.has(d.id) : selectedDesignIds.has(d.id);
+  const label = isMockup ? "mockup" : (d.feature || "design").replace(/-/g, " ");
+  const cleanTitle = d.user_input && d.user_input !== d.feature ? d.user_input : (isMockup ? "Apparel Mockup" : label);
   const dateStr = d.created_at ? new Date(d.created_at).toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 
-  // Suggested download filename: slug of the card title, feature-name
-  // fallback, "design" as the last resort. Strict [a-z0-9-] charset keeps it
-  // attribute-safe and filesystem-safe on Windows/macOS.
   const ext = (String(d.output_image_path).match(/\.(\w{2,5})$/) || [null, "png"])[1].toLowerCase();
-  const fileBase = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "design";
+  const fileBase = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || (isMockup ? "mockup" : "design");
 
   return `
     <div class="result-card panel design-card ${isSelected ? 'selected' : ''}" data-id="${esc(d.id)}">
@@ -7102,7 +7104,7 @@ function designCard(d) {
         <div class="select-indicator"><i data-lucide="check"></i></div>
         <div class="hover-actions">
           <button type="button" class="pill-btn" data-act="expand" title="Expand"><i data-lucide="maximize-2"></i></button>
-          <button type="button" class="pill-btn" data-act="edit" title="Edit"><i data-lucide="pencil"></i></button>
+          ${!isMockup ? `<button type="button" class="pill-btn" data-act="edit" title="Edit"><i data-lucide="pencil"></i></button>` : ''}
           <button type="button" class="pill-btn" data-act="move" title="Move to folder"><i data-lucide="folder-input"></i></button>
           <button type="button" class="pill-btn" data-act="open" title="Open original"><i data-lucide="external-link"></i></button>
           <button type="button" class="pill-btn danger" data-act="delete" title="Delete"><i data-lucide="trash-2"></i></button>
@@ -7129,7 +7131,7 @@ function designCard(d) {
 function updateBatchSaveLabel() {
   const label = $("#batchSaveLabel");
   if (!label) return;
-  const n = selectedDesignIds.size;
+  const n = libraryActiveTab === "mockups" ? selectedMockupIds.size : selectedDesignIds.size;
   label.textContent = n > 0 ? `Save selected (${n})` : "Save all";
 }
 
@@ -7373,27 +7375,36 @@ function listingLibraryCard(l) {
     </div>`;
 }
 
+const renderDesigns = (...args) => renderLibrary(...args);
+
 async function renderLibrary() {
   const mount = viewMount("designs");
 
   if (libraryActiveTab === "mockups") {
     const query = new URLSearchParams({
-      feature: "mockups",
-      page: libraryState.page || 1,
+      ...(mockupsLibraryState.folder ? { folder: mockupsLibraryState.folder } : {}),
+      page: mockupsLibraryState.page || 1,
       pageSize: 1000,
     });
 
     let data = { rows: [], total: 0, page: 1 };
     try {
-      data = await api(`/api/designs?${query}`);
+      data = await api(`/api/mockups?${query}`);
     } catch (err) {
       console.error("Failed to load mockups:", err);
     }
 
-    libraryState.total = data.total || 0;
-    libraryState.page = data.page || 1;
-    designById.clear();
-    (data.rows || []).forEach((d) => designById.set(d.id, d));
+    mockupsLibraryState.total = data.total || 0;
+    mockupsLibraryState.page = data.page || 1;
+    mockupById.clear();
+    (data.rows || []).forEach((d) => mockupById.set(d.id, d));
+
+    let folderData = { folders: [] };
+    try {
+      folderData = await api("/api/mockups/folders");
+    } catch (_) {}
+    const mockupFolders = folderData.folders || [];
+    if (!mockupFolders.includes("Unsorted")) mockupFolders.unshift("Unsorted");
 
     const hasItems = (data.rows || []).length > 0;
 
@@ -7402,7 +7413,7 @@ async function renderLibrary() {
         <div class="library-toolbar">
           <div class="library-header-group">
             <header class="view-header" style="margin-bottom:0;">
-              <h1 class="page-title">My Library <span class="results-count" style="font-size:14px; margin-left:8px;">${libraryState.total}</span></h1>
+              <h1 class="page-title">My Library <span class="results-count" style="font-size:14px; margin-left:8px;">${mockupsLibraryState.total}</span></h1>
             </header>
 
             <div class="library-nav-tabs">
@@ -7413,33 +7424,38 @@ async function renderLibrary() {
                 <i data-lucide="list-checks"></i> My Listings
               </button>
               <button type="button" class="lib-nav-tab active" id="libTabMockups">
-                <i data-lucide="shirt"></i> Mockup Library
+                <i data-lucide="shirt"></i> My Mockups
               </button>
             </div>
           </div>
 
           <div class="lib-filters">
-            <button class="btn secondary btn-sm" id="libSelectBtn">
-              <i data-lucide="${isSelectMode ? 'x' : 'check-square'}"></i> ${isSelectMode ? 'Cancel' : 'Select'}
+            <select id="libMockupFolderFilter">
+              <option value="">All folders</option>
+              ${mockupFolders.map((f) => `<option value="${esc(f)}" ${mockupsLibraryState.folder === f ? 'selected' : ''}>${esc(f)}</option>`).join("")}
+            </select>
+
+            <button class="btn secondary btn-sm" id="libMockupSelectBtn">
+              <i data-lucide="${isMockupSelectMode ? 'x' : 'check-square'}"></i> ${isMockupSelectMode ? 'Cancel' : 'Select'}
             </button>
-            <button class="icon-btn" id="libRefreshBtn" title="Refresh library"><i data-lucide="refresh-cw"></i></button>
+            <button class="icon-btn" id="libMockupRefreshBtn" title="Refresh library"><i data-lucide="refresh-cw"></i></button>
           </div>
         </div>
 
-        <div class="batch-bar ${isSelectMode ? '' : 'hidden'}" id="batchBar">
-          <div class="batch-info"><span id="batchCount">${selectedDesignIds.size}</span> item(s) selected</div>
+        <div class="batch-bar ${isMockupSelectMode ? '' : 'hidden'}" id="batchBar">
+          <div class="batch-info"><span id="batchCount">${selectedMockupIds.size}</span> item(s) selected</div>
           <div class="batch-actions">
             <button class="btn secondary btn-sm" id="batchSelectAll">Select all</button>
             <button class="btn secondary btn-sm" id="batchSaveBtn"><i data-lucide="folder-down"></i> <span id="batchSaveLabel">Save all</span></button>
             <button class="btn secondary btn-sm" id="batchDeselectAll">Deselect all</button>
-            <button class="btn primary btn-sm danger" id="batchDeleteBtn" style="background:#EF4444;" ${selectedDesignIds.size === 0 ? 'disabled' : ''}>
+            <button class="btn primary btn-sm danger" id="batchDeleteBtn" style="background:#EF4444;" ${selectedMockupIds.size === 0 ? 'disabled' : ''}>
               <i data-lucide="trash-2"></i> Delete selected
             </button>
           </div>
         </div>
 
         ${hasItems ? `
-          <div class="results-grid library-grid ${isSelectMode ? 'selecting' : ''}" id="libraryGrid">
+          <div class="results-grid library-grid ${isMockupSelectMode ? 'selecting' : ''}" id="libraryGrid">
             ${(data.rows || []).map(designCard).join("")}
           </div>
         ` : `
@@ -7457,6 +7473,11 @@ async function renderLibrary() {
     renderIcons();
     updateBatchSaveLabel();
 
+    $("#libMockupFolderFilter")?.addEventListener("change", (e) => {
+      mockupsLibraryState.folder = e.target.value;
+      renderLibrary();
+    });
+
     $("#libTabDesigns")?.addEventListener("click", () => {
       libraryActiveTab = "designs";
       renderLibrary();
@@ -7470,21 +7491,21 @@ async function renderLibrary() {
       renderLibrary();
     });
     $("#emptyGoToMockupCreator")?.addEventListener("click", () => showView("mockups"));
-    $("#libRefreshBtn")?.addEventListener("click", () => renderLibrary());
+    $("#libMockupRefreshBtn")?.addEventListener("click", () => renderLibrary());
 
-    $("#libSelectBtn")?.addEventListener("click", () => {
-      isSelectMode = !isSelectMode;
-      if (!isSelectMode) selectedDesignIds.clear();
+    $("#libMockupSelectBtn")?.addEventListener("click", () => {
+      isMockupSelectMode = !isMockupSelectMode;
+      if (!isMockupSelectMode) selectedMockupIds.clear();
       renderLibrary();
     });
 
     $("#batchSelectAll")?.addEventListener("click", () => {
-      designById.forEach((_, id) => selectedDesignIds.add(id));
+      mockupById.forEach((_, id) => selectedMockupIds.add(id));
       renderLibrary();
     });
 
     $("#batchDeselectAll")?.addEventListener("click", () => {
-      selectedDesignIds.clear();
+      selectedMockupIds.clear();
       renderLibrary();
     });
 
@@ -7495,14 +7516,14 @@ async function renderLibrary() {
     });
 
     $("#batchDeleteBtn")?.addEventListener("click", async () => {
-      if (selectedDesignIds.size === 0) return;
-      if (!confirm(`Permanently delete ${selectedDesignIds.size} mockup(s)?`)) return;
+      if (selectedMockupIds.size === 0) return;
+      if (!confirm(`Permanently delete ${selectedMockupIds.size} mockup(s)?`)) return;
 
-      for (const id of selectedDesignIds) {
-        await api(`/api/designs/${id}`, { method: "DELETE" }).catch(() => {});
+      for (const id of selectedMockupIds) {
+        await api(`/api/mockups/${id}`, { method: "DELETE" }).catch(() => {});
       }
-      selectedDesignIds.clear();
-      isSelectMode = false;
+      selectedMockupIds.clear();
+      isMockupSelectMode = false;
       await renderLibrary();
     });
 
@@ -7510,20 +7531,20 @@ async function renderLibrary() {
       const card = e.target.closest(".design-card");
       if (!card) return;
       const id = card.dataset.id;
-      const design = designById.get(id);
+      const mockup = mockupById.get(id);
 
-      if (isSelectMode) {
-        if (selectedDesignIds.has(id)) {
-          selectedDesignIds.delete(id);
+      if (isMockupSelectMode) {
+        if (selectedMockupIds.has(id)) {
+          selectedMockupIds.delete(id);
           card.classList.remove("selected");
         } else {
-          selectedDesignIds.add(id);
+          selectedMockupIds.add(id);
           card.classList.add("selected");
         }
         const countEl = $("#batchCount");
-        if (countEl) countEl.textContent = selectedDesignIds.size;
+        if (countEl) countEl.textContent = selectedMockupIds.size;
         const delBtn = $("#batchDeleteBtn");
-        if (delBtn) delBtn.disabled = selectedDesignIds.size === 0;
+        if (delBtn) delBtn.disabled = selectedMockupIds.size === 0;
         updateBatchSaveLabel();
         return;
       }
@@ -7533,16 +7554,14 @@ async function renderLibrary() {
       const act = actBtn.dataset.act;
 
       if (act === "expand") {
-        openLightbox(design);
-      } else if (act === "edit") {
-        openEditModal(design);
+        openLightbox(mockup);
       } else if (act === "move") {
-        openMoveModal(design);
+        openMoveModal(mockup);
       } else if (act === "open") {
-        window.open(`/library/${design.output_image_path}`, "_blank");
+        window.open(`/library/${mockup.output_image_path}`, "_blank");
       } else if (act === "delete") {
         if (confirm("Delete this mockup?")) {
-          await api(`/api/designs/${id}`, { method: "DELETE" });
+          await api(`/api/mockups/${id}`, { method: "DELETE" });
           renderLibrary();
         }
       }
@@ -7589,7 +7608,7 @@ async function renderLibrary() {
                 <i data-lucide="list-checks"></i> My Listings
               </button>
               <button type="button" class="lib-nav-tab" id="libTabMockups">
-                <i data-lucide="shirt"></i> Mockup Library
+                <i data-lucide="shirt"></i> My Mockups
               </button>
             </div>
           </div>
@@ -7826,7 +7845,7 @@ async function renderLibrary() {
               <i data-lucide="list-checks"></i> My Listings
             </button>
             <button type="button" class="lib-nav-tab" id="libTabMockups">
-              <i data-lucide="shirt"></i> Mockup Library
+              <i data-lucide="shirt"></i> My Mockups
             </button>
           </div>
         </div>
@@ -7843,7 +7862,8 @@ async function renderLibrary() {
             <option value="niche-variations" ${libraryState.feature === 'niche-variations' ? 'selected' : ''}>Niche Variations</option>
             <option value="design-to-design" ${libraryState.feature === 'design-to-design' ? 'selected' : ''}>Design to Design</option>
             <option value="art-style-niche" ${libraryState.feature === 'art-style-niche' ? 'selected' : ''}>Art Style + Niche</option>
-            <option value="mockups" ${libraryState.feature === 'mockups' ? 'selected' : ''}>Mockup Creator</option>
+            <option value="pixel-to-pixel" ${libraryState.feature === 'pixel-to-pixel' ? 'selected' : ''}>Pixel to Pixel</option>
+            <option value="prepare-designs" ${libraryState.feature === 'prepare-designs' ? 'selected' : ''}>Prepare Designs</option>
           </select>
 
           <button class="btn secondary btn-sm" id="libSelectBtn">
@@ -8157,9 +8177,13 @@ async function openMoveModal(d) {
   renderIcons();
   m.classList.remove("hidden");
 
+  const isMockupItem = libraryActiveTab === "mockups" || d?.isMockup || d?.feature === "mockups";
+  const foldersEndpoint = isMockupItem ? "/api/mockups/folders" : "/api/designs/folders";
+  const patchEndpoint = isMockupItem ? `/api/mockups/${d.id}` : `/api/designs/${d.id}`;
+
   try {
-    const data = await api("/api/designs?limit=100");
-    const folders = [...new Set((data.rows || []).map((r) => r.folder).filter(Boolean))];
+    const data = await api(foldersEndpoint);
+    const folders = [...new Set((data.folders || (data.rows || []).map((r) => r.folder)).filter(Boolean))];
     if (!folders.includes("Unsorted")) folders.unshift("Unsorted");
 
     pickList.innerHTML = folders.map((f) => `
@@ -8172,12 +8196,12 @@ async function openMoveModal(d) {
     pickList.querySelectorAll(".pick-item").forEach((b) => {
       b.onclick = async () => {
         const target = b.dataset.folder === "Unsorted" ? "" : b.dataset.folder;
-        await api(`/api/designs/${d.id}`, {
+        await api(patchEndpoint, {
           method: "PATCH",
           body: JSON.stringify({ folder: target }),
         });
         m.classList.add("hidden");
-        await renderDesigns();
+        await renderLibrary();
       };
     });
   } catch {
@@ -8194,13 +8218,13 @@ async function openMoveModal(d) {
     submitNew.onclick = async () => {
       const name = newInput.value.trim();
       if (!name) return;
-      await api(`/api/designs/${d.id}`, {
+      await api(patchEndpoint, {
         method: "PATCH",
         body: JSON.stringify({ folder: name }),
       });
       newInput.value = "";
       m.classList.add("hidden");
-      await renderDesigns();
+      await renderLibrary();
     };
   }
 }

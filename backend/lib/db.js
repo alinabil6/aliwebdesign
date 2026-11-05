@@ -91,6 +91,29 @@ CREATE INDEX IF NOT EXISTS idx_listings_platform_created
 CREATE INDEX IF NOT EXISTS idx_listings_created_at
   ON listings (created_at DESC);
 
+CREATE TABLE IF NOT EXISTS mockups (
+  id TEXT PRIMARY KEY,
+  product_type TEXT,
+  garment_color TEXT,
+  scene_prompt TEXT,
+  source_image_path TEXT,          -- base artwork placed on chest
+  style_image_path TEXT,           -- garment / apparel reference photo
+  output_image_path TEXT NOT NULL,
+  prompt_used TEXT NOT NULL,
+  user_input TEXT,
+  folder TEXT DEFAULT 'Unsorted',
+  created_at TEXT DEFAULT (datetime('now')),
+  mode TEXT DEFAULT 'Mockup',
+  account_id TEXT,
+  account_email TEXT,
+  generation_time TEXT,
+  generation_time_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_mockups_folder_created
+  ON mockups (folder, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mockups_created_at
+  ON mockups (created_at DESC);
+
 DROP TABLE IF EXISTS gemini_accounts;
 DROP TABLE IF EXISTS gemini_connection;
 `);
@@ -107,6 +130,31 @@ ensureColumn("browser_accounts", "last_used_at", "TEXT");
 // Fleet control: 1 = participates in generation, 0 = disabled (never picked).
 ensureColumn("browser_accounts", "active", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("designs", "mode", "TEXT");
+// Migration: Move existing mockups out of designs table into mockups table
+try {
+  const existingMockups = db.prepare("SELECT * FROM designs WHERE feature = 'mockups'").all();
+  if (existingMockups && existingMockups.length > 0) {
+    const insertMockupStmt = db.prepare(`
+      INSERT OR IGNORE INTO mockups (
+        id, source_image_path, style_image_path, output_image_path,
+        prompt_used, user_input, folder, created_at, mode
+      ) VALUES (
+        @id, @source_image_path, @style_image_path, @output_image_path,
+        @prompt_used, @user_input, @folder, @created_at, @mode
+      )
+    `);
+    const runMigration = db.transaction((rows) => {
+      for (const row of rows) {
+        insertMockupStmt.run(row);
+      }
+      db.prepare("DELETE FROM designs WHERE feature = 'mockups'").run();
+    });
+    runMigration(existingMockups);
+    console.log(`[db] Migrated ${existingMockups.length} mockups from designs table to dedicated mockups table`);
+  }
+} catch (mErr) {
+  console.warn("[db] Mockup migration note:", mErr.message);
+}
 
 // ────────────────────────────────────────────────
 // Startup lock clear — hung statuses never persist.
@@ -399,6 +447,8 @@ const designStmts = {
     `SELECT * FROM designs
      WHERE (@folder IS NULL OR folder = @folder)
        AND (@feature IS NULL OR feature = @feature)
+       AND (feature != 'mockups')
+       AND (feature != 'mockups')
      ORDER BY created_at DESC, rowid DESC
      LIMIT @limit OFFSET @offset`
   ),
@@ -452,7 +502,10 @@ export function deleteDesignRow(id) {
 }
 
 export function countPathRefs(relPath) {
-  return designStmts.refCount.get(relPath, relPath, relPath)?.n ?? 0;
+  const d = designStmts.refCount.get(relPath, relPath, relPath)?.n ?? 0;
+  const m = mockupStmts.refCount.get(relPath, relPath, relPath)?.n ?? 0;
+  const l = listingStmts.refCount.get(relPath)?.n ?? 0;
+  return d + m + l;
 }
 /** Touch last_used_at timestamp immediately so LRU rotation ticks */
 export function touchAccount(id) {
@@ -462,6 +515,82 @@ export function touchAccount(id) {
   } catch (err) {
     console.error("[DB] Failed to touch account timestamp:", err.message);
   }
+}
+
+// ────────────────────────────────────────────────
+// Mockups (Dedicated Mockup Library)
+// ────────────────────────────────────────────────
+const mockupStmts = {
+  insert: db.prepare(
+    `INSERT INTO mockups
+       (id, product_type, garment_color, scene_prompt, source_image_path,
+        style_image_path, output_image_path, prompt_used, user_input, folder,
+        mode, account_id, account_email, generation_time, generation_time_ms)
+     VALUES
+       (@id, @product_type, @garment_color, @scene_prompt, @source_image_path,
+        @style_image_path, @output_image_path, @prompt_used, @user_input, @folder,
+        @mode, @account_id, @account_email, @generation_time, @generation_time_ms)`
+  ),
+  get: db.prepare(`SELECT * FROM mockups WHERE id = ?`),
+  list: db.prepare(
+    `SELECT * FROM mockups
+     WHERE (@folder IS NULL OR folder = @folder)
+     ORDER BY created_at DESC, rowid DESC
+     LIMIT @limit OFFSET @offset`
+  ),
+  count: db.prepare(
+    `SELECT COUNT(*) AS n FROM mockups
+     WHERE (@folder IS NULL OR folder = @folder)`
+  ),
+  folders: db.prepare(`SELECT DISTINCT folder FROM mockups ORDER BY folder`),
+  setFolder: db.prepare(`UPDATE mockups SET folder = ? WHERE id = ?`),
+  remove: db.prepare(`DELETE FROM mockups WHERE id = ?`),
+  refCount: db.prepare(
+    `SELECT COUNT(*) AS n FROM mockups WHERE source_image_path = ? OR style_image_path = ? OR output_image_path = ?`
+  ),
+};
+
+export function insertMockup(mockup) {
+  mockupStmts.insert.run({
+    folder: "Unsorted",
+    product_type: null,
+    garment_color: null,
+    scene_prompt: null,
+    source_image_path: null,
+    style_image_path: null,
+    prompt_used: "",
+    user_input: null,
+    mode: "Mockup",
+    account_id: null,
+    account_email: null,
+    generation_time: null,
+    generation_time_ms: null,
+    ...mockup,
+  });
+  return getMockupById(mockup.id);
+}
+
+export function getMockupById(id) {
+  return mockupStmts.get.get(id) ?? null;
+}
+
+export function getMockups({ folder = null, page = 1, pageSize = 60 } = {}) {
+  const offset = (page - 1) * pageSize;
+  const rows = mockupStmts.list.all({ folder, limit: pageSize, offset });
+  const { n } = mockupStmts.count.get({ folder });
+  return { rows, total: n, page, pageSize };
+}
+
+export function listMockupFolders() {
+  return mockupStmts.folders.all().map((r) => r.folder);
+}
+
+export function setMockupFolder(id, folder) {
+  mockupStmts.setFolder.run(folder, id);
+}
+
+export function deleteMockupRow(id) {
+  return mockupStmts.remove.run(id);
 }
 
 // ────────────────────────────────────────────────

@@ -164,8 +164,8 @@ async function runLiveTest() {
     console.log(`[test] Output counter reads: ${outCountText}`);
 
     // Verify DB
-    const { getDesigns } = await import("../backend/lib/db.js");
-    const mockups = getDesigns({ feature: "mockups", limit: 5 });
+    const { getMockups } = await import("../backend/lib/db.js");
+    const mockups = getMockups({ limit: 5 });
     console.log(`[test] Database records for 'mockups': ${mockups.rows.length}`);
     if (mockups.rows.length > 0) {
       console.log(`[test] Latest mockup DB row:`, {

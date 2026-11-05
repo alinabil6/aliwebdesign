@@ -17,6 +17,7 @@ import magicListingRouter from "./routes/magicListing.js";
 import listingsRouter from "./routes/listings.js";
 import cancelRouter from "./routes/cancel.js";
 import mockupCreatorRouter from "./routes/mockupCreator.js";
+import mockupsRouter from "./routes/mockups.js";
 import { closeAll } from "./lib/browser.js";
 import { reconcileAccountStates } from "./lib/db.js";
 import { PROJECT_ROOT, LIBRARY_DIR } from "./lib/paths.js";
@@ -89,6 +90,7 @@ app.use("/api/designs", designsRouter);
 app.use("/api/styles", stylesRouter);
 app.use("/api/magic-listing", magicListingRouter);
 app.use("/api/listings", listingsRouter);
+app.use("/api/mockups", mockupsRouter);
 
 // Central 404 for unknown API paths (the frontend SPA serves its own static
 // route; an unknown /api/* should never fall through to static).

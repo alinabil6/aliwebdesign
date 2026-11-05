@@ -4,7 +4,7 @@ import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import sharp from "sharp";
 import { upload, storeInLibrary, removeFileSafe } from "../lib/files.js";
-import { insertDesign } from "../lib/db.js";
+import { insertMockup } from "../lib/db.js";
 import { hasReadyAccount } from "../lib/accounts.js";
 import { runFleetBatch } from "../lib/queue.js";
 import { buildPrompt } from "../prompts/mockupCreator.js";
@@ -181,7 +181,7 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
             if (task.garmentColor) labelParts.push(task.garmentColor);
             if (task.scenePrompt) labelParts.push(task.scenePrompt.slice(0, 40));
 
-            const design = insertDesign({
+            const mockup = insertMockup({
               id: uuidv4(),
               feature: "mockups",
               source_image_path: task.sourceRel,
@@ -192,7 +192,7 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
             });
 
             const decorated = {
-              ...design,
+              ...mockup, feature: "mockups", isMockup: true,
               source_image_path: task.sourceRel,
               style_image_path: task.garmentRel,
               account_id: account?.id || null,
@@ -257,7 +257,7 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
             if (task.garmentColor) labelParts.push(task.garmentColor);
             if (task.scenePrompt) labelParts.push(task.scenePrompt.slice(0, 40));
 
-            const design = insertDesign({
+            const mockup = insertMockup({
               id: uuidv4(),
               feature: "mockups",
               source_image_path: task.sourceRel,
@@ -268,7 +268,7 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
             });
 
             const decorated = {
-              ...design,
+              ...mockup, feature: "mockups", isMockup: true,
               source_image_path: task.sourceRel,
               style_image_path: task.garmentRel,
               account_id: account?.id || null,
