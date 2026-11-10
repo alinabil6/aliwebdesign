@@ -9295,3 +9295,470 @@ body.light-mode #mockupGarmentReqBadge {
   background: rgba(56, 189, 248, 0.12) !important;
   color: #0284c7 !important;
 }
+
+
+/* ──────────────────────────────────────────────────────────── */
+/* ── Magic Listing: Social Media Channels & Multi-Platform UI  */
+/* ──────────────────────────────────────────────────────────── */
+
+.platform-badge.social {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+:root[data-theme="light"] .platform-badge.social {
+  background: rgba(168, 85, 247, 0.12);
+  color: #7e22ce;
+  border-color: rgba(168, 85, 247, 0.25);
+}
+
+.ml-social-platforms-row {
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.1rem 1.25rem;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+:root[data-theme="light"] .ml-social-platforms-row {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.social-platforms-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.social-platforms-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--color-ink, #f8fafc);
+  letter-spacing: -0.01em;
+}
+
+:root[data-theme="light"] .social-platforms-title {
+  color: #0f172a;
+}
+
+.social-platforms-sub {
+  font-size: 0.78rem;
+  color: var(--color-ink-60, #94a3b8);
+}
+
+:root[data-theme="light"] .social-platforms-sub {
+  color: #64748b;
+}
+
+.social-checkbox-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+
+.social-checkbox-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.social-checkbox-card input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.social-checkbox-card:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(56, 189, 248, 0.35);
+  transform: translateY(-1px);
+}
+
+:root[data-theme="light"] .social-checkbox-card {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+:root[data-theme="light"] .social-checkbox-card:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.social-checkbox-card.active {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4), 0 4px 12px rgba(37, 99, 235, 0.15);
+}
+
+:root[data-theme="light"] .social-checkbox-card.active {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+.social-check-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: transparent;
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: all 0.15s ease;
+}
+
+.social-check-indicator i {
+  width: 12px;
+  height: 12px;
+}
+
+.social-checkbox-card.active .social-check-indicator {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.social-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+
+.social-card-icon i {
+  width: 18px;
+  height: 18px;
+}
+
+:root[data-theme="light"] .social-card-icon {
+  background: #e2e8f0;
+  color: #0284c7;
+}
+
+.social-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.social-card-text strong {
+  font-size: 0.85rem;
+  color: var(--color-ink, #f8fafc);
+  font-weight: 600;
+}
+
+:root[data-theme="light"] .social-card-text strong {
+  color: #0f172a;
+}
+
+.social-card-text small {
+  font-size: 0.72rem;
+  color: var(--color-ink-60, #94a3b8);
+  line-height: 1.3;
+}
+
+:root[data-theme="light"] .social-card-text small {
+  color: #64748b;
+}
+
+/* ── Social Media Result Cards ── */
+.ml-social-card .social-summary-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+:root[data-theme="light"] .ml-social-card .social-summary-bar {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.social-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #38bdf8;
+}
+
+.social-summary-badge i {
+  width: 12px;
+  height: 12px;
+}
+
+:root[data-theme="light"] .social-summary-badge {
+  color: #0284c7;
+}
+
+.social-summary-text {
+  font-size: 0.82rem;
+  color: var(--color-ink, #f8fafc);
+  margin: 0;
+  line-height: 1.4;
+}
+
+:root[data-theme="light"] .social-summary-text {
+  color: #1e293b;
+}
+
+.social-persona-sub {
+  font-size: 0.75rem;
+  color: var(--color-ink-60, #94a3b8);
+  margin: 0;
+}
+
+:root[data-theme="light"] .social-persona-sub {
+  color: #64748b;
+}
+
+/* ── Social Card Platform Switcher Tabs ── */
+.social-tabs-nav {
+  display: flex;
+  gap: 0.35rem;
+  padding: 3px;
+  margin-bottom: 0.85rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+:root[data-theme="light"] .social-tabs-nav {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.social-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.social-tab-btn i {
+  width: 13px;
+  height: 13px;
+}
+
+.social-tab-btn:hover {
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme="light"] .social-tab-btn {
+  color: #64748b;
+}
+
+:root[data-theme="light"] .social-tab-btn:hover {
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+.social-tab-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .social-tab-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.social-tabs-content {
+  position: relative;
+}
+
+.social-tab-pane {
+  display: none;
+  flex-direction: column;
+  gap: 0.7rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.social-tab-pane.active {
+  display: flex;
+}
+
+.social-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+:root[data-theme="light"] .social-field-group {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.social-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.social-field-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-ink-60, #94a3b8);
+}
+
+:root[data-theme="light"] .social-field-label {
+  color: #64748b;
+}
+
+.social-field-val {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--color-ink, #f8fafc);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.social-field-val a {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+:root[data-theme="light"] .social-field-val {
+  color: #0f172a;
+}
+
+/* ── Enhanced Social Card Icons & Logos ── */
+.social-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.social-card-icon.instagram {
+  color: #e1306c;
+  background: rgba(225, 48, 108, 0.12);
+  border: 1px solid rgba(225, 48, 108, 0.25);
+}
+.social-card-icon.facebook {
+  color: #1877f2;
+  background: rgba(24, 119, 242, 0.12);
+  border: 1px solid rgba(24, 119, 242, 0.25);
+}
+.social-card-icon.pinterest {
+  color: #e60023;
+  background: rgba(230, 0, 35, 0.12);
+  border: 1px solid rgba(230, 0, 35, 0.25);
+}
+.social-card-icon.tiktok {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+:root[data-theme="light"] .social-card-icon.instagram {
+  color: #d81b60;
+  background: rgba(216, 27, 96, 0.08);
+  border-color: rgba(216, 27, 96, 0.2);
+}
+:root[data-theme="light"] .social-card-icon.facebook {
+  color: #1877f2;
+  background: rgba(24, 119, 242, 0.08);
+  border-color: rgba(24, 119, 242, 0.2);
+}
+:root[data-theme="light"] .social-card-icon.pinterest {
+  color: #c2185b;
+  background: rgba(194, 24, 91, 0.08);
+  border-color: rgba(194, 24, 91, 0.2);
+}
+:root[data-theme="light"] .social-card-icon.tiktok {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.2);
+}
+
+/* Deselected / Inactive Checkbox Card */
+.social-checkbox-card:not(.active) {
+  opacity: 0.52;
+  background: rgba(15, 23, 42, 0.4);
+  border-color: rgba(255, 255, 255, 0.05);
+  box-shadow: none !important;
+}
+
+:root[data-theme="light"] .social-checkbox-card:not(.active) {
+  opacity: 0.58;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.social-checkbox-card:not(.active) .social-check-indicator {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: transparent;
+}
+
+:root[data-theme="light"] .social-checkbox-card:not(.active) .social-check-indicator {
+  border-color: #94a3b8;
+}
+
+.social-svg-icon {
+  display: block;
+}

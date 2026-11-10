@@ -61,6 +61,7 @@ router.post("/", (req, res) => {
     }
 
     const plat = String(platform || "amazon").toLowerCase();
+    const isSocial = plat === "social";
     const l = listing || {};
 
     const saved = insertListing({
@@ -68,15 +69,23 @@ router.post("/", (req, res) => {
       file_name: fileName || "Untitled Listing",
       platform: plat,
       thumbnail_path: thumbRel,
-      title: l.title || null,
-      brand: l.brand || l.brand_name || l.brandName || null,
-      category: l.category || null,
-      bullet1: l.bullet1 || l.bullet_1 || null,
-      bullet2: l.bullet2 || l.bullet_2 || null,
-      description: l.description || l.desc || null,
-      main_tag: l.mainTag || l.main_tag || null,
-      tags: l.tags || l.supportingTags || l.supporting_tags || [],
-      attributes: l.attributes || {},
+      title: isSocial
+        ? (l.pinterest?.pin_title || l.facebook?.post_title || l.instagram?.hook || l.summary || "Social Media Listing")
+        : (l.title || null),
+      brand: isSocial ? (l.target_audience || "POD Social Brand") : (l.brand || l.brand_name || l.brandName || null),
+      category: isSocial ? "Social Media > Multi-Platform" : (l.category || null),
+      bullet1: isSocial ? (l.instagram?.hook || null) : (l.bullet1 || l.bullet_1 || null),
+      bullet2: isSocial ? (l.facebook?.post_title || null) : (l.bullet2 || l.bullet_2 || null),
+      description: isSocial ? (l.summary || l.instagram?.caption || l.pinterest?.pin_description || null) : (l.description || l.desc || null),
+      main_tag: isSocial ? (l.pinterest?.recommended_board || "Social Media") : (l.mainTag || l.main_tag || null),
+      tags: isSocial
+        ? [
+            ...(Array.isArray(l.instagram?.hashtags) ? l.instagram.hashtags : []),
+            ...(Array.isArray(l.pinterest?.search_keywords) ? l.pinterest.search_keywords : []),
+            ...(Array.isArray(l.tiktok?.hashtags) ? l.tiktok.hashtags : [])
+          ].slice(0, 25)
+        : (l.tags || l.supportingTags || l.supporting_tags || []),
+      attributes: isSocial ? (l.attributes || { platforms: l._selectedPlatforms || ["instagram", "facebook", "pinterest", "tiktok"], target_audience: l.target_audience || "" }) : (l.attributes || {}),
       trademark_safe: l.trademark_safe !== false ? 1 : 0,
       raw_listing: l,
     });

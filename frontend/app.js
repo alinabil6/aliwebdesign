@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.26";
+const APP_VERSION = "1.0.27";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -4145,7 +4145,10 @@ function renderVariations() {
     }
     generateBtn.disabled = false;
 
-    const progressLabel = progressLine.querySelector("span");
+    stopAccountPoll();
+    const progressLabel = $("#mlProgressText") || progressLine?.querySelector("span");
+    const accountText = $("#mlAccountText");
+    if (accountText) accountText.textContent = "Fleet idle";
     if (progressLabel) {
       progressLabel.textContent = "Generation stopped";
     }
@@ -4159,6 +4162,33 @@ function renderVariations() {
         }
       });
   });
+}
+
+function getPlatformIconSvg(platform, size = 18) {
+  const p = String(platform || "").toLowerCase();
+  if (p === "instagram" || p === "ig") {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="social-svg-icon instagram">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+    </svg>`;
+  }
+  if (p === "facebook" || p === "fb") {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="social-svg-icon facebook">
+      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+    </svg>`;
+  }
+  if (p === "pinterest" || p === "pin") {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor" class="social-svg-icon pinterest">
+      <path d="M12 0C5.373 0 0 5.372 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 0 1 .083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.631-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12 0-6.628-5.373-12-12-12z"/>
+    </svg>`;
+  }
+  if (p === "tiktok" || p === "tik") {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor" class="social-svg-icon tiktok">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.298-.002.595.042.88.13V9.4a6.33 6.33 0 0 0-1-.08A6.34 6.34 0 0 0 3 15.66a6.34 6.34 0 0 0 10.82 4.49 6.27 6.27 0 0 0 1.88-4.49V8.6a8.28 8.28 0 0 0 4.89 1.58V6.73a4.85 4.85 0 0 1-1-.04z"/>
+    </svg>`;
+  }
+  return `<i data-lucide="share-2" style="width:${size}px;height:${size}px;"></i>`;
 }
 
 /* ── Magic Listing View ──────────────────────────────────── */
@@ -4178,6 +4208,7 @@ function renderMagicListing() {
     amazon: "Vision-powered Amazon Merch on Demand listings — Brand, Title, Bullets, and Description.",
     teepublic: "Vision-powered TeePublic listings — Title, Description, Main Tag, and Supporting Tags.",
     etsy: "Vision-powered Etsy listings — Title (140 chars), Category, Attributes, 13 Tags, and Description.",
+    social: "Vision-powered Social Media listings & SEO — Instagram, Facebook, Pinterest & TikTok.",
   };
 
   viewMount("magicListing").innerHTML = `
@@ -4191,6 +4222,7 @@ function renderMagicListing() {
           <button type="button" class="platform-toggle-btn active" data-platform="amazon">Amazon Merch</button>
           <button type="button" class="platform-toggle-btn" data-platform="teepublic">TeePublic</button>
           <button type="button" class="platform-toggle-btn" data-platform="etsy">Etsy</button>
+          <button type="button" class="platform-toggle-btn" data-platform="social"><i data-lucide="share-2" style="width:13px;height:13px;vertical-align:-1px;margin-right:4px;"></i>Social Media</button>
         </div>
       </header>
 
@@ -4251,11 +4283,70 @@ function renderMagicListing() {
             <button class="btn secondary" id="mlStop" disabled><i data-lucide="square"></i> Stop</button>
           </div>
 
-          <div class="progress-area hidden" id="mlProgressArea">
-            <p class="progress-line" id="mlProgress"><i data-lucide="refresh-cw"></i> <span>Generating listings…</span></p>
-            <div class="progress-bar"><span class="progress-fill" id="mlProgressFill" style="width:0%"></span></div>
+          <!-- Integrated Stable Status Card -->
+          <div class="mockup-status-card" id="mlStatusCard" style="display:none; margin-top:12px;">
+            <div class="progress-bar"><div class="progress-fill" id="mlProgressFill" style="width:0%;"></div></div>
+            <div class="mockup-status-row">
+              <span class="mockup-status-label" id="mlProgressText">Crafting listings & keywords… (0%) • ⏱ 00:00</span>
+            </div>
+            <div class="mockup-fleet-row">
+              <span class="mockup-fleet-indicator"></span>
+              <span class="mockup-fleet-text" id="mlAccountText">Fleet active: Connecting accounts…</span>
+            </div>
           </div>
         </section>
+      </div>
+
+      <div class="ml-social-platforms-row hidden" id="mlSocialPlatformsRow">
+        <div class="social-platforms-header">
+          <span class="social-platforms-title"><i data-lucide="sliders"></i> Target Channels:</span>
+          <span class="social-platforms-sub">Click to select or deselect channels — output & spreadsheets update dynamically</span>
+        </div>
+        <div class="social-checkbox-group" id="mlSocialCheckboxGroup">
+          <div class="social-checkbox-card active" data-platform-id="instagram" role="button" tabindex="0">
+            <input type="checkbox" id="chkSocialIg" value="instagram" checked hidden />
+            <span class="social-check-indicator"><i data-lucide="check"></i></span>
+            <span class="social-card-icon instagram">${getPlatformIconSvg("instagram", 18)}</span>
+            <div class="social-card-text">
+              <strong>Instagram</strong>
+              <small>Title, selling bullet points, tags</small>
+            </div>
+          </div>
+          <div class="social-checkbox-card active" data-platform-id="facebook" role="button" tabindex="0">
+            <input type="checkbox" id="chkSocialFb" value="facebook" checked hidden />
+            <span class="social-check-indicator"><i data-lucide="check"></i></span>
+            <span class="social-card-icon facebook">${getPlatformIconSvg("facebook", 18)}</span>
+            <div class="social-card-text">
+              <strong>Facebook</strong>
+              <small>Post title, bullet features, tags</small>
+            </div>
+          </div>
+          <div class="social-checkbox-card active" data-platform-id="pinterest" role="button" tabindex="0">
+            <input type="checkbox" id="chkSocialPin" value="pinterest" checked hidden />
+            <span class="social-check-indicator"><i data-lucide="check"></i></span>
+            <span class="social-card-icon pinterest">${getPlatformIconSvg("pinterest", 18)}</span>
+            <div class="social-card-text">
+              <strong>Pinterest</strong>
+              <small>Pin title (100 ch), bullet desc, tags</small>
+            </div>
+          </div>
+          <div class="social-checkbox-card active" data-platform-id="tiktok" role="button" tabindex="0">
+            <input type="checkbox" id="chkSocialTik" value="tiktok" checked hidden />
+            <span class="social-check-indicator"><i data-lucide="check"></i></span>
+            <span class="social-card-icon tiktok">${getPlatformIconSvg("tiktok", 18)}</span>
+            <div class="social-card-text">
+              <strong>TikTok</strong>
+              <small>Video title, hook, audio vibe, FYP caption</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="social-store-url-row" style="margin-top:0.75rem;padding:0.6rem 0.85rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+          <label for="mlCustomStoreUrl" style="font-size:0.75rem;font-weight:600;color:#94a3b8;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">
+            <i data-lucide="link" style="width:13px;height:13px;color:#38bdf8;"></i> Store / Bio Destination Link (Optional):
+          </label>
+          <input type="url" id="mlCustomStoreUrl" placeholder="https://yourbrandstore.com (custom destination link for Pinterest pins & bio CTAs)" style="flex:1;min-width:260px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.4rem 0.65rem;color:#f8fafc;font-size:0.78rem;" />
+        </div>
       </div>
 
       <section class="ml-results-section hidden" id="mlResultsSection">
@@ -4264,9 +4355,17 @@ function renderMagicListing() {
             <span>Saved to your library. <a class="text-link" id="mlOpenLibrary" href="#">Open library</a></span>
             <span class="results-count" id="mlOutCount" style="margin-left:0.75rem;">0 listings</span>
           </div>
-          <button type="button" id="btn-download-listings-csv" class="btn btn-secondary btn-sm hidden">
-            <i data-lucide="download"></i> Download CSV
-          </button>
+          <div class="results-export-actions" style="display:flex;gap:0.5rem;align-items:center;">
+            <button type="button" id="btn-download-social-sheets" class="btn btn-primary btn-sm hidden" title="Download spreadsheet with dedicated sub-sheets for Instagram, Facebook, Pinterest & TikTok (opens in Google Sheets & Excel)">
+              <i data-lucide="file-spreadsheet"></i> Download Multi-Sheet Spreadsheet (Google Sheets)
+            </button>
+            <button type="button" id="btn-download-social-csv" class="btn btn-secondary btn-sm hidden" title="Download standard CSV file">
+              <i data-lucide="download"></i> Download CSV (.csv)
+            </button>
+            <button type="button" id="btn-download-listings-csv" class="btn btn-secondary btn-sm hidden">
+              <i data-lucide="download"></i> Download CSV
+            </button>
+          </div>
         </div>
         <div class="ml-results-grid" id="mlResults"></div>
       </section>
@@ -4296,6 +4395,15 @@ function renderMagicListing() {
   // rides along in the generate payload so the backend picks the right prompt.
   const platformToggle = $("#mlPlatformToggle");
   const subtitle = $("#mlSubtitle");
+
+  const savedStoreUrl = localStorage.getItem("magicListing_customStoreUrl") || "";
+  const storeUrlInput = $("#mlCustomStoreUrl");
+  if (storeUrlInput) {
+    storeUrlInput.value = savedStoreUrl;
+    storeUrlInput.addEventListener("input", (e) => {
+      localStorage.setItem("magicListing_customStoreUrl", e.target.value.trim());
+    });
+  }
   platformToggle?.addEventListener("click", (e) => {
     const btn = e.target.closest(".platform-toggle-btn");
     if (!btn || btn.dataset.platform === currentPlatform) return;
@@ -4304,7 +4412,81 @@ function renderMagicListing() {
       b.classList.toggle("active", b === btn)
     );
     if (subtitle) subtitle.textContent = PLATFORM_SUBTITLES[currentPlatform] || "";
+
+    const socialRow = $("#mlSocialPlatformsRow");
+    if (socialRow) {
+      socialRow.classList.toggle("hidden", currentPlatform !== "social");
+    }
+    const socialSheetsBtn = $("#btn-download-social-sheets");
+    const socialCsvBtn = $("#btn-download-social-csv");
+    const regularCsvBtn = $("#btn-download-listings-csv");
+    if (currentPlatform === "social") {
+      socialSheetsBtn?.classList.toggle("hidden", allListings.length === 0);
+      socialCsvBtn?.classList.toggle("hidden", allListings.length === 0);
+      regularCsvBtn?.classList.add("hidden");
+    } else {
+      socialSheetsBtn?.classList.add("hidden");
+      socialCsvBtn?.classList.add("hidden");
+      regularCsvBtn?.classList.toggle("hidden", allListings.length === 0);
+    }
+    renderIcons();
   });
+
+  // Social target platform cards toggle with selection/deselection and 1-channel minimum guarantee
+  const socialGroup = $("#mlSocialCheckboxGroup");
+  socialGroup?.addEventListener("click", (e) => {
+    const card = e.target.closest(".social-checkbox-card");
+    if (!card) return;
+    const chk = card.querySelector("input[type=checkbox]");
+    if (!chk) return;
+
+    const checkedBoxes = Array.from(socialGroup.querySelectorAll("input[type=checkbox]:checked"));
+    if (chk.checked && checkedBoxes.length <= 1) {
+      alert("At least one social channel must remain selected.");
+      return;
+    }
+
+    chk.checked = !chk.checked;
+    card.classList.toggle("active", chk.checked);
+  });
+
+  // Fleet account polling for live tracker
+  let accountPoll = null;
+  async function refreshAccountLine() {
+    try {
+      const data = await api("/api/accounts");
+      const busy = (data.accounts || []).filter((a) => a.status === "generating" || a.status === "running");
+      const accountText = $("#mlAccountText");
+      if (accountText) {
+        if (busy.length > 0) {
+          const names = busy.map((a) => (a.email || "").trim() || "Google account");
+          accountText.textContent = names.length === 1
+            ? `Fleet active: Generating on ${names[0]}`
+            : `Fleet active: Generating on ${names[0]} +${names.length - 1} more`;
+        } else {
+          accountText.textContent = "Fleet active: Finalizing output…";
+        }
+      }
+      refreshTopBar();
+    } catch {
+      // Keep steady
+    }
+  }
+
+  function startAccountPoll() {
+    refreshAccountLine();
+    if (!accountPoll) {
+      accountPoll = setInterval(refreshAccountLine, 2000);
+    }
+  }
+
+  function stopAccountPoll() {
+    if (accountPoll) {
+      clearInterval(accountPoll);
+      accountPoll = null;
+    }
+    refreshTopBar();
+  }
 
   // ── Reference data: drag-and-drop + file upload + undo ──────
   // Accepts .txt / .csv / .json / .tsv (and any text-ish file). The file is
@@ -4516,10 +4698,33 @@ function renderMagicListing() {
   });
 
   const downloadCsvBtn = $("#btn-download-listings-csv");
-  downloadCsvBtn?.addEventListener("click", () => exportListingsToCSV(allListings));
+  downloadCsvBtn?.addEventListener("click", () => {
+    if (currentPlatform === "social") {
+      exportSocialToCSV(allListings);
+    } else {
+      exportListingsToCSV(allListings);
+    }
+  });
 
-  // Copy buttons inside listing cards — reuse the studio's clipboard helper.
+  const downloadSocialSheetsBtn = $("#btn-download-social-sheets");
+  downloadSocialSheetsBtn?.addEventListener("click", () => exportSocialToXLSX(allListings));
+
+  const downloadSocialCsvBtn = $("#btn-download-social-csv");
+  downloadSocialCsvBtn?.addEventListener("click", () => exportSocialToCSV(allListings));
+
+  // Tab switching and copy buttons inside listing cards
   $("#mlResults").addEventListener("click", (e) => {
+    const tabBtn = e.target.closest(".social-tab-btn");
+    if (tabBtn) {
+      const card = tabBtn.closest(".ml-card");
+      if (card) {
+        const targetTab = tabBtn.dataset.tab;
+        card.querySelectorAll(".social-tab-btn").forEach((b) => b.classList.toggle("active", b === tabBtn));
+        card.querySelectorAll(".social-tab-pane").forEach((p) => p.classList.toggle("active", p.dataset.pane === targetTab));
+      }
+      return;
+    }
+
     const btn = e.target.closest(".ml-copy");
     if (!btn) return;
     copyWithFeedback(btn, btn.dataset.copy, btn.title.replace("Copy ", ""));
@@ -4528,14 +4733,42 @@ function renderMagicListing() {
   generateBtn.addEventListener("click", async () => {
     if (listingFiles.length === 0) return alert("Upload at least one design to generate listings for.");
 
+    let selectedPlatforms = ["instagram", "facebook", "pinterest", "tiktok"];
+    if (currentPlatform === "social") {
+      const chks = [
+        document.getElementById("chkSocialIg"),
+        document.getElementById("chkSocialFb"),
+        document.getElementById("chkSocialPin"),
+        document.getElementById("chkSocialTik"),
+      ].filter((chk) => chk?.checked).map((chk) => chk.value);
+
+      if (chks.length === 0) {
+        alert("Please select at least one social media channel (Instagram, Facebook, Pinterest, or TikTok).");
+        return;
+      }
+      selectedPlatforms = chks;
+    }
+
     abortController = new AbortController();
     generateBtn.disabled = true;
     stopBtn.disabled = false;
     downloadCsvBtn?.classList.add("hidden");
-    progressArea.classList.remove("hidden");
-    const labelEl = progressLine.querySelector("span");
-    labelEl.textContent = "Preparing designs…";
-    labelEl.style.color = "";
+    $("#btn-download-social-xlsx")?.classList.add("hidden");
+
+    const statusCard = $("#mlStatusCard");
+    const progressFill = $("#mlProgressFill");
+    const progressText = $("#mlProgressText");
+    const accountText = $("#mlAccountText");
+    const labelEl = progressText || progressLine?.querySelector("span") || { textContent: "", style: {} };
+
+    if (statusCard) statusCard.style.display = "flex";
+    if (progressFill) progressFill.style.width = "0%";
+    if (progressText) {
+      progressText.textContent = "Preparing designs… (0%) • ⏱ 00:00";
+      progressText.style.color = "";
+    }
+    if (accountText) accountText.textContent = "Fleet active: Connecting accounts…";
+
     $("#mlResultsSection").classList.remove("hidden");
     $("#mlResults").innerHTML = "";
     $("#mlOutCount").textContent = "0 listings";
@@ -4573,11 +4806,12 @@ function renderMagicListing() {
 
       tracker = new GenerationProgressTracker({
         barEl: $("#mlProgressFill"),
-        labelEl,
+        labelEl: $("#mlProgressText"),
         totalItems: designs.length,
+        isTextMode: true,
       });
-      // Start tracker for each design
       designs.forEach((_, idx) => tracker.startItem(idx));
+      startAccountPoll();
 
       // Stream each finished listing back as it completes on the fleet
       await fetchStreamNDJSON(
@@ -4589,6 +4823,8 @@ function renderMagicListing() {
             designs,
             referenceData,
             platform: currentPlatform,
+            selectedPlatforms,
+            customStoreUrl: $("#mlCustomStoreUrl")?.value?.trim() || localStorage.getItem("magicListing_customStoreUrl") || "",
           }),
           signal: abortController.signal,
         },
@@ -4629,7 +4865,15 @@ function renderMagicListing() {
             }
             renderIcons();
             $("#mlOutCount").textContent = `${allListings.length} listing${allListings.length === 1 ? "" : "s"}`;
-            if (downloadCsvBtn) downloadCsvBtn.classList.remove("hidden");
+            if (currentPlatform === "social") {
+              $("#btn-download-social-sheets")?.classList.remove("hidden");
+              $("#btn-download-social-csv")?.classList.remove("hidden");
+              if (downloadCsvBtn) downloadCsvBtn.classList.add("hidden");
+            } else {
+              $("#btn-download-social-sheets")?.classList.add("hidden");
+              $("#btn-download-social-csv")?.classList.add("hidden");
+              if (downloadCsvBtn) downloadCsvBtn.classList.remove("hidden");
+            }
           } else if (payload.event === "listing_retrying") {
             const slotIdx = (payload.designIndex ?? 1) - 1;
             const slotId = `ml-slot-${slotIdx}`;
@@ -4666,6 +4910,9 @@ function renderMagicListing() {
         labelEl.style.color = "#f59e0b";
       }
     } finally {
+      stopAccountPoll();
+      const accountText = $("#mlAccountText");
+      if (accountText) accountText.textContent = "Fleet ready: All operations complete";
       generateBtn.disabled = false;
       stopBtn.disabled = true;
       abortController = null;
@@ -4711,88 +4958,83 @@ function renderMagicListing() {
   });
 }
 
-/** Export structured listing data to an RFC-4180 compliant CSV file. */
-function exportListingsToCSV(listingsData) {
-  if (!listingsData || !listingsData.length) return;
+
+/** Export Social Media multi-sheet spreadsheet (.xlsx) via backend XLSX generation */
+async function exportSocialToXLSX(listingsData) {
+  if (!listingsData || !listingsData.length) return alert("No social listings to export.");
+  try {
+    const res = await fetch("/api/magic-listing/export-social", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: listingsData, format: "xlsx" }),
+    });
+    if (!res.ok) throw new Error("Failed to export spreadsheet");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `magic_fabrica_social_listings_${dateStr}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Export XLSX error:", err);
+    alert("Export failed: " + err.message);
+  }
+}
+
+/** Export Social Media CSV file */
+function exportSocialToCSV(listingsData) {
+  if (!listingsData || !listingsData.length) return alert("No social listings to export.");
 
   const escapeCSV = (val) => {
     if (val === null || val === undefined) return '""';
-    const str = String(val);
+    const str = String(val).replace(/\r\n/g, " ").replace(/[\r\n]/g, " ");
     return `"${str.replace(/"/g, '""')}"`;
   };
 
   const headers = [
-    "Design ID",
-    "File Name",
-    "Platform",
-    "Title",
-    "Brand / Store",
-    "Category",
-    "Bullet 1",
-    "Bullet 2",
-    "Tags / Keywords",
-    "Attributes",
-    "Description",
-    "Generated At",
+    "File_Name",
+    "POD_Title",
+    "IG_Caption",
+    "FB_Caption",
+    "Hashtags",
+    "Call_To_Action",
+    "Status",
+    "Video_ID",
+    "Cloudinary_URL",
+    "IG_Media_ID",
+    "FB_Post_ID",
+    "Published_At",
   ];
 
-  const rows = listingsData.map((item) => {
-    const d = item.listing || {};
-    const platform = (item.platform || "amazon").toLowerCase();
-    const id = item.designIndex ?? "";
-    const fileName = item.fileName || `Design #${id}`;
-    const generatedAt = new Date().toISOString();
+  const rows = [];
+  listingsData.forEach((it) => {
+    const l = it.listing || {};
+    const fileName = l.file_name || (it.fileName ? it.fileName.replace(/\.[^/.]+$/, "").replace(/[^a-z0-9]+/gi, "_").toLowerCase() + ".mp4" : "graphic_tee.mp4");
+    const podTitle = l.pod_title || l.title || "Don't Piss Off Old People";
+    const igCap = l.ig_caption || l.instagram?.caption || "";
+    const fbCap = l.fb_caption || l.facebook?.caption || "";
+    const tags = typeof l.hashtags === "string" ? l.hashtags : (Array.isArray(l.hashtags) ? l.hashtags.join(" ") : "");
+    const cta = l.call_to_action || "👉 Shop the collection — Link in Bio! (@funpunquotes)";
+    const status = "READY";
 
-    let title = d.title || "";
-    let brand = "";
-    let category = "";
-    let bullet1 = "";
-    let bullet2 = "";
-    let tagsKeywords = "";
-    let attributesStr = "";
-    let description = d.description || d.desc || "";
-
-    if (platform === "amazon") {
-      brand = d.brand || d.brand_name || d.brandName || "";
-      bullet1 = d.bullet1 || d.bullet_1 || "";
-      bullet2 = d.bullet2 || d.bullet_2 || "";
-    } else if (platform === "teepublic") {
-      const mainTag = d.mainTag || d.main_tag || "";
-      const supporting = Array.isArray(d.supportingTags)
-        ? d.supportingTags
-        : Array.isArray(d.supporting_tags)
-          ? d.supporting_tags
-          : [];
-      tagsKeywords = [mainTag, ...supporting].filter(Boolean).join(", ");
-    } else if (platform === "etsy") {
-      category = d.category || "Clothing > Unisex Adult Clothing > Tops & Tees > T-shirts";
-      const tags = Array.isArray(d.tags)
-        ? d.tags
-        : Array.isArray(d.supporting_tags)
-          ? d.supporting_tags
-          : [];
-      tagsKeywords = tags.join(", ");
-      if (d.attributes && typeof d.attributes === "object") {
-        attributesStr = Object.entries(d.attributes)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(" | ");
-      }
-    }
-
-    return [
-      escapeCSV(id),
+    rows.push([
       escapeCSV(fileName),
-      escapeCSV(platform),
-      escapeCSV(title),
-      escapeCSV(brand),
-      escapeCSV(category),
-      escapeCSV(bullet1),
-      escapeCSV(bullet2),
-      escapeCSV(tagsKeywords),
-      escapeCSV(attributesStr),
-      escapeCSV(description),
-      escapeCSV(generatedAt),
-    ].join(",");
+      escapeCSV(podTitle),
+      escapeCSV(igCap),
+      escapeCSV(fbCap),
+      escapeCSV(tags),
+      escapeCSV(cta),
+      escapeCSV(status),
+      '""', // Video_ID
+      '""', // Cloudinary_URL
+      '""', // IG_Media_ID
+      '""', // FB_Post_ID
+      '""', // Published_At
+    ].join(","));
   });
 
   const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
@@ -4801,20 +5043,16 @@ function exportListingsToCSV(listingsData) {
   const a = document.createElement("a");
   const dateStr = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `magic_listings_export_${dateStr}.csv`;
+  a.download = `magic_social_listings_${dateStr}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
-/** Render one Magic Listing result card with copy-to-clipboard affordances.
- *  `item` = { designIndex, fileName, thumbnailUrl, platform, listing }.
- *  Amazon renders Brand/Title/Bullets/Description; TeePublic renders
- *  Title/Description/Main Tag/Supporting Tags with a "Copy All Tags" button;
- *  Etsy renders Title (140 chars), Category, Attributes, 13 Tags, and Description. */
 function magicListingCard(item) {
   const data = item.listing || {};
+  const isSocial = item.platform === "social";
   const isTeePublic = item.platform === "teepublic";
   const isEtsy = item.platform === "etsy";
 
@@ -4827,6 +5065,354 @@ function magicListingCard(item) {
     <button type="button" class="btn secondary btn-sm ml-copy" data-copy="${esc(text)}" title="Copy ${label}">
       <i data-lucide="copy"></i> ${label}
     </button>`;
+
+  // ── Social Media Card (Instagram, Facebook, Pinterest, TikTok) ─────────
+  if (isSocial) {
+    const ig = data.instagram || null;
+    const fb = data.facebook || null;
+    const pin = data.pinterest || null;
+    const tik = data.tiktok || null;
+
+    const availableTabs = [
+      ig ? { id: "ig", label: "Instagram", svg: getPlatformIconSvg("instagram", 14) } : null,
+      fb ? { id: "fb", label: "Facebook", svg: getPlatformIconSvg("facebook", 14) } : null,
+      pin ? { id: "pin", label: "Pinterest", svg: getPlatformIconSvg("pinterest", 14) } : null,
+      tik ? { id: "tik", label: "TikTok", svg: getPlatformIconSvg("tiktok", 14) } : null,
+    ].filter(Boolean);
+
+    const defaultTabId = availableTabs[0]?.id || "ig";
+    const summary = data.summary || "Witty Sarcastic POD Reel Copy";
+    const targetAudience = data.target_audience || "Fans of witty graphic tees & sarcastic humor";
+
+    const podTitle = data.pod_title || data.title || "Don't Piss Off Old People";
+    const fileNameMp4 = data.file_name || (item.fileName ? item.fileName.replace(/\.[^/.]+$/, "").replace(/[^a-z0-9]+/gi, "_").toLowerCase() + ".mp4" : "graphic_tee.mp4");
+    const ctaText = data.call_to_action || "👉 Shop the collection — Link in Bio! (@funpunquotes)";
+    const igCap = data.ig_caption || ig?.caption || "";
+    const fbCap = data.fb_caption || fb?.caption || "";
+    const tagsStr = typeof data.hashtags === "string" ? data.hashtags : (Array.isArray(data.hashtags) ? data.hashtags.join(" ") : "");
+    const tagsArr = tagsStr.split(" ").filter(Boolean);
+
+    // Exact 12-column CSV Row formatted for this item
+    const csvRowText = [
+      `"${fileNameMp4.replace(/"/g, '""')}"`,
+      `"${podTitle.replace(/"/g, '""')}"`,
+      `"${igCap.replace(/"/g, '""')}"`,
+      `"${fbCap.replace(/"/g, '""')}"`,
+      `"${tagsStr.replace(/"/g, '""')}"`,
+      `"${ctaText.replace(/"/g, '""')}"`,
+      `"READY"`,
+      '""', '""', '""', '""', '""'
+    ].join(",");
+
+    const renderPlatformPane = (pKey, isActive) => {
+      if (pKey === "ig") {
+        return `
+          <div class="social-tab-pane ${isActive ? 'active' : ''}" data-pane="ig">
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">IG Reel Caption (150-250 chars)</span>
+                ${copyBtn("Caption", igCap)}
+              </div>
+              <div class="social-field-val">${esc(igCap)}</div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Call To Action</span>
+                ${copyBtn("CTA", ctaText)}
+              </div>
+              <div class="social-field-val" style="color:#38bdf8;font-weight:600;">${esc(ctaText)}</div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Hashtags (8-10 niche tags)</span>
+                ${copyBtn("Hashtags", tagsStr)}
+              </div>
+              <div class="ml-tag-cloud">
+                ${tagsArr.map(t => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (pKey === "fb") {
+        return `
+          <div class="social-tab-pane ${isActive ? 'active' : ''}" data-pane="fb">
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">FB Reel / Post Caption (Conversational Question Hook)</span>
+                ${copyBtn("Caption", fbCap)}
+              </div>
+              <div class="social-field-val">${esc(fbCap)}</div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Call To Action</span>
+                ${copyBtn("CTA", ctaText)}
+              </div>
+              <div class="social-field-val" style="color:#38bdf8;font-weight:600;">${esc(ctaText)}</div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Hashtags</span>
+                ${copyBtn("Hashtags", tagsStr)}
+              </div>
+              <div class="ml-tag-cloud">
+                ${tagsArr.slice(0, 8).map(t => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (pKey === "pin") {
+        const pinTitle = pin?.pin_title || `${podTitle} | Sarcastic Vintage Graphic Tee`;
+        const pinDesc = pin?.pin_description || `The older we get, the less 'life in prison' is a deterrent. Sarcastic vintage graphic shirt for anyone whose patience expired years ago. Soft retro apparel that speaks the unfiltered truth. Perfect gift for sassy seniors & dark humor fans. Tap to shop the collection!`;
+        const boardName = pin?.board_name || pin?.board || "Sarcastic Quotes & Puns Apparel";
+        const destLink = pin?.destination_link || $("#mlCustomStoreUrl")?.value?.trim() || localStorage.getItem("magicListing_customStoreUrl") || "https://yourbrandstore.com";
+        const pinTags = typeof pin?.tags === "string" ? pin.tags : (Array.isArray(pin?.tags) ? pin.tags.join(", ") : (Array.isArray(pin?.hashtags) ? pin.hashtags.join(", ") : "sarcastic quotes, funny graphic tees, vintage humor, pun tshirts, dark humor shirts, old people jokes, funny apparel"));
+        const pinTagsArr = pinTags.split(",").map(t => t.trim()).filter(Boolean);
+        const pinStatus = pin?.status || "READY";
+
+        const pinRowText = [
+          `"${fileNameMp4.replace(/"/g, '""')}"`,
+          `"${pinTitle.replace(/"/g, '""')}"`,
+          `"${pinDesc.replace(/"/g, '""')}"`,
+          `"${boardName.replace(/"/g, '""')}"`,
+          `"${destLink.replace(/"/g, '""')}"`,
+          `"${pinTags.replace(/"/g, '""')}"`,
+          `"${pinStatus}"`
+        ].join(",");
+
+        return `
+          <div class="social-tab-pane ${isActive ? 'active' : ''}" data-pane="pin">
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Pin_Title (Max 100 chars, SEO Search Optimized)</span>
+                ${copyBtn("Title", pinTitle)}
+              </div>
+              <div class="social-field-val"><strong>${esc(pinTitle)}</strong></div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Pin_Description (200–450 chars, Keywords & Relatable Sarcasm)</span>
+                ${copyBtn("Description", pinDesc)}
+              </div>
+              <div class="social-field-val" style="line-height:1.6;">${esc(pinDesc)}</div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Board Name (Brand Board)</span>
+                ${copyBtn("Board", boardName)}
+              </div>
+              <div style="margin-top:0.25rem;">
+                <span class="ml-tag-pill" style="font-weight:600;background:rgba(239,68,68,0.12);color:#f87171;border-color:rgba(239,68,68,0.25);display:inline-flex;align-items:center;gap:5px;">
+                  <i data-lucide="folder" style="width:12px;height:12px;"></i>${esc(boardName)}
+                </span>
+              </div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Destination Link</span>
+                ${copyBtn("Link", destLink)}
+              </div>
+              <div class="social-field-val" style="margin-top:0.25rem;">
+                <a href="${esc(destLink)}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;font-size:0.8rem;display:inline-flex;align-items:center;gap:6px;text-decoration:none;word-break:break-all;max-width:100%;">
+                  <i data-lucide="external-link" style="width:12px;height:12px;flex-shrink:0;"></i>
+                  <span>${esc(destLink)}</span>
+                </a>
+              </div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Tags (8–10 Pinterest Search Keywords)</span>
+                ${copyBtn("Tags", pinTags)}
+              </div>
+              <div class="ml-tag-cloud">
+                ${pinTagsArr.map(t => `<span class="ml-tag-pill"><i data-lucide="search" style="width:10px;height:10px;margin-right:3px;"></i>${esc(t)}</span>`).join("")}
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid rgba(255,255,255,0.06);">
+              <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;">
+                <span>Status:</span>
+                <span class="ml-tag-pill" style="color:#10b981;background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.3);font-weight:600;">${esc(pinStatus)}</span>
+              </div>
+              ${copyBtn("Pin Row (CSV)", pinRowText)}
+            </div>
+          </div>
+        `;
+      }
+
+      if (pKey === "tik") {
+        const videoTitle = tik?.video_title || tik?.title || `${podTitle} 😂`;
+        const tikCap = tik?.caption || `${podTitle} 😂 Tap link in bio to shop! 🛍️`;
+        const onScreenHook = tik?.on_screen_hook || "Wait till you read this...";
+        const soundVibe = tik?.sound_vibe || "Trending Sarcastic Voiceover";
+        const tikTags = Array.isArray(tik?.hashtags) ? tik.hashtags.join(" ") : (tik?.hashtags || tagsStr);
+        const tikCta = tik?.call_to_action || "Tap link in bio to shop! 🛍️";
+        const tikStatus = tik?.status || "READY";
+
+        const tikRowText = [
+          `"${fileNameMp4.replace(/"/g, '""')}"`,
+          `"${videoTitle.replace(/"/g, '""')}"`,
+          `"${tikCap.replace(/"/g, '""')}"`,
+          `"${onScreenHook.replace(/"/g, '""')}"`,
+          `"${soundVibe.replace(/"/g, '""')}"`,
+          `"${tikTags.replace(/"/g, '""')}"`,
+          `"${tikCta.replace(/"/g, '""')}"`,
+          `"${tikStatus}"`
+        ].join(",");
+
+        return `
+          <div class="social-tab-pane ${isActive ? 'active' : ''}" data-pane="tik">
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Video Title (Hook under 50 chars)</span>
+                ${copyBtn("Title", videoTitle)}
+              </div>
+              <div class="social-field-val"><strong>${esc(videoTitle)}</strong></div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">TikTok / FYP Caption (100–220 chars)</span>
+                ${copyBtn("Caption", tikCap)}
+              </div>
+              <div class="social-field-val" style="line-height:1.5;">${esc(tikCap)}</div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">On-Screen Text Hook (Opening 2 Seconds)</span>
+                ${copyBtn("Hook", onScreenHook)}
+              </div>
+              <div style="margin-top:0.25rem;">
+                <span class="ml-tag-pill" style="font-weight:600;background:rgba(168,85,247,0.12);color:#c084fc;border-color:rgba(168,85,247,0.3);display:inline-flex;align-items:center;gap:5px;">
+                  <i data-lucide="sparkles" style="width:12px;height:12px;"></i>${esc(onScreenHook)}
+                </span>
+              </div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Sound Vibe / Audio Recommendation</span>
+                ${copyBtn("Sound", soundVibe)}
+              </div>
+              <div style="margin-top:0.25rem;">
+                <span class="ml-tag-pill" style="font-weight:600;background:rgba(56,189,248,0.12);color:#38bdf8;border-color:rgba(56,189,248,0.25);display:inline-flex;align-items:center;gap:5px;">
+                  <i data-lucide="music" style="width:12px;height:12px;"></i>${esc(soundVibe)}
+                </span>
+              </div>
+            </div>
+
+            <div class="social-field-group">
+              <div class="social-field-head">
+                <span class="social-field-label">Hashtags (5–8 TikTok tags)</span>
+                ${copyBtn("Hashtags", tikTags)}
+              </div>
+              <div class="ml-tag-cloud">
+                ${(Array.isArray(tik?.hashtags) ? tik.hashtags : tikTags.split(" ").filter(Boolean)).map(t => `<span class="ml-tag-pill"><i data-lucide="hash" style="width:10px;height:10px;margin-right:2px;"></i>${esc(t.replace(/^#/, ''))}</span>`).join("")}
+              </div>
+            </div>
+
+            <div class="social-field-foot" style="display:flex;justify-content:space-between;align-items:center;margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid rgba(255,255,255,0.06);font-size:0.75rem;color:#94a3b8;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span>Status:</span>
+                <span class="ml-tag-pill" style="color:#10b981;background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.3);font-weight:600;">${esc(tikStatus)}</span>
+              </div>
+              ${copyBtn("TikTok Row (CSV)", tikRowText)}
+            </div>
+          </div>
+        `;
+      }
+      return "";
+    };
+
+    const formatAllSocialText = () => {
+      const parts = [
+        `File_Name: ${fileNameMp4}`,
+        `POD_Title: ${podTitle}`,
+        `IG_Caption: ${igCap}`,
+        `FB_Caption: ${fbCap}`,
+        `Hashtags: ${tagsStr}`,
+        `Call_To_Action: ${ctaText}`,
+        `Status: READY`
+      ];
+      return parts.join("\n");
+    };
+
+    const allSocialText = formatAllSocialText();
+
+    return `
+      <div class="ml-card ml-social-card" data-card-index="${esc(item.designIndex)}">
+        <div class="ml-card-header">
+          <div class="ml-card-title-group">
+            <img src="${esc(item.thumbnailUrl || "")}" class="ml-card-thumb" alt="${esc(item.fileName || "")}" />
+            <div class="ml-card-meta">
+              <span class="ml-index-badge platform-badge social">FUNPUNQUOTES Reels</span>
+              <span class="ml-file-name" title="${esc(fileNameMp4)}">${esc(fileNameMp4)}</span>
+            </div>
+          </div>
+          <span class="ml-card-safe ${data.trademark_safe ? "badge-safe" : "badge-warn"}">
+            <i data-lucide="shield-check"></i> ${data.trademark_safe ? "Trademark safe" : "Check IP"}
+          </span>
+        </div>
+
+        <div class="ml-card-body">
+          <div class="social-summary-bar">
+            <span class="social-summary-badge"><i data-lucide="sparkles"></i> Humor Persona & Niche</span>
+            <p class="social-summary-text">${esc(summary)}</p>
+            ${targetAudience ? `<p class="social-persona-sub"><strong>Audience:</strong> ${esc(targetAudience)}</p>` : ''}
+          </div>
+
+          <div class="social-top-meta-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem;background:rgba(255,255,255,0.02);padding:0.75rem;border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+            <div>
+              <div class="social-field-head" style="margin-bottom:4px;">
+                <span class="social-field-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;">File_Name</span>
+                ${copyBtn("File Name", fileNameMp4)}
+              </div>
+              <code style="font-size:12px;color:#38bdf8;font-family:ui-monospace,Menlo,monospace;word-break:break-all;">${esc(fileNameMp4)}</code>
+            </div>
+            <div>
+              <div class="social-field-head" style="margin-bottom:4px;">
+                <span class="social-field-label" style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;">POD_Title (&lt; 45 chars)</span>
+                ${copyBtn("Title", podTitle)}
+              </div>
+              <strong style="font-size:13px;color:#f8fafc;">${esc(podTitle)}</strong>
+            </div>
+          </div>
+
+          <div class="social-tabs-nav">
+            ${availableTabs.map((t) => `
+              <button type="button" class="social-tab-btn ${t.id === defaultTabId ? 'active' : ''}" data-tab="${t.id}">
+                ${t.svg} ${t.label}
+              </button>
+            `).join("")}
+          </div>
+
+          <div class="social-tabs-content">
+            ${ig ? renderPlatformPane("ig", defaultTabId === 'ig') : ''}
+            ${fb ? renderPlatformPane("fb", defaultTabId === 'fb') : ''}
+            ${pin ? renderPlatformPane("pin", defaultTabId === 'pin') : ''}
+            ${tik ? renderPlatformPane("tik", defaultTabId === 'tik') : ''}
+          </div>
+        </div>
+        <div class="ml-card-actions">
+          ${copyBtn("12-Col CSV Row", csvRowText)}
+          ${copyBtn("All Fields", allSocialText)}
+          ${timeBadge}
+        </div>
+      </div>`;
+  }
 
   // ── Etsy card ──────────────────────────────────────────────
   if (isEtsy) {
@@ -7213,6 +7799,7 @@ function getListingThumbUrl(l) {
 
 function listingLibraryCard(l) {
   const isSelected = selectedListingIds.has(l.id);
+  const isSocial = l.platform === "social";
   const isTeePublic = l.platform === "teepublic";
   const isEtsy = l.platform === "etsy";
 
@@ -7245,7 +7832,7 @@ function listingLibraryCard(l) {
       <i data-lucide="copy"></i> ${label}
     </button>`;
 
-  const platLabel = isEtsy ? "Etsy" : isTeePublic ? "TeePublic" : "Amazon Merch";
+  const platLabel = isSocial ? "Social Media" : isEtsy ? "Etsy" : isTeePublic ? "TeePublic" : "Amazon Merch";
   const isSafe = l.trademark_safe === 1 || l.trademark_safe === true;
 
   const selectOverlay = `
@@ -7269,6 +7856,227 @@ function listingLibraryCard(l) {
         <i data-lucide="shield-check"></i> ${isSafe ? "Trademark safe" : "Check IP"}
       </span>
     </div>`;
+
+  // ── Social Media card ──
+  if (isSocial) {
+    let socialData = {};
+    try {
+      socialData = typeof l.raw_listing === "string" ? JSON.parse(l.raw_listing || "{}") : (l.raw_listing || {});
+    } catch (_) {
+      socialData = {};
+    }
+    const ig = socialData.instagram || null;
+    const fb = socialData.facebook || null;
+    const pin = socialData.pinterest || null;
+    const tik = socialData.tiktok || null;
+
+    const availableTabs = [
+      ig ? { id: "ig", label: "Instagram", svg: getPlatformIconSvg("instagram", 14) } : null,
+      fb ? { id: "fb", label: "Facebook", svg: getPlatformIconSvg("facebook", 14) } : null,
+      pin ? { id: "pin", label: "Pinterest", svg: getPlatformIconSvg("pinterest", 14) } : null,
+      tik ? { id: "tik", label: "TikTok", svg: getPlatformIconSvg("tiktok", 14) } : null,
+    ].filter(Boolean);
+
+    const defaultTabId = availableTabs[0]?.id || "ig";
+    const summary = socialData.summary || l.description || "Social Media Campaign Package";
+    const targetAudience = socialData.target_audience || l.brand || "";
+
+    const formatAllSocialText = () => {
+      const parts = [`--- ${l.file_name || 'Listing'} Social Package ---`];
+      if (summary) parts.push(`Summary: ${summary}`);
+      if (targetAudience) parts.push(`Target Audience: ${targetAudience}`);
+      if (ig) parts.push(`\n[INSTAGRAM]\nHook: ${ig.hook}\nCaption: ${ig.caption}\nHashtags: ${Array.isArray(ig.hashtags) ? ig.hashtags.join(" ") : (ig.hashtags || "")}`);
+      if (fb) parts.push(`\n[FACEBOOK]\nHeadline: ${fb.post_title}\nCaption: ${fb.caption}\nCTA: ${fb.call_to_action}\nHashtags: ${Array.isArray(fb.hashtags) ? fb.hashtags.join(" ") : (fb.hashtags || "")}`);
+      if (pin) parts.push(`\n[PINTEREST]\nPin Title: ${pin.pin_title}\nDescription: ${pin.pin_description}\nBoard: ${pin.recommended_board}\nSearch Keywords: ${Array.isArray(pin.search_keywords) ? pin.search_keywords.join(", ") : (pin.search_keywords || "")}\nHashtags: ${Array.isArray(pin.hashtags) ? pin.hashtags.join(" ") : (pin.hashtags || "")}`);
+      if (tik) parts.push(`\n[TIKTOK]\nConcept: ${tik.video_concept}\nOn-Screen Hook: ${tik.text_hook}\nFYP Caption: ${tik.caption}\nSound Vibe: ${tik.sound_vibe}\nHashtags: ${Array.isArray(tik.hashtags) ? tik.hashtags.join(" ") : (tik.hashtags || "")}`);
+      return parts.join("\n");
+    };
+
+    const allSocialText = formatAllSocialText();
+
+    return `
+      <div class="ml-card ml-social-card listing-card ${isSelected ? 'selected' : ''}" data-id="${esc(l.id)}">
+        ${selectOverlay}
+        ${headerHtml}
+        <div class="ml-card-body">
+          <div class="social-summary-bar">
+            <span class="social-summary-badge"><i data-lucide="sparkles"></i> Persona & Niche</span>
+            <p class="social-summary-text">${esc(summary)}</p>
+            ${targetAudience ? `<p class="social-persona-sub"><strong>Audience:</strong> ${esc(targetAudience)}</p>` : ''}
+          </div>
+
+          <div class="social-tabs-nav">
+            ${availableTabs.map((t) => `
+              <button type="button" class="social-tab-btn ${t.id === defaultTabId ? 'active' : ''}" data-tab="${t.id}">
+                <i data-lucide="${t.icon}"></i> ${t.label}
+              </button>
+            `).join("")}
+          </div>
+
+          <div class="social-tabs-content">
+            ${ig ? `
+              <div class="social-tab-pane ${defaultTabId === 'ig' ? 'active' : ''}" data-pane="ig">
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Attention Hook</span>
+                    ${copyBtn("Hook", ig.hook)}
+                  </div>
+                  <div class="social-field-val">${esc(ig.hook)}</div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Post Caption</span>
+                    ${copyBtn("Caption", ig.caption)}
+                  </div>
+                  <div class="social-field-val">${esc(ig.caption)}</div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Hashtags</span>
+                    ${copyBtn("Hashtags", Array.isArray(ig.hashtags) ? ig.hashtags.join(" ") : (ig.hashtags || ""))}
+                  </div>
+                  <div class="ml-tag-cloud">
+                    ${(Array.isArray(ig.hashtags) ? ig.hashtags : []).map(t => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+
+            ${fb ? `
+              <div class="social-tab-pane ${defaultTabId === 'fb' ? 'active' : ''}" data-pane="fb">
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Post Headline</span>
+                    ${copyBtn("Title", fb.post_title)}
+                  </div>
+                  <div class="social-field-val">${esc(fb.post_title)}</div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Caption</span>
+                    ${copyBtn("Caption", fb.caption)}
+                  </div>
+                  <div class="social-field-val">${esc(fb.caption)}</div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Hashtags</span>
+                    ${copyBtn("Hashtags", Array.isArray(fb.hashtags) ? fb.hashtags.join(" ") : (fb.hashtags || ""))}
+                  </div>
+                  <div class="ml-tag-cloud">
+                    ${(Array.isArray(fb.hashtags) ? fb.hashtags : []).map(t => `<span class="ml-tag-pill">${esc(t)}</span>`).join("")}
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+
+            ${pin ? `
+              <div class="social-tab-pane ${defaultTabId === 'pin' ? 'active' : ''}" data-pane="pin">
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Pin Title</span>
+                    ${copyBtn("Title", pin.pin_title)}
+                  </div>
+                  <div class="social-field-val"><strong>${esc(pin.pin_title)}</strong></div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Pin Description</span>
+                    ${copyBtn("Description", pin.pin_description)}
+                  </div>
+                  <div class="social-field-val">${esc(pin.pin_description)}</div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Board Name (Brand Board)</span>
+                    ${copyBtn("Board", pin.board_name || pin.board || pin.recommended_board)}
+                  </div>
+                  <div style="margin-top:0.25rem;"><span class="ml-tag-pill" style="font-weight:600;background:rgba(230,0,35,0.12);color:#ff526c;border-color:rgba(230,0,35,0.3);display:inline-flex;align-items:center;gap:5px;"><i data-lucide="bookmark" style="width:12px;height:12px;"></i>${esc(pin.board_name || pin.board || pin.recommended_board || "Sarcastic Quotes & Puns Apparel")}</span></div>
+                </div>
+
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Destination Link</span>
+                    ${copyBtn("Link", pin.destination_link || "https://yourbrandstore.com")}
+                  </div>
+                  <div class="social-field-val" style="margin-top:0.25rem;">
+                    <a href="${esc(pin.destination_link || 'https://yourbrandstore.com')}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;font-size:0.8rem;text-decoration:none;display:inline-flex;align-items:center;gap:6px;word-break:break-all;max-width:100%;">
+                      <i data-lucide="external-link" style="width:12px;height:12px;flex-shrink:0;"></i>
+                      <span>${esc(pin.destination_link || "https://yourbrandstore.com")}</span>
+                    </a>
+                  </div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Tags (8–10 Pinterest Search Keywords)</span>
+                    ${copyBtn("Tags", pin.tags || (Array.isArray(pin.search_keywords) ? pin.search_keywords.join(", ") : ""))}
+                  </div>
+                  <div class="ml-tag-cloud">
+                    ${(typeof pin.tags === "string" ? pin.tags.split(",") : (Array.isArray(pin.search_keywords) ? pin.search_keywords : [])).map(k => `<span class="ml-tag-pill" style="background:rgba(56,189,248,0.1);color:#38bdf8;border-color:rgba(56,189,248,0.2);"><i data-lucide="search" style="width:10px;height:10px;margin-right:3px;"></i>${esc(k.trim())}</span>`).join("")}
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+
+            ${tik ? `
+              <div class="social-tab-pane ${defaultTabId === 'tik' ? 'active' : ''}" data-pane="tik">
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Video Title</span>
+                    ${copyBtn("Title", tik.video_title || tik.title)}
+                  </div>
+                  <div class="social-field-val"><strong>${esc(tik.video_title || tik.title)}</strong></div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">TikTok / FYP Caption</span>
+                    ${copyBtn("Caption", tik.caption)}
+                  </div>
+                  <div class="social-field-val">${esc(tik.caption)}</div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">On-Screen Hook</span>
+                    ${copyBtn("Hook", tik.on_screen_hook || tik.text_hook)}
+                  </div>
+                  <div style="margin-top:0.25rem;">
+                    <span class="ml-tag-pill" style="font-weight:600;background:rgba(168,85,247,0.12);color:#c084fc;border-color:rgba(168,85,247,0.3);display:inline-flex;align-items:center;gap:5px;">
+                      <i data-lucide="sparkles" style="width:12px;height:12px;"></i>${esc(tik.on_screen_hook || tik.text_hook || "Wait till you read this...")}
+                    </span>
+                  </div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Sound Vibe / Audio Recommendation</span>
+                    ${copyBtn("Sound", tik.sound_vibe || tik.video_concept)}
+                  </div>
+                  <div style="margin-top:0.25rem;">
+                    <span class="ml-tag-pill" style="font-weight:600;background:rgba(56,189,248,0.12);color:#38bdf8;border-color:rgba(56,189,248,0.25);display:inline-flex;align-items:center;gap:5px;">
+                      <i data-lucide="music" style="width:12px;height:12px;"></i>${esc(tik.sound_vibe || tik.video_concept || "Trending Sarcastic Voiceover")}
+                    </span>
+                  </div>
+                </div>
+                <div class="social-field-group">
+                  <div class="social-field-head">
+                    <span class="social-field-label">Hashtags</span>
+                    ${copyBtn("Hashtags", Array.isArray(tik.hashtags) ? tik.hashtags.join(" ") : (tik.hashtags || ""))}
+                  </div>
+                  <div class="ml-tag-cloud">
+                    ${(Array.isArray(tik.hashtags) ? tik.hashtags : (tik.hashtags || "").split(" ").filter(Boolean)).map(t => `<span class="ml-tag-pill"><i data-lucide="hash" style="width:10px;height:10px;margin-right:2px;"></i>${esc(t.replace(/^#/, ''))}</span>`).join("")}
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+        <div class="ml-card-actions">
+          ${copyBtn("All", allSocialText)}
+          <button type="button" class="btn secondary btn-sm danger danger-btn" data-act="delete" title="Delete listing">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+      </div>`;
+  }
 
   // ── Etsy card ──
   if (isEtsy) {
@@ -7616,10 +8424,14 @@ async function renderLibrary() {
               <option value="amazon" ${listingsLibraryState.platform === 'amazon' ? 'selected' : ''}>Amazon Merch</option>
               <option value="teepublic" ${listingsLibraryState.platform === 'teepublic' ? 'selected' : ''}>TeePublic</option>
               <option value="etsy" ${listingsLibraryState.platform === 'etsy' ? 'selected' : ''}>Etsy</option>
+              <option value="social" ${listingsLibraryState.platform === 'social' ? 'selected' : ''}>Social Media</option>
             </select>
 
             <button class="btn secondary btn-sm" id="libListingCsvBtn" title="Export to CSV">
               <i data-lucide="download"></i> Download CSV
+            </button>
+            <button class="btn secondary btn-sm ${listingsLibraryState.platform === 'social' ? '' : 'hidden'}" id="libListingXlsxBtn" title="Export to Multi-Sheet Excel (.xlsx)">
+              <i data-lucide="file-spreadsheet"></i> Download .xlsx
             </button>
 
             <button class="btn secondary btn-sm" id="libListingSelectBtn">
@@ -7636,6 +8448,7 @@ async function renderLibrary() {
             <button class="btn secondary btn-sm" id="listingBatchSelectAll"><i data-lucide="check-check"></i> Select all</button>
             <button class="btn secondary btn-sm" id="listingBatchDeselectAll">Deselect all</button>
             <button class="btn secondary btn-sm" id="listingBatchExportCsv"><i data-lucide="download"></i> Download selected CSV</button>
+            <button class="btn secondary btn-sm" id="listingBatchExportXlsx"><i data-lucide="file-spreadsheet"></i> Download selected .xlsx</button>
             <button class="btn primary btn-sm danger" id="listingBatchDeleteBtn" style="background:#EF4444;" ${selectedListingIds.size === 0 ? 'disabled' : ''}>
               <i data-lucide="trash-2"></i> Delete selected
             </button>
@@ -7712,25 +8525,47 @@ async function renderLibrary() {
       renderLibrary();
     });
 
+    const formatItemsForExport = (items) => {
+      return items.map((l) => {
+        let raw = {};
+        try {
+          raw = typeof l.raw_listing === "string" ? JSON.parse(l.raw_listing || "{}") : (l.raw_listing || {});
+        } catch (_) {
+          raw = {};
+        }
+        return {
+          designIndex: (l.id || "").slice(0, 8),
+          fileName: l.file_name,
+          platform: l.platform,
+          listing: l.platform === "social" ? raw : {
+            title: l.title,
+            brand: l.brand,
+            category: l.category,
+            bullet1: l.bullet1,
+            bullet2: l.bullet2,
+            description: l.description,
+            mainTag: l.main_tag,
+            supportingTags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
+            tags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
+            attributes: typeof l.attributes === "string" ? JSON.parse(l.attributes || "{}") : (l.attributes || {}),
+          },
+        };
+      });
+    };
+
     const exportItemsToCsv = (items) => {
-      const formatted = items.map((l) => ({
-        designIndex: (l.id || "").slice(0, 8),
-        fileName: l.file_name,
-        platform: l.platform,
-        listing: {
-          title: l.title,
-          brand: l.brand,
-          category: l.category,
-          bullet1: l.bullet1,
-          bullet2: l.bullet2,
-          description: l.description,
-          mainTag: l.main_tag,
-          supportingTags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
-          tags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
-          attributes: typeof l.attributes === "string" ? JSON.parse(l.attributes || "{}") : (l.attributes || {}),
-        },
-      }));
-      exportListingsToCSV(formatted);
+      const formatted = formatItemsForExport(items);
+      const allSocial = items.every((it) => it.platform === "social");
+      if (allSocial) {
+        exportSocialToCSV(formatted);
+      } else {
+        exportListingsToCSV(formatted);
+      }
+    };
+
+    const exportItemsToXlsx = (items) => {
+      const formatted = formatItemsForExport(items);
+      exportSocialToXLSX(formatted);
     };
 
     $("#libListingCsvBtn")?.addEventListener("click", () => {
@@ -7739,12 +8574,26 @@ async function renderLibrary() {
       exportItemsToCsv(allItems);
     });
 
+    $("#libListingXlsxBtn")?.addEventListener("click", () => {
+      const allItems = [...listingById.values()];
+      if (allItems.length === 0) return alert("No listings to export.");
+      exportItemsToXlsx(allItems);
+    });
+
     $("#listingBatchExportCsv")?.addEventListener("click", () => {
       const targets = selectedListingIds.size > 0
         ? [...listingById.values()].filter((l) => selectedListingIds.has(l.id))
         : [...listingById.values()];
       if (targets.length === 0) return alert("No listings selected.");
       exportItemsToCsv(targets);
+    });
+
+    $("#listingBatchExportXlsx")?.addEventListener("click", () => {
+      const targets = selectedListingIds.size > 0
+        ? [...listingById.values()].filter((l) => selectedListingIds.has(l.id))
+        : [...listingById.values()];
+      if (targets.length === 0) return alert("No listings selected.");
+      exportItemsToXlsx(targets);
     });
 
     $("#listingBatchDeleteBtn")?.addEventListener("click", async () => {
@@ -7765,6 +8614,17 @@ async function renderLibrary() {
     });
 
     $("#listingsGrid")?.addEventListener("click", async (e) => {
+      const tabBtn = e.target.closest(".social-tab-btn");
+      if (tabBtn) {
+        const card = tabBtn.closest(".ml-card");
+        if (card) {
+          const targetTab = tabBtn.dataset.tab;
+          card.querySelectorAll(".social-tab-btn").forEach((b) => b.classList.toggle("active", b === tabBtn));
+          card.querySelectorAll(".social-tab-pane").forEach((p) => p.classList.toggle("active", p.dataset.pane === targetTab));
+        }
+        return;
+      }
+
       const card = e.target.closest(".listing-card");
       if (!card) return;
       const id = card.dataset.id;
