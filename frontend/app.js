@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.30";
+const APP_VERSION = "1.0.31";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -4384,6 +4384,15 @@ function renderMagicListing() {
       localStorage.setItem("magicListing_customStoreUrl", e.target.value.trim());
     });
   }
+  const syncMagicListingExportButtons = () => {
+    const hasListings = allListings.length > 0;
+    const resultsAreSocial =
+      hasListings && allListings.every((it) => (it.platform || "").toLowerCase() === "social");
+    $("#btn-download-social-sheets")?.classList.toggle("hidden", !hasListings || !resultsAreSocial);
+    $("#btn-download-social-csv")?.classList.toggle("hidden", !hasListings || !resultsAreSocial);
+    $("#btn-download-listings-csv")?.classList.toggle("hidden", !hasListings || resultsAreSocial);
+  };
+
   platformToggle?.addEventListener("click", (e) => {
     const btn = e.target.closest(".platform-toggle-btn");
     if (!btn || btn.dataset.platform === currentPlatform) return;
@@ -4397,18 +4406,7 @@ function renderMagicListing() {
     if (socialRow) {
       socialRow.classList.toggle("hidden", currentPlatform !== "social");
     }
-    const socialSheetsBtn = $("#btn-download-social-sheets");
-    const socialCsvBtn = $("#btn-download-social-csv");
-    const regularCsvBtn = $("#btn-download-listings-csv");
-    if (currentPlatform === "social") {
-      socialSheetsBtn?.classList.toggle("hidden", allListings.length === 0);
-      socialCsvBtn?.classList.toggle("hidden", allListings.length === 0);
-      regularCsvBtn?.classList.add("hidden");
-    } else {
-      socialSheetsBtn?.classList.add("hidden");
-      socialCsvBtn?.classList.add("hidden");
-      regularCsvBtn?.classList.toggle("hidden", allListings.length === 0);
-    }
+    syncMagicListingExportButtons();
     renderIcons();
   });
 
@@ -4679,7 +4677,10 @@ function renderMagicListing() {
 
   const downloadCsvBtn = $("#btn-download-listings-csv");
   downloadCsvBtn?.addEventListener("click", () => {
-    if (currentPlatform === "social") {
+    const resultsAreSocial =
+      allListings.length > 0 &&
+      allListings.every((it) => (it.platform || "").toLowerCase() === "social");
+    if (resultsAreSocial) {
       exportSocialToCSV(allListings);
     } else {
       exportListingsToCSV(allListings);
@@ -4733,7 +4734,8 @@ function renderMagicListing() {
     generateBtn.disabled = true;
     stopBtn.disabled = false;
     downloadCsvBtn?.classList.add("hidden");
-    $("#btn-download-social-xlsx")?.classList.add("hidden");
+    downloadSocialSheetsBtn?.classList.add("hidden");
+    downloadSocialCsvBtn?.classList.add("hidden");
 
     const statusCard = $("#mlStatusCard");
     const progressFill = $("#mlProgressFill");
@@ -4845,15 +4847,7 @@ function renderMagicListing() {
             }
             renderIcons();
             $("#mlOutCount").textContent = `${allListings.length} listing${allListings.length === 1 ? "" : "s"}`;
-            if (currentPlatform === "social") {
-              $("#btn-download-social-sheets")?.classList.remove("hidden");
-              $("#btn-download-social-csv")?.classList.remove("hidden");
-              if (downloadCsvBtn) downloadCsvBtn.classList.add("hidden");
-            } else {
-              $("#btn-download-social-sheets")?.classList.add("hidden");
-              $("#btn-download-social-csv")?.classList.add("hidden");
-              if (downloadCsvBtn) downloadCsvBtn.classList.remove("hidden");
-            }
+            syncMagicListingExportButtons();
           } else if (payload.event === "listing_retrying") {
             const slotIdx = (payload.designIndex ?? 1) - 1;
             const slotId = `ml-slot-${slotIdx}`;
@@ -4939,6 +4933,120 @@ function renderMagicListing() {
 }
 
 
+/** Trigger a client-side file download with safe deferred ObjectURL cleanup */
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/** Escape a single cell for RFC-4180 CSV output */
+function escapeCSVCell(val) {
+  if (val === null || val === undefined) return '""';
+  const str = String(val).replace(/\r\n/g, " ").replace(/[\r\n]/g, " ");
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+/** Export generated POD / marketplace listings (Amazon Merch, TeePublic, Etsy, or mixed) to CSV */
+function exportListingsToCSV(listingsData) {
+  if (!listingsData || !listingsData.length) return alert("No listings to export.");
+
+  const headers = [
+    "Design ID",
+    "File Name",
+    "Platform",
+    "Title",
+    "Brand / Store",
+    "Category",
+    "Bullet 1",
+    "Bullet 2",
+    "Tags / Keywords",
+    "Attributes",
+    "Description",
+    "Generated At",
+  ];
+
+  const rows = listingsData.map((it) => {
+    const d = it.listing || {};
+    const platform = (it.platform || d.platform || "").toLowerCase();
+
+    const rawTags = [];
+    if (d.mainTag) rawTags.push(d.mainTag);
+    if (d.main_tag) rawTags.push(d.main_tag);
+    if (Array.isArray(d.supportingTags)) rawTags.push(...d.supportingTags);
+    if (Array.isArray(d.supporting_tags)) rawTags.push(...d.supporting_tags);
+    if (Array.isArray(d.tags)) rawTags.push(...d.tags);
+    else if (typeof d.tags === "string" && d.tags.trim()) rawTags.push(d.tags.trim());
+    if (typeof d.hashtags === "string" && d.hashtags.trim()) rawTags.push(d.hashtags.trim());
+    else if (Array.isArray(d.hashtags)) rawTags.push(...d.hashtags);
+    if (typeof d.pin_tags === "string" && d.pin_tags.trim()) rawTags.push(d.pin_tags.trim());
+    else if (Array.isArray(d.pin_tags)) rawTags.push(...d.pin_tags);
+
+    const seenTags = new Set();
+    const dedupedTags = [];
+    for (const t of rawTags) {
+      const cleaned = String(t || "").trim();
+      if (!cleaned) continue;
+      const key = cleaned.toLowerCase();
+      if (!seenTags.has(key)) {
+        seenTags.add(key);
+        dedupedTags.push(cleaned);
+      }
+    }
+
+    let attrText = "";
+    if (d.attributes && typeof d.attributes === "object" && !Array.isArray(d.attributes)) {
+      attrText = Object.entries(d.attributes)
+        .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "")
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+        .join(" | ");
+    } else if (typeof d.attributes === "string") {
+      attrText = d.attributes;
+    }
+
+    const title = d.title || d.pod_title || "";
+    const brand = d.brand || "";
+    const category = d.category || d.board_name || "";
+    const bullet1 = d.bullet1 || d.bullet_1 || "";
+    const bullet2 = d.bullet2 || d.bullet_2 || "";
+    const description =
+      d.description ||
+      d.pin_description ||
+      d.ig_caption ||
+      d.fb_caption ||
+      d.tt_caption ||
+      "";
+    const generatedAt = it.generatedAt || it.created_at || new Date().toISOString();
+
+    return [
+      it.designIndex || "",
+      it.fileName || d.file_name || "",
+      platform,
+      title,
+      brand,
+      category,
+      bullet1,
+      bullet2,
+      dedupedTags.join(", "),
+      attrText,
+      description,
+      generatedAt,
+    ]
+      .map(escapeCSVCell)
+      .join(",");
+  });
+
+  const csvContent = "\uFEFF" + [headers.map(escapeCSVCell).join(","), ...rows].join("\r\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const dateStr = new Date().toISOString().slice(0, 10);
+  triggerBlobDownload(blob, `magic_listings_export_${dateStr}.csv`);
+}
+
 /** Export Social Media multi-sheet spreadsheet (.xlsx) via backend XLSX generation */
 async function exportSocialToXLSX(listingsData) {
   if (!listingsData || !listingsData.length) return alert("No social listings to export.");
@@ -4950,15 +5058,8 @@ async function exportSocialToXLSX(listingsData) {
     });
     if (!res.ok) throw new Error("Failed to export spreadsheet");
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
     const dateStr = new Date().toISOString().slice(0, 10);
-    a.href = url;
-    a.download = `magic_fabrica_social_listings_${dateStr}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    triggerBlobDownload(blob, `magic_fabrica_social_listings_${dateStr}.xlsx`);
   } catch (err) {
     console.error("Export XLSX error:", err);
     alert("Export failed: " + err.message);
@@ -4968,12 +5069,6 @@ async function exportSocialToXLSX(listingsData) {
 /** Export Social Media CSV file */
 function exportSocialToCSV(listingsData) {
   if (!listingsData || !listingsData.length) return alert("No social listings to export.");
-
-  const escapeCSV = (val) => {
-    if (val === null || val === undefined) return '""';
-    const str = String(val).replace(/\r\n/g, " ").replace(/[\r\n]/g, " ");
-    return `"${str.replace(/"/g, '""')}"`;
-  };
 
   const headers = [
     "File_Name",
@@ -4994,21 +5089,21 @@ function exportSocialToCSV(listingsData) {
   listingsData.forEach((it) => {
     const l = it.listing || {};
     const fileName = l.file_name || (it.fileName ? it.fileName.replace(/\.[^/.]+$/, "").replace(/[^a-z0-9]+/gi, "_").toLowerCase() + ".mp4" : "graphic_tee.mp4");
-    const podTitle = l.pod_title || l.title || "Don't Piss Off Old People";
+    const podTitle = l.pod_title || l.title || "Graphic Tee";
     const igCap = l.ig_caption || l.instagram?.caption || "";
     const fbCap = l.fb_caption || l.facebook?.caption || "";
     const tags = typeof l.hashtags === "string" ? l.hashtags : (Array.isArray(l.hashtags) ? l.hashtags.join(" ") : "");
-    const cta = l.call_to_action || "👉 Shop the collection — Link in Bio! (@funpunquotes)";
+    const cta = l.call_to_action || "Shop the collection — Link in Bio!";
     const status = "READY";
 
     rows.push([
-      escapeCSV(fileName),
-      escapeCSV(podTitle),
-      escapeCSV(igCap),
-      escapeCSV(fbCap),
-      escapeCSV(tags),
-      escapeCSV(cta),
-      escapeCSV(status),
+      escapeCSVCell(fileName),
+      escapeCSVCell(podTitle),
+      escapeCSVCell(igCap),
+      escapeCSVCell(fbCap),
+      escapeCSVCell(tags),
+      escapeCSVCell(cta),
+      escapeCSVCell(status),
       '""', // Video_ID
       '""', // Cloudinary_URL
       '""', // IG_Media_ID
@@ -5017,17 +5112,10 @@ function exportSocialToCSV(listingsData) {
     ].join(","));
   });
 
-  const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+  const csvContent = "\uFEFF" + [headers.map(escapeCSVCell).join(","), ...rows].join("\r\n");
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
   const dateStr = new Date().toISOString().slice(0, 10);
-  a.href = url;
-  a.download = `magic_social_listings_${dateStr}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  triggerBlobDownload(blob, `magic_social_listings_${dateStr}.csv`);
 }
 
 function magicListingCard(item) {
@@ -8665,7 +8753,7 @@ async function renderLibrary() {
             <button class="btn secondary btn-sm" id="listingBatchSelectAll"><i data-lucide="check-check"></i> Select all</button>
             <button class="btn secondary btn-sm" id="listingBatchDeselectAll">Deselect all</button>
             <button class="btn secondary btn-sm" id="listingBatchExportCsv"><i data-lucide="download"></i> Download selected CSV</button>
-            <button class="btn secondary btn-sm" id="listingBatchExportXlsx"><i data-lucide="file-spreadsheet"></i> Download selected .xlsx</button>
+            <button class="btn secondary btn-sm ${!listingsLibraryState.platform || listingsLibraryState.platform === 'social' ? '' : 'hidden'}" id="listingBatchExportXlsx"><i data-lucide="file-spreadsheet"></i> Download selected .xlsx</button>
             <button class="btn primary btn-sm danger" id="listingBatchDeleteBtn" style="background:#EF4444;" ${selectedListingIds.size === 0 ? 'disabled' : ''}>
               <i data-lucide="trash-2"></i> Delete selected
             </button>
@@ -8742,19 +8830,27 @@ async function renderLibrary() {
       renderLibrary();
     });
 
+    const safeParseJson = (val, fallback) => {
+      if (typeof val !== "string") return val ?? fallback;
+      try {
+        return JSON.parse(val || JSON.stringify(fallback));
+      } catch (_) {
+        return fallback;
+      }
+    };
+
     const formatItemsForExport = (items) => {
       return items.map((l) => {
-        let raw = {};
-        try {
-          raw = typeof l.raw_listing === "string" ? JSON.parse(l.raw_listing || "{}") : (l.raw_listing || {});
-        } catch (_) {
-          raw = {};
-        }
+        const raw = safeParseJson(l.raw_listing, {});
+        const parsedTags = safeParseJson(l.tags, []);
+        const parsedAttrs = safeParseJson(l.attributes, {});
+        const platform = (l.platform || "").toLowerCase();
         return {
           designIndex: (l.id || "").slice(0, 8),
           fileName: l.file_name,
-          platform: l.platform,
-          listing: l.platform === "social" ? raw : {
+          platform,
+          generatedAt: l.created_at || "",
+          listing: platform === "social" ? raw : {
             title: l.title,
             brand: l.brand,
             category: l.category,
@@ -8762,9 +8858,9 @@ async function renderLibrary() {
             bullet2: l.bullet2,
             description: l.description,
             mainTag: l.main_tag,
-            supportingTags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
-            tags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
-            attributes: typeof l.attributes === "string" ? JSON.parse(l.attributes || "{}") : (l.attributes || {}),
+            supportingTags: parsedTags,
+            tags: parsedTags,
+            attributes: parsedAttrs,
           },
         };
       });
@@ -8772,7 +8868,7 @@ async function renderLibrary() {
 
     const exportItemsToCsv = (items) => {
       const formatted = formatItemsForExport(items);
-      const allSocial = items.every((it) => it.platform === "social");
+      const allSocial = items.every((it) => (it.platform || "").toLowerCase() === "social");
       if (allSocial) {
         exportSocialToCSV(formatted);
       } else {
@@ -8781,7 +8877,11 @@ async function renderLibrary() {
     };
 
     const exportItemsToXlsx = (items) => {
-      const formatted = formatItemsForExport(items);
+      const socialItems = items.filter((it) => (it.platform || "").toLowerCase() === "social");
+      if (!socialItems.length) {
+        return alert("Multi-sheet Excel (.xlsx) export is available for Social Media listings. Use Download CSV for Amazon Merch, TeePublic, or Etsy listings.");
+      }
+      const formatted = formatItemsForExport(socialItems);
       exportSocialToXLSX(formatted);
     };
 
