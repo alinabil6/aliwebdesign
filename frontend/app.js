@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.28";
+const APP_VERSION = "1.0.29";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -2503,7 +2503,7 @@ function openLibraryPicker({ currentCount = 0, onConfirm = null } = {}) {
       const cleanTitle = d.user_input && d.user_input !== d.feature ? d.user_input : label;
       return `
         <div class="prep-lib-item ${checked ? "selected" : ""} ${disabled ? "disabled" : ""}" data-id="${esc(d.id)}">
-          <img src="/library/${esc(d.output_image_path)}" alt="" loading="lazy" />
+          <img src="${esc(designImageUrl(d))}" alt="" loading="lazy" />
           <div class="prep-lib-check"><i data-lucide="check"></i></div>
           <div class="prep-lib-caption" title="${esc(cleanTitle)}">${esc(cleanTitle)}</div>
           <div class="prep-lib-meta">${esc(label)}</div>
@@ -7847,6 +7847,7 @@ async function startAddAccount(browser) {
 /* ── My Designs Library View (UI-UX Pro Max) ─────────────── */
 
 let libraryActiveTab = "designs";
+let libraryRenderToken = 0;
 const libraryState = { folder: "", feature: "", page: 1, total: 0 };
 const listingsLibraryState = { platform: "", search: "", page: 1, total: 0 };
 const mockupsLibraryState = { folder: "", page: 1, total: 0 };
@@ -7859,6 +7860,33 @@ let isSelectMode = false;
 let isListingSelectMode = false;
 const selectedDesignIds = new Set();
 const selectedListingIds = new Set();
+
+function getLibraryTabConfig(mode = libraryActiveTab) {
+  if (mode === "mockups") {
+    return {
+      mode: "mockups",
+      noun: "mockups",
+      prefix: "mockups_export",
+      endpoint: "/api/mockups/export-zip",
+      selectedIds: selectedMockupIds,
+      itemsById: mockupById,
+    };
+  }
+  return {
+    mode: "designs",
+    noun: "designs",
+    prefix: "designs_export",
+    endpoint: "/api/designs/export-zip",
+    selectedIds: selectedDesignIds,
+    itemsById: designById,
+  };
+}
+
+function pruneSelectedIds(selectedIds, itemsById) {
+  for (const id of [...selectedIds]) {
+    if (!itemsById.has(id)) selectedIds.delete(id);
+  }
+}
 
 function designCard(d) {
   const isMockup = d.isMockup || d.feature === "mockups" || libraryActiveTab === "mockups";
@@ -7873,7 +7901,7 @@ function designCard(d) {
   return `
     <div class="result-card panel design-card ${isSelected ? 'selected' : ''}" data-id="${esc(d.id)}">
       <div class="image-mount design-mount">
-        <img src="/library/${esc(d.output_image_path)}" alt="" loading="lazy" />
+        <img src="${esc(designImageUrl(d))}" alt="" loading="lazy" />
         <span class="folder-chip">${esc(d.folder || "Unsorted")}</span>
         <div class="select-indicator"><i data-lucide="check"></i></div>
         <div class="hover-actions">
@@ -7887,7 +7915,7 @@ function designCard(d) {
       <div class="result-caption" title="${esc(cleanTitle)}">${esc(cleanTitle)}</div>
       <div class="result-meta">${esc(label)} · ${esc(dateStr)}</div>
       <div class="result-actions-row">
-        <a class="save-toggle" href="/library/${esc(d.output_image_path)}" download="${esc(fileBase)}.${ext}">
+        <a class="save-toggle" href="${esc(designImageUrl(d))}" download="${esc(fileBase)}.${ext}">
           <i data-lucide="download"></i> Save
         </a>
       </div>
@@ -7900,21 +7928,23 @@ function designCard(d) {
    Explorer / macOS Finder); browsers without it fall back to one sequential
    download per design. */
 
-// Keeps the button's label in sync with the current batch selection: with
-// nothing checked, the button exports everything loaded in the view.
-function updateBatchSaveLabel() {
+// Keeps the button's label in sync with the active tab's batch selection:
+// with nothing checked, exports everything loaded in that tab only.
+function updateBatchSaveLabel(mode = libraryActiveTab) {
   const label = $("#batchSaveLabel");
   if (!label) return;
-  const n = libraryActiveTab === "mockups" ? selectedMockupIds.size : selectedDesignIds.size;
+  const n = getLibraryTabConfig(mode).selectedIds.size;
   label.textContent = n > 0 ? `Save selected (${n})` : "Save all";
 }
 
 // "design name_abc123.png" — slug from the prompt/feature, plus the id so two
-// designs with the same title never collide. Strict charset keeps it safe on
+// items with the same title never collide. Strict charset keeps it safe on
 // Windows and macOS.
 function designFileName(d) {
-  const raw = (d.user_input && d.user_input !== d.feature ? d.user_input : d.feature) || "design";
-  const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "design";
+  const isMockup = d.isMockup || d.feature === "mockups" || libraryActiveTab === "mockups";
+  const fallback = isMockup ? (d.product_type || "mockup") : (d.feature || "design");
+  const raw = (d.user_input && d.user_input !== d.feature ? d.user_input : fallback) || (isMockup ? "mockup" : "design");
+  const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || (isMockup ? "mockup" : "design");
   const id = String(d.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "img";
   const ext = (String(d.output_image_path).match(/\.(\w{2,5})$/) || [null, "png"])[1].toLowerCase();
   return `${slug}_${id}.${ext}`;
@@ -7930,47 +7960,50 @@ async function fetchDesignBlob(d) {
   return await res.blob();
 }
 
-async function saveDesignsBatch(btn) {
-  // Checked designs win; with none checked, export everything in the view.
-  const targets = selectedDesignIds.size > 0
-    ? [...designById.values()].filter((d) => selectedDesignIds.has(d.id))
-    : [...designById.values()];
+async function saveLibraryBatch(btn, mode = libraryActiveTab) {
+  const cfg = getLibraryTabConfig(mode);
+  // Checked items win; with none checked, export everything loaded in the ACTIVE tab only.
+  const targets = cfg.selectedIds.size > 0
+    ? [...cfg.itemsById.values()].filter((item) => cfg.selectedIds.has(item.id))
+    : [...cfg.itemsById.values()];
 
   if (targets.length === 0) {
-    alert("No designs to save.");
+    alert(`No ${cfg.noun} to save.`);
     return;
   }
 
   const setLabel = (text) => {
+    if (!btn.isConnected || libraryActiveTab !== cfg.mode) return;
     const label = $("#batchSaveLabel");
     if (label) label.textContent = text;
   };
   const finish = () => {
+    if (!btn.isConnected || libraryActiveTab !== cfg.mode) return;
     btn.disabled = false;
-    updateBatchSaveLabel();
+    updateBatchSaveLabel(cfg.mode);
   };
 
-  // Bundle every checked design into ONE zip on the server (archiver streams
-  // it straight to the browser), then trigger a single download link so the
-  // OS save dialog opens exactly once.
+  // Bundle strictly the active tab's checked items into ONE zip on the server
+  // (archiver streams it straight to the browser), then trigger a single download.
   btn.disabled = true;
   setLabel("Zipping...");
   try {
-    const res = await fetch("/api/designs/export-zip", {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const filename = `${cfg.prefix}_${stamp}.zip`;
+    const res = await fetch(cfg.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: targets.map((d) => d.id) }),
+      body: JSON.stringify({ ids: targets.map((item) => item.id), filename }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || `HTTP ${res.status}`);
     }
     const blob = await res.blob();
-    const stamp = new Date().toISOString().slice(0, 10);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `designs_export_${stamp}.zip`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -7983,6 +8016,8 @@ async function saveDesignsBatch(btn) {
     alert("Could not create the zip: " + (err.message || err));
   }
 }
+
+const saveDesignsBatch = (btn) => saveLibraryBatch(btn, libraryActiveTab);
 
 function getListingThumbUrl(l) {
   if (!l.thumbnail_path) return "";
@@ -8375,12 +8410,13 @@ const renderDesigns = (...args) => renderLibrary(...args);
 
 async function renderLibrary() {
   const mount = viewMount("designs");
+  const renderToken = ++libraryRenderToken;
 
   if (libraryActiveTab === "mockups") {
     const query = new URLSearchParams({
       ...(mockupsLibraryState.folder ? { folder: mockupsLibraryState.folder } : {}),
       page: mockupsLibraryState.page || 1,
-      pageSize: 1000,
+      pageSize: 10000,
     });
 
     let data = { rows: [], total: 0, page: 1 };
@@ -8389,16 +8425,19 @@ async function renderLibrary() {
     } catch (err) {
       console.error("Failed to load mockups:", err);
     }
+    if (renderToken !== libraryRenderToken) return;
 
     mockupsLibraryState.total = data.total || 0;
     mockupsLibraryState.page = data.page || 1;
     mockupById.clear();
     (data.rows || []).forEach((d) => mockupById.set(d.id, d));
+    pruneSelectedIds(selectedMockupIds, mockupById);
 
     let folderData = { folders: [] };
     try {
       folderData = await api("/api/mockups/folders");
     } catch (_) {}
+    if (renderToken !== libraryRenderToken) return;
     const mockupFolders = folderData.folders || [];
     if (!mockupFolders.includes("Unsorted")) mockupFolders.unshift("Unsorted");
 
@@ -8467,10 +8506,11 @@ async function renderLibrary() {
       </div>`;
 
     renderIcons();
-    updateBatchSaveLabel();
+    updateBatchSaveLabel("mockups");
 
     $("#libMockupFolderFilter")?.addEventListener("change", (e) => {
       mockupsLibraryState.folder = e.target.value;
+      mockupsLibraryState.page = 1;
       renderLibrary();
     });
 
@@ -8508,7 +8548,7 @@ async function renderLibrary() {
     $("#batchSaveBtn")?.addEventListener("click", (e) => {
       const btn = e.currentTarget;
       if (btn.disabled) return;
-      saveDesignsBatch(btn);
+      saveLibraryBatch(btn, "mockups");
     });
 
     $("#batchDeleteBtn")?.addEventListener("click", async () => {
@@ -8530,6 +8570,7 @@ async function renderLibrary() {
       const mockup = mockupById.get(id);
 
       if (isMockupSelectMode) {
+        if (e.target.closest("a.save-toggle")) e.preventDefault();
         if (selectedMockupIds.has(id)) {
           selectedMockupIds.delete(id);
           card.classList.remove("selected");
@@ -8541,7 +8582,7 @@ async function renderLibrary() {
         if (countEl) countEl.textContent = selectedMockupIds.size;
         const delBtn = $("#batchDeleteBtn");
         if (delBtn) delBtn.disabled = selectedMockupIds.size === 0;
-        updateBatchSaveLabel();
+        updateBatchSaveLabel("mockups");
         return;
       }
 
@@ -8554,10 +8595,11 @@ async function renderLibrary() {
       } else if (act === "move") {
         openMoveModal(mockup);
       } else if (act === "open") {
-        window.open(`/library/${mockup.output_image_path}`, "_blank");
+        window.open(designImageUrl(mockup), "_blank");
       } else if (act === "delete") {
         if (confirm("Delete this mockup?")) {
           await api(`/api/mockups/${id}`, { method: "DELETE" });
+          selectedMockupIds.delete(id);
           renderLibrary();
         }
       }
@@ -8580,11 +8622,13 @@ async function renderLibrary() {
     } catch (err) {
       console.error("Failed to load listings:", err);
     }
+    if (renderToken !== libraryRenderToken) return;
 
     listingsLibraryState.total = data.total || 0;
     listingsLibraryState.page = data.page || 1;
     listingById.clear();
     (data.rows || []).forEach((l) => listingById.set(l.id, l));
+    pruneSelectedIds(selectedListingIds, listingById);
 
     const hasItems = (data.rows || []).length > 0;
 
@@ -8847,6 +8891,7 @@ async function renderLibrary() {
       if (delActionBtn && listing) {
         if (confirm(`Permanently delete listing "${listing.file_name || 'Untitled'}"?`)) {
           await api(`/api/listings/${id}`, { method: "DELETE" }).catch(() => {});
+          selectedListingIds.delete(id);
           await renderLibrary();
         }
       }
@@ -8860,7 +8905,7 @@ async function renderLibrary() {
     ...(libraryState.folder ? { folder: libraryState.folder } : {}),
     ...(libraryState.feature ? { feature: libraryState.feature } : {}),
     page: libraryState.page,
-    pageSize: 1000,
+    pageSize: 10000,
   });
 
   let data = { rows: [], total: 0, page: 1 };
@@ -8869,11 +8914,13 @@ async function renderLibrary() {
   } catch (err) {
     console.error("Failed to load designs:", err);
   }
+  if (renderToken !== libraryRenderToken) return;
 
   libraryState.total = data.total || 0;
   libraryState.page = data.page || 1;
   designById.clear();
   (data.rows || []).forEach((d) => designById.set(d.id, d));
+  pruneSelectedIds(selectedDesignIds, designById);
 
   const allFolders = [...new Set((data.rows || []).map((r) => r.folder).filter(Boolean))];
 
@@ -8939,7 +8986,7 @@ async function renderLibrary() {
     </div>`;
 
   renderIcons();
-  updateBatchSaveLabel();
+  updateBatchSaveLabel("designs");
 
   $("#libTabDesigns")?.addEventListener("click", () => {
     libraryActiveTab = "designs";
@@ -8956,11 +9003,13 @@ async function renderLibrary() {
 
   $("#libFolderFilter").addEventListener("change", (e) => {
     libraryState.folder = e.target.value;
+    libraryState.page = 1;
     renderLibrary();
   });
 
   $("#libFeatureFilter").addEventListener("change", (e) => {
     libraryState.feature = e.target.value;
+    libraryState.page = 1;
     renderLibrary();
   });
 
@@ -8985,7 +9034,7 @@ async function renderLibrary() {
   $("#batchSaveBtn")?.addEventListener("click", (e) => {
     const btn = e.currentTarget;
     if (btn.disabled) return;
-    saveDesignsBatch(btn);
+    saveLibraryBatch(btn, "designs");
   });
 
   $("#batchDeleteBtn")?.addEventListener("click", async () => {
@@ -9007,6 +9056,7 @@ async function renderLibrary() {
     const design = designById.get(id);
 
     if (isSelectMode) {
+      if (e.target.closest("a.save-toggle")) e.preventDefault();
       if (selectedDesignIds.has(id)) {
         selectedDesignIds.delete(id);
       } else {
@@ -9017,7 +9067,7 @@ async function renderLibrary() {
       if (badge) badge.textContent = selectedDesignIds.size;
       const delBtn = $("#batchDeleteBtn");
       if (delBtn) delBtn.disabled = selectedDesignIds.size === 0;
-      updateBatchSaveLabel();
+      updateBatchSaveLabel("designs");
       return;
     }
 
@@ -9032,10 +9082,11 @@ async function renderLibrary() {
     } else if (act === "move") {
       openMoveModal(design);
     } else if (act === "open") {
-      window.open(`/library/${design.output_image_path}`, "_blank");
+      window.open(designImageUrl(design), "_blank");
     } else if (act === "delete") {
       if (confirm("Delete this design from library?")) {
         await api(`/api/designs/${id}`, { method: "DELETE" });
+        selectedDesignIds.delete(id);
         await renderLibrary();
       }
     }
