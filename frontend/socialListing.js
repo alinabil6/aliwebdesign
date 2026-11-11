@@ -64,7 +64,7 @@
             <span class="social-card-icon instagram">${getPlatformIconSvg("instagram", 18)}</span>
             <div class="social-card-text">
               <strong>Instagram</strong>
-              <small>Reel caption, CTA &amp; tags</small>
+              <small>Video title, caption, CTA &amp; tags</small>
             </div>
           </div>
           <div class="social-checkbox-card active" data-platform-id="facebook" role="button" tabindex="0">
@@ -73,7 +73,7 @@
             <span class="social-card-icon facebook">${getPlatformIconSvg("facebook", 18)}</span>
             <div class="social-card-text">
               <strong>Facebook</strong>
-              <small>Conversational hook &amp; tags</small>
+              <small>Video title, hook, CTA &amp; tags</small>
             </div>
           </div>
           <div class="social-checkbox-card active" data-platform-id="pinterest" role="button" tabindex="0">
@@ -192,12 +192,21 @@
     const tik = data.tiktok || null;
 
     if (pKey === "ig") {
+      const igVideoTitle = ig?.video_title || ig?.hook || data.ig_video_title || podTitle;
       const cap = ig?.caption || igCap || "";
       const igTagsArr = Array.isArray(ig?.hashtags) ? ig.hashtags : tagsArr;
       const igTagsStr = igTagsArr.join(" ");
       const igCta = ig?.call_to_action || ctaText;
       return `
         <div class="social-tab-pane ${isActive ? "active" : ""}" data-pane="ig">
+          <div class="social-field-group">
+            <div class="social-field-head">
+              <span class="social-field-label">Video Title (Hook under 48 chars)</span>
+              ${copyBtn("Title", igVideoTitle)}
+            </div>
+            <div class="social-field-val"><strong>${escHtml(igVideoTitle)}</strong></div>
+          </div>
+
           <div class="social-field-group">
             <div class="social-field-head">
               <span class="social-field-label">IG Reel Caption (150-250 chars)</span>
@@ -227,12 +236,21 @@
     }
 
     if (pKey === "fb") {
+      const fbVideoTitle = fb?.video_title || fb?.post_title || data.fb_video_title || podTitle;
       const cap = fb?.caption || fbCap || "";
       const fbTagsArr = Array.isArray(fb?.hashtags) ? fb.hashtags : tagsArr.slice(0, 8);
       const fbTagsStr = fbTagsArr.join(" ");
       const fbCta = fb?.call_to_action || ctaText;
       return `
         <div class="social-tab-pane ${isActive ? "active" : ""}" data-pane="fb">
+          <div class="social-field-group">
+            <div class="social-field-head">
+              <span class="social-field-label">Video Title (Hook under 48 chars)</span>
+              ${copyBtn("Title", fbVideoTitle)}
+            </div>
+            <div class="social-field-val"><strong>${escHtml(fbVideoTitle)}</strong></div>
+          </div>
+
           <div class="social-field-group">
             <div class="social-field-head">
               <span class="social-field-label">FB Reel / Post Caption (Conversational Hook)</span>
@@ -487,7 +505,9 @@
     const allSocialText = [
       `File_Name: ${ctx.fileNameMp4}`,
       `POD_Title: ${ctx.podTitle}`,
+      data.instagram?.video_title ? `IG_Video_Title: ${data.instagram.video_title}` : "",
       ctx.igCap ? `IG_Caption: ${ctx.igCap}` : "",
+      data.facebook?.video_title ? `FB_Video_Title: ${data.facebook.video_title}` : "",
       ctx.fbCap ? `FB_Caption: ${ctx.fbCap}` : "",
       ctx.tagsStr ? `Hashtags: ${ctx.tagsStr}` : "",
       `Call_To_Action: ${ctx.ctaText}`,
@@ -565,7 +585,9 @@
     const allSocialText = [
       `--- ${l.file_name || ctx.fileNameMp4} ---`,
       `POD_Title: ${ctx.podTitle}`,
+      socialData.instagram?.video_title ? `IG_Video_Title: ${socialData.instagram.video_title}` : "",
       ctx.igCap ? `IG_Caption: ${ctx.igCap}` : "",
+      socialData.facebook?.video_title ? `FB_Video_Title: ${socialData.facebook.video_title}` : "",
       ctx.fbCap ? `FB_Caption: ${ctx.fbCap}` : "",
       ctx.tagsStr ? `Hashtags: ${ctx.tagsStr}` : "",
       `Call_To_Action: ${ctx.ctaText}`,

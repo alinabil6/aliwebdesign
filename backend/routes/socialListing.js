@@ -253,19 +253,296 @@ function deriveKeywordsFromTitle(title) {
   return [...new Set([...hashBase, "#graphictee", "#funnytshirt", "#printondemand", "#apparel", "#statementtee"])].slice(0, 8);
 }
 
+function scanBalancedJsonCandidates(text) {
+  const candidates = [];
+  const s = String(text || "");
+  for (let start = 0; start < s.length; start++) {
+    if (s[start] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let closedAt = -1;
+    for (let i = start; i < s.length; i++) {
+      const ch = s[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          closedAt = i;
+          break;
+        }
+      }
+    }
+    if (closedAt > start) {
+      candidates.push(s.slice(start, closedAt + 1));
+      start = closedAt;
+    }
+  }
+  return candidates;
+}
+
+/**
+ * Escapes raw unescaped newlines/tabs/CR inside JSON string literals and removes
+ * trailing commas before `}` or `]` that commonly occur in DOM-captured model output.
+ */
+function repairJsonText(jsonStr) {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < jsonStr.length; i++) {
+    const ch = jsonStr[i];
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        out += ch;
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        out += ch;
+        inString = false;
+        continue;
+      }
+      if (ch === "\n") {
+        out += "\\n";
+        continue;
+      }
+      if (ch === "\r") {
+        continue;
+      }
+      if (ch === "\t") {
+        out += "\\t";
+        continue;
+      }
+      out += ch;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+    } else if (ch === "\u201C" || ch === "\u201D") {
+      inString = true;
+      out += '"';
+    } else {
+      out += ch;
+    }
+  }
+  return out.replace(/,\s*([}\]])/g, "$1");
+}
+
+function tryParseJsonCandidate(candidate) {
+  if (!candidate) return null;
+  try {
+    const obj = JSON.parse(candidate);
+    if (obj && typeof obj === "object") return obj;
+  } catch (_) {}
+  try {
+    const repaired = repairJsonText(candidate);
+    const obj = JSON.parse(repaired);
+    if (obj && typeof obj === "object") return obj;
+  } catch (_) {}
+  return null;
+}
+
+function closeTruncatedJson(partial) {
+  const start = partial.indexOf("{");
+  if (start === -1) return null;
+  let body = partial.slice(start).trim();
+  // Remove trailing dangling comma or incomplete key fragment after last complete value
+  body = repairJsonText(body);
+
+  let inString = false;
+  let escaped = false;
+  const stack = [];
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+
+  if (inString) body += '"';
+  body = body.replace(/,\s*$/, "");
+  // If cut mid key: `"key":` with no value, drop the incomplete key
+  body = body.replace(/,\s*"[^"]*"\s*:\s*$/, "");
+  while (stack.length > 0) {
+    body += stack.pop();
+  }
+  return body.replace(/,\s*([}\]])/g, "$1");
+}
+
+function extractStringField(block, keys) {
+  for (const key of keys) {
+    const re = new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, "i");
+    const m = block.match(re);
+    if (m) {
+      try {
+        return JSON.parse(`"${m[1]}"`);
+      } catch (_) {
+        return m[1].replace(/\\"/g, '"').replace(/\\n/g, " ").trim();
+      }
+    }
+  }
+  return "";
+}
+
+function extractBalancedSection(text, sectionKey) {
+  const re = new RegExp(`"${sectionKey}"\\s*:\\s*\\{`, "i");
+  const m = text.match(re);
+  if (!m) return "";
+  const openIdx = text.indexOf("{", m.index);
+  if (openIdx === -1) return "";
+  const candidates = scanBalancedJsonCandidates(text.slice(openIdx));
+  return candidates[0] || text.slice(openIdx);
+}
+
+function recoverSocialFromFields(rawText) {
+  const title = extractStringField(rawText, ["title", "pod_title", "POD_Title"]);
+  const fileName = extractStringField(rawText, ["file_name", "File_Name"]);
+  const summary = extractStringField(rawText, ["summary"]);
+  const targetAudience = extractStringField(rawText, ["target_audience", "targetAudience"]);
+
+  const igBlock = extractBalancedSection(rawText, "instagram");
+  const fbBlock = extractBalancedSection(rawText, "facebook");
+  const pinBlock = extractBalancedSection(rawText, "pinterest");
+  const tikBlock = extractBalancedSection(rawText, "tiktok");
+
+  const recovered = {
+    title,
+    file_name: fileName,
+    summary,
+    target_audience: targetAudience,
+  };
+
+  if (igBlock) {
+    recovered.instagram = {
+      video_title: extractStringField(igBlock, ["video_title", "videoTitle", "title"]),
+      caption: extractStringField(igBlock, ["caption", "ig_caption"]),
+      hashtags: extractStringField(igBlock, ["hashtags"]),
+      call_to_action: extractStringField(igBlock, ["call_to_action"]),
+    };
+  }
+  if (fbBlock) {
+    recovered.facebook = {
+      video_title: extractStringField(fbBlock, ["video_title", "videoTitle", "title", "post_title"]),
+      caption: extractStringField(fbBlock, ["caption", "fb_caption"]),
+      hashtags: extractStringField(fbBlock, ["hashtags"]),
+      call_to_action: extractStringField(fbBlock, ["call_to_action"]),
+    };
+  }
+  if (pinBlock) {
+    recovered.pinterest = {
+      pin_title: extractStringField(pinBlock, ["pin_title", "Pin_Title", "title"]),
+      pin_description: extractStringField(pinBlock, ["pin_description", "Pin_Description", "description"]),
+      board_name: extractStringField(pinBlock, ["board_name", "Board_Name", "board"]),
+      destination_link: extractStringField(pinBlock, ["destination_link", "Destination_Link"]),
+      tags: extractStringField(pinBlock, ["tags", "Tags"]),
+    };
+  }
+  if (tikBlock) {
+    recovered.tiktok = {
+      video_title: extractStringField(tikBlock, ["video_title", "title"]),
+      caption: extractStringField(tikBlock, ["caption", "TikTok_Caption"]),
+      on_screen_hook: extractStringField(tikBlock, ["on_screen_hook", "hook"]),
+      sound_vibe: extractStringField(tikBlock, ["sound_vibe"]),
+      hashtags: extractStringField(tikBlock, ["hashtags"]),
+      call_to_action: extractStringField(tikBlock, ["call_to_action"]),
+    };
+  }
+
+  const hasChannel =
+    recovered.instagram?.caption ||
+    recovered.facebook?.caption ||
+    recovered.pinterest?.pin_description ||
+    recovered.pinterest?.pin_title ||
+    recovered.tiktok?.caption ||
+    recovered.tiktok?.video_title;
+
+  if (title || hasChannel) {
+    return recovered;
+  }
+  return null;
+}
+
 function extractSocialJSON(rawReply) {
   if (!rawReply || typeof rawReply !== "string") return null;
-  let clean = rawReply.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+  let clean = rawReply
+    .replace(/```(?:json)?\s*/gi, "")
+    .replace(/```/g, "")
+    .replace(/^\s*(?:json|copy code)\s*\r?\n/i, "")
+    .trim();
 
-  // Attempt balanced JSON extraction from outer braces
+  // Stage 1: Check balanced top-level `{ ... }` candidates (handles trailing text / multiple blocks)
+  const candidates = scanBalancedJsonCandidates(clean);
+  // Prefer candidates containing social keys if multiple braces blocks exist
+  candidates.sort((a, b) => {
+    const score = (s) =>
+      (["title", "instagram", "facebook", "pinterest", "tiktok", "summary"].filter((k) => s.includes(`"${k}"`)).length * 1000) +
+      s.length;
+    return score(b) - score(a);
+  });
+
+  const isSocialRootObject = (obj) =>
+    Boolean(
+      obj &&
+      typeof obj === "object" &&
+      !Array.isArray(obj) &&
+      (obj.instagram ||
+        obj.facebook ||
+        obj.pinterest ||
+        obj.tiktok ||
+        obj.pod_title ||
+        obj.ig_caption ||
+        obj.fb_caption ||
+        (obj.title && (obj.summary || obj.file_name || obj.target_audience)))
+    );
+
+  for (const cand of candidates) {
+    const obj = tryParseJsonCandidate(cand);
+    if (isSocialRootObject(obj)) return obj;
+  }
+
+  // Fallback span (first `{` to last `}`) with repair
   const firstBrace = clean.indexOf("{");
   const lastBrace = clean.lastIndexOf("}");
   if (firstBrace >= 0 && lastBrace > firstBrace) {
-    const candidate = clean.slice(firstBrace, lastBrace + 1);
-    try {
-      const obj = JSON.parse(candidate);
-      if (obj && typeof obj === "object") return obj;
-    } catch (_) {}
+    const obj = tryParseJsonCandidate(clean.slice(firstBrace, lastBrace + 1));
+    if (isSocialRootObject(obj)) return obj;
+  }
+
+  // Stage 2: Close truncated trailing string / braces and parse
+  if (firstBrace >= 0) {
+    const closed = closeTruncatedJson(clean);
+    const obj = tryParseJsonCandidate(closed);
+    if (isSocialRootObject(obj)) {
+      console.log("[socialListing] Recovered Social Media JSON by auto-closing truncated tail.");
+      return obj;
+    }
+  }
+
+  // Stage 3: Channel-aware structured field extraction fallback (mirrors magicListing.js resilience)
+  const recovered = recoverSocialFromFields(clean);
+  if (recovered) {
+    console.log("[socialListing] Recovered Social Media JSON via structured field extractor.");
+    return recovered;
   }
 
   return null;
@@ -345,8 +622,14 @@ function normalizeSocialListing(rawObj, {
 
   if (platforms.includes("instagram")) {
     const igTags = normalizeHashtags(igSrc.hashtags || mergedHashtagsArr, 10, fallbackHashtags);
+    const igVideoTitle = truncateAtWord(
+      cleanText(igSrc.video_title || igSrc.videoTitle || obj.ig_video_title || igSrc.title || tikSrc.video_title) || podTitle,
+      48
+    );
+    merged.ig_video_title = igVideoTitle;
     merged.instagram = {
       title: podTitle,
+      video_title: igVideoTitle,
       file_name: fileNameMp4,
       caption: igCaption || `${podTitle} — graphic apparel built to stand out.`,
       hashtags: igTags,
@@ -358,8 +641,14 @@ function normalizeSocialListing(rawObj, {
 
   if (platforms.includes("facebook")) {
     const fbTags = normalizeHashtags(fbSrc.hashtags || mergedHashtagsArr, 8, fallbackHashtags);
+    const fbVideoTitle = truncateAtWord(
+      cleanText(fbSrc.video_title || fbSrc.videoTitle || obj.fb_video_title || fbSrc.title || fbSrc.post_title || tikSrc.video_title) || podTitle,
+      48
+    );
+    merged.fb_video_title = fbVideoTitle;
     merged.facebook = {
       title: podTitle,
+      video_title: fbVideoTitle,
       file_name: fileNameMp4,
       caption: fbCaption || `Who needs this "${podTitle}" shirt right now? Tag them below!`,
       hashtags: fbTags,
@@ -433,9 +722,9 @@ function normalizeSocialListing(rawObj, {
   // Ensure live Gemini returned real channel content for at least one requested platform
   if (!isOfflineMock) {
     const hasRealCaption =
-      (platforms.includes("instagram") && cleanText(igSrc.caption || obj.ig_caption).length >= 15) ||
-      (platforms.includes("facebook") && cleanText(fbSrc.caption || obj.fb_caption).length >= 15) ||
-      (platforms.includes("pinterest") && cleanText(pinSrc.pin_description || pinSrc.pin_title).length >= 15) ||
+      (platforms.includes("instagram") && (cleanText(igSrc.caption || obj.ig_caption).length >= 12 || cleanText(igSrc.video_title).length >= 6)) ||
+      (platforms.includes("facebook") && (cleanText(fbSrc.caption || obj.fb_caption).length >= 12 || cleanText(fbSrc.video_title).length >= 6)) ||
+      (platforms.includes("pinterest") && cleanText(pinSrc.pin_description || pinSrc.pin_title).length >= 12) ||
       (platforms.includes("tiktok") && cleanText(tikSrc.caption || tikSrc.video_title).length >= 10);
 
     if (!hasRealCaption) {
@@ -576,13 +865,15 @@ async function processSocialListingOnAccount(
       signal,
       timeoutMs: 70000,
       accountId: account.id,
+      requireCompleteJson: true,
     });
 
     console.log(`[socialListing] Received model response (${reply?.length || 0} chars)`);
-    recordGeneration(account.id);
 
     const parsed = extractSocialJSON(reply);
     if (!parsed) {
+      const preview = cleanText(reply).slice(0, 220);
+      console.warn(`[socialListing] Unparseable reply (${reply?.length || 0} chars) on ${account.id}: ${preview}`);
       throw new Error("Model reply was not valid Social Media JSON");
     }
 
@@ -594,6 +885,8 @@ async function processSocialListingOnAccount(
       customBrandHandle,
       isOfflineMock: false,
     });
+
+    recordGeneration(account.id);
 
     const persisted = persistSocialListingToLibrary({
       fileName,
@@ -955,7 +1248,7 @@ router.post("/export-social", (req, res) => {
         ? ["Design #", "File_Name", "Pin_Title", "Pin_Description", "Board_Name", "Destination_Link", "Tags", "Status"]
         : key === "tiktok"
           ? ["Design #", "File_Name", "Video_Title", "TikTok_Caption", "On_Screen_Hook", "Sound_Vibe", "Hashtags", "Call_To_Action", "Status"]
-          : ["Design #", "File_Name", "POD_Title", headerCaption, "Hashtags", "Call_To_Action", "Status"];
+          : ["Design #", "File_Name", "POD_Title", "Video_Title", headerCaption, "Hashtags", "Call_To_Action", "Status"];
 
       const rows = matchingItems.map((it) => {
         const l = it.listing || {};
@@ -986,8 +1279,9 @@ router.post("/export-social", (req, res) => {
           return [it.designIndex ?? "", fileName, videoTitle, caption, onScreenHook, soundVibe, tikTags, tikCta, pData.status || "READY"];
         }
 
+        const videoTitle = pData.video_title || (key === "instagram" ? l.ig_video_title : l.fb_video_title) || podTitle;
         const caption = pData.caption || (key === "instagram" ? l.ig_caption : l.fb_caption) || "";
-        return [it.designIndex ?? "", fileName, podTitle, caption, tags, cta, pData.status || "READY"];
+        return [it.designIndex ?? "", fileName, podTitle, videoTitle, caption, tags, cta, pData.status || "READY"];
       });
 
       const ws = mod.utils.aoa_to_sheet([sheetHeaders, ...rows]);

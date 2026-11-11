@@ -748,7 +748,40 @@ function extractJSON(rawText) {
   }
 }
 
-export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 40000, accountId = null }) {
+export function getJsonBraceState(rawText) {
+  const s = String(rawText || "");
+  const start = s.indexOf("{");
+  if (start === -1) return { hasOpenBrace: false, balanced: false };
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return { hasOpenBrace: true, balanced: true };
+      }
+    }
+  }
+  return { hasOpenBrace: true, balanced: false };
+}
+
+export async function generateText({ prompt, imagePaths = [], page, signal = null, timeoutMs = 40000, accountId = null, requireCompleteJson = false }) {
   const resolvedAccountId = accountId || getAccountIdForPage(page);
   return withGenerationCeiling(
     async () => {
@@ -818,13 +851,15 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
             }
           }
 
-          const probe = await page.evaluate((prevCount) => {
+          const probe = await page.evaluate(({ prevCount, strictJsonMode }) => {
             const errorEl = document.querySelector(
               'mat-snack-bar-container, [role="alert"], [role="dialog"], .error-container, .response-error, [data-test-id*="error"]'
             );
             const toastMsg = errorEl ? (errorEl.innerText || "").trim() : null;
 
-            const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
+            const stopBtn = document.querySelector(
+              'button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], button[aria-label*="Interrompre" i], button[aria-label*="Detener" i], button[aria-label*="Pause" i], [data-test-id*="stop"], button.stop-button'
+            );
             const isGenerating = Boolean(
               stopBtn &&
               window.getComputedStyle(stopBtn).display !== "none" &&
@@ -832,29 +867,68 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
               stopBtn.offsetWidth > 0
             );
 
+            const readTurnText = (turnEl) => {
+              if (!turnEl) return "";
+              const content =
+                turnEl.querySelector("message-content, .model-response-text") ||
+                turnEl.querySelector("structured-content-container") ||
+                turnEl;
+              if (!strictJsonMode) {
+                return (content.innerText || "").trim();
+              }
+              const clone = content.cloneNode(true);
+              clone
+                .querySelectorAll(
+                  "model-thoughts, .thoughts-container, [data-test-id*='thoughts' i], .code-block-decoration, button, mat-icon"
+                )
+                .forEach((n) => n.remove());
+              return (clone.innerText || clone.textContent || "").trim();
+            };
+
+            const inspectCopyBtns = (turnEl) => {
+              const allCopy = Array.from(
+                turnEl.querySelectorAll('button[aria-label*="Copy" i], button[aria-label*="Copier" i]')
+              );
+              const anyCopy = allCopy.length > 0;
+              const turnCopy = allCopy.some((btn) => {
+                if (btn.closest("code-block, .code-block, pre")) return false;
+                const label = (btn.getAttribute("aria-label") || "").toLowerCase();
+                return !label.includes("code");
+              });
+              return { anyCopy, turnCopy };
+            };
+
             const turns = document.querySelectorAll("model-response");
             let text = "";
             let hasCopyBtn = false;
+            let hasTurnCopyBtn = false;
             if (turns.length > prevCount) {
               const last = turns[turns.length - 1];
-              const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
-              text = (content.innerText || "").trim();
-              hasCopyBtn = Boolean(last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]'));
+              text = readTurnText(last);
+              const copyState = inspectCopyBtns(last);
+              hasCopyBtn = copyState.anyCopy;
+              hasTurnCopyBtn = copyState.turnCopy;
             } else if (turns.length > 0) {
               // Fallback: If turn count did not strictly exceed prevCount (e.g. baseline counted stale DOM or reset occurred),
               // inspect the last turn if it has active completion markers or content
               const last = turns[turns.length - 1];
-              const copyBtn = last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]');
-              const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
-              const candidate = (content.innerText || "").trim();
-              if (copyBtn || isGenerating || candidate.length > 30) {
+              const copyState = inspectCopyBtns(last);
+              const candidate = readTurnText(last);
+              if (copyState.anyCopy || isGenerating || candidate.length > 30) {
                 text = candidate;
-                hasCopyBtn = Boolean(copyBtn);
+                hasCopyBtn = copyState.anyCopy;
+                hasTurnCopyBtn = copyState.turnCopy;
               }
             }
 
-            return { toastMsg, isGenerating, hasCopyBtn, text };
-          }, countBefore).catch(() => ({ toastMsg: null, isGenerating: false, hasCopyBtn: false, text: "" }));
+            return { toastMsg, isGenerating, hasCopyBtn, hasTurnCopyBtn, text };
+          }, { prevCount: countBefore, strictJsonMode: Boolean(requireCompleteJson) }).catch(() => ({
+            toastMsg: null,
+            isGenerating: false,
+            hasCopyBtn: false,
+            hasTurnCopyBtn: false,
+            text: "",
+          }));
 
           if (probe.toastMsg && /limit|quota|error|try again|failed|unable|something went wrong|cannot help/i.test(probe.toastMsg)) {
             throw new Error(`GEMINI_ERROR: ${probe.toastMsg.slice(0, 120)}`);
@@ -867,8 +941,10 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
 
           const trimmed = probe.text;
           if (trimmed.length > 0) {
+            const braceState = getJsonBraceState(trimmed);
+
             // Early JSON return: As soon as braces appear, parse and validate
-            if (trimmed.includes("{") && trimmed.includes("}")) {
+            if (trimmed.includes("{") && trimmed.includes("}") && (!requireCompleteJson || braceState.balanced)) {
               const parsed = extractJSON(trimmed);
               if (parsed && typeof parsed === "object") {
                 if (parsed.title || parsed.main_tag || parsed.bullet1 || parsed.description) {
@@ -878,35 +954,67 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
               }
             }
 
-            // Fast-path A: Copy button rendered = generation definitely complete (any non-empty text)
-            if (probe.hasCopyBtn && !probe.isGenerating) {
-              console.log(`[geminiweb] Text captured via Copy button + not-generating (${trimmed.length} chars).`);
-              return trimmed;
-            }
-            // Fast-path B: Copy button present even while still in streaming (text is already final for this turn)
-            if (probe.hasCopyBtn && trimmed.length > 5) {
-              console.log(`[geminiweb] Text captured via Copy button detection (${trimmed.length} chars).`);
-              return trimmed;
-            }
-            if (!probe.isGenerating) {
-              // Immediate JSON resolution: stable closed JSON for 1 tick (relax length threshold)
-              if (trimmed === lastText && trimmed.includes("{") && trimmed.includes("}") && trimmed.length > 10) {
-                console.log(`[geminiweb] JSON captured immediately (${trimmed.length} chars).`);
+            if (requireCompleteJson) {
+              const hasOpenUnclosedJson = braceState.hasOpenBrace && !braceState.balanced;
+
+              if (braceState.balanced && probe.hasTurnCopyBtn && !probe.isGenerating) {
+                console.log(`[geminiweb] Complete JSON + response Copy button detected (${trimmed.length} chars).`);
                 return trimmed;
               }
-              // Stability fallback: same text for 2 consecutive ticks
-              if (trimmed === lastText) {
-                if (++stableTicks >= 2) {
-                  console.log(`[geminiweb] Text captured via stability (${trimmed.length} chars).`);
-                  return trimmed;
+
+              if (!probe.isGenerating) {
+                if (trimmed === lastText) {
+                  stableTicks++;
+                  if (!hasOpenUnclosedJson && braceState.balanced && stableTicks >= 2) {
+                    console.log(`[geminiweb] Balanced JSON stabilized (${trimmed.length} chars).`);
+                    return trimmed;
+                  }
+                  if (!hasOpenUnclosedJson && !braceState.hasOpenBrace && (probe.hasTurnCopyBtn ? stableTicks >= 3 : stableTicks >= 8)) {
+                    console.log(`[geminiweb] Non-JSON text captured cleanly (${trimmed.length} chars).`);
+                    return trimmed;
+                  }
+                  if (hasOpenUnclosedJson && (probe.hasTurnCopyBtn ? stableTicks >= 8 : stableTicks >= 18)) {
+                    console.log(`[geminiweb] Returning stabilized near-complete JSON for repair (${trimmed.length} chars).`);
+                    return trimmed;
+                  }
+                } else {
+                  stableTicks = 0;
                 }
               } else {
                 stableTicks = 0;
               }
+              lastText = trimmed;
             } else {
-              stableTicks = 0;
+              // Fast-path A: Copy button rendered = generation definitely complete (any non-empty text)
+              if (probe.hasCopyBtn && !probe.isGenerating) {
+                console.log(`[geminiweb] Text captured via Copy button + not-generating (${trimmed.length} chars).`);
+                return trimmed;
+              }
+              // Fast-path B: Copy button present even while still in streaming (text is already final for this turn)
+              if (probe.hasCopyBtn && trimmed.length > 5) {
+                console.log(`[geminiweb] Text captured via Copy button detection (${trimmed.length} chars).`);
+                return trimmed;
+              }
+              if (!probe.isGenerating) {
+                // Immediate JSON resolution: stable closed JSON for 1 tick (relax length threshold)
+                if (trimmed === lastText && trimmed.includes("{") && trimmed.includes("}") && trimmed.length > 10) {
+                  console.log(`[geminiweb] JSON captured immediately (${trimmed.length} chars).`);
+                  return trimmed;
+                }
+                // Stability fallback: same text for 2 consecutive ticks
+                if (trimmed === lastText) {
+                  if (++stableTicks >= 2) {
+                    console.log(`[geminiweb] Text captured via stability (${trimmed.length} chars).`);
+                    return trimmed;
+                  }
+                } else {
+                  stableTicks = 0;
+                }
+              } else {
+                stableTicks = 0;
+              }
+              lastText = trimmed;
             }
-            lastText = trimmed;
           }
 
           await page.waitForTimeout(150);

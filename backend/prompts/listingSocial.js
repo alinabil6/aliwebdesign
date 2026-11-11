@@ -29,10 +29,11 @@ export function buildSocialListingPrompt({
 
   if (activePlatforms.includes("instagram")) {
     channelSpecLines.push(
-      `- INSTAGRAM: Write "instagram.caption" (150-250 chars capturing the humor/vibe of THIS specific shirt), "instagram.hashtags" (8-10 space-separated niche hashtags specific to THIS design), and "instagram.call_to_action" ("${defaultCta}").`
+      `- INSTAGRAM: Write "instagram.video_title" (scroll-stopping punchy video/Reel title hook max 48 chars referring to the humor & real-life situation of THIS shirt design, matching the witty TikTok video title style), "instagram.caption" (150-250 chars capturing the humor/vibe of THIS specific shirt), "instagram.hashtags" (8-10 space-separated niche hashtags specific to THIS design), and "instagram.call_to_action" ("${defaultCta}").`
     );
     jsonShapeParts.push(
       `  "instagram": {`,
+      `    "video_title": "Punchy situational video/Reel title for this shirt (max 48 chars)",`,
       `    "caption": "150-250 chars tailored strictly to this shirt's exact text/artwork",`,
       `    "hashtags": "#nichetag1 #nichetag2 #funnytees #graphicshirt #moodtag",`,
       `    "call_to_action": "${defaultCta}"`,
@@ -42,10 +43,11 @@ export function buildSocialListingPrompt({
 
   if (activePlatforms.includes("facebook")) {
     channelSpecLines.push(
-      `- FACEBOOK: Write "facebook.caption" (conversational, relatable question/hook tailored strictly to THIS shirt so viewers tag friends/comment), "facebook.hashtags" (5-8 relevant hashtags), and "facebook.call_to_action" ("${defaultCta}").`
+      `- FACEBOOK: Write "facebook.video_title" (scroll-stopping punchy video/Reel title hook max 48 chars referring to the humor & real-life situation of THIS shirt design, matching the witty TikTok video title style), "facebook.caption" (conversational, relatable question/hook tailored strictly to THIS shirt so viewers tag friends/comment), "facebook.hashtags" (5-8 relevant hashtags), and "facebook.call_to_action" ("${defaultCta}").`
     );
     jsonShapeParts.push(
       `  "facebook": {`,
+      `    "video_title": "Punchy situational video/Reel title for this shirt (max 48 chars)",`,
       `    "caption": "Engaging conversational hook + question tailored to this exact shirt",`,
       `    "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5 #tag6",`,
       `    "call_to_action": "${defaultCta}"`,
