@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.29";
+const APP_VERSION = "1.0.30";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -107,26 +107,6 @@ if (typeof window !== "undefined" && window.desktopAPI) {
       <i data-lucide="alert-circle" style="color:#f87171;width:18px;height:18px;"></i>
       <span>Update check: ${esc(err.error || "Unable to check updates")}</span>
     `, 5000);
-    renderIcons();
-  });
-
-  window.desktopAPI.onUpdateDownloaded?.((info) => {
-    showToast(`
-      <i data-lucide="sparkles" style="color:#22c55e;width:18px;height:18px;"></i>
-      <span><strong>Update v${esc(info.version || "")} ready!</strong> Click here to restart & install now.</span>
-    `, 0, () => {
-      window.desktopAPI.restartAndInstall?.();
-    });
-    renderIcons();
-  });
-}
-// End desktop updater listeners
-if (typeof window !== "undefined" && window.desktopAPI) {
-  window.desktopAPI.onUpdateAvailable?.((info) => {
-    showToast(`
-      <i data-lucide="download-cloud" style="color:#38bdf8;width:18px;height:18px;"></i>
-      <span>Downloading <strong>v${esc(info.version || "")}</strong> in background…</span>
-    `, 8000);
     renderIcons();
   });
 

@@ -76,4 +76,4 @@ publish:
   provider: github
   owner: alinabil6
   repo: aliwebdesign
-  releaseType: release
+  releaseType: draft

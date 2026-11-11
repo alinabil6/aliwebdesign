@@ -10,8 +10,28 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    name: Prepare Draft Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Ensure single draft release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --draft \
+              --title "${TAG#v}" \
+              --notes "Magic Fabrica Studio $TAG"
+          fi
+
   release:
     name: Build (${{ matrix.os }})
+    needs: prepare-release
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -41,8 +61,30 @@ jobs:
         run: npm install --force --os=darwin --cpu=x64 @img/sharp-darwin-x64 --no-save
 
       # electron-builder packages using bundled prebuilt binaries (better-sqlite3 & sharp)
-      # without invoking @electron/rebuild or node-gyp, then publishes directly to GitHub Releases.
-      - name: Build & Publish Release to GitHub
+      # and uploads into the single draft release so half-uploaded tags are never exposed.
+      - name: Build & Upload Draft Assets to GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_DRAFT: "true"
         run: npx electron-builder --publish always
+
+  publish-release:
+    name: Publish Complete Release
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify All Platform Manifests & Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          assets=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq '.assets[].name')
+          echo "Uploaded assets:"
+          echo "$assets"
+          echo "$assets" | grep -qx "latest.yml"
+          echo "$assets" | grep -qx "latest-mac.yml"
+          gh release edit "$TAG" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest
