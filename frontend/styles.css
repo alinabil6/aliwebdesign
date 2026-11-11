@@ -8638,8 +8638,15 @@ body.light-mode .t2i-prompt-badge {
   top: 16px;
   max-height: calc(100vh - 88px);
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
   box-sizing: border-box;
   align-self: start;
+}
+
+.mockup-panel > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .mockup-panel::-webkit-scrollbar {
@@ -8983,12 +8990,16 @@ body.light-mode .t2i-prompt-badge {
   border-radius: 12px;
   padding: 10px 12px;
   box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .mockup-ref-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .mockup-ref-status-tag {
@@ -9127,6 +9138,26 @@ body.light-mode .t2i-prompt-badge {
 .mockup-ref-add-card svg {
   width: 16px;
   height: 16px;
+}
+
+.mockup-ref-thumb-card.artwork:hover {
+  border-color: #10b981;
+}
+
+.mockup-ref-thumb-idx.artwork {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.mockup-ref-add-card.artwork {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.05);
+  color: #10b981;
+}
+
+.mockup-ref-add-card.artwork:hover {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: #10b981;
 }
 
 /* ── Mockup Creator Light Mode Overrides ── */

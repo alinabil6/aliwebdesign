@@ -46,20 +46,96 @@ async function optimizeReferenceForGemini(absPath) {
   }
 }
 
+/**
+ * Persists uploaded multer asset files into /library and prepares optimized Gemini upload paths.
+ */
+async function persistAndOptimizeAssets(files, prefix) {
+  const storedList = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    if (!f || !f.path) continue;
+    const ext = path.extname(f.originalname || f.path || ".png") || ".png";
+    const stored = storeInLibrary(f.path, `${uuidv4()}-${prefix}-${i}${ext}`);
+    removeFileSafe(f.path);
+    const optPath = await optimizeReferenceForGemini(stored.abs);
+    storedList.push({
+      stored,
+      optPath,
+      originalName: f.originalname || `${prefix}-${i + 1}${ext}`,
+    });
+  }
+  return storedList;
+}
+
+/**
+ * Cleans up temporary Gemini-optimized derivatives while keeping library originals intact.
+ */
+function cleanupOptimizedAssets(storedGarments, storedArtworks) {
+  for (const list of [storedGarments, storedArtworks]) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (item?.optPath && item.optPath !== item.stored?.abs) {
+        removeFileSafe(item.optPath);
+      }
+    }
+  }
+}
+
+/**
+ * Enforces target aspect ratio, stores completed mockup image into /library, and records DB entry.
+ */
+async function finalizeGeneratedMockup({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) {
+  const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio);
+  const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
+
+  const labelParts = [task.productType || "Mockup"];
+  if (task.artworkName) {
+    const cleanArt = String(task.artworkName).replace(/\.[^/.]+$/, "");
+    if (cleanArt) labelParts.push(cleanArt);
+  }
+  if (task.garmentColor) labelParts.push(task.garmentColor);
+  if (task.scenePrompt) labelParts.push(task.scenePrompt.slice(0, 40));
+
+  const mockup = insertMockup({
+    id: uuidv4(),
+    feature: "mockups",
+    source_image_path: task.sourceRel,
+    style_image_path: task.garmentRel,
+    output_image_path: out.rel,
+    prompt_used: task.prompt,
+    user_input: labelParts.join(" · "),
+  });
+
+  const elapsed = retried ? (totalDurationMs || durationMs) : durationMs;
+  return {
+    ...mockup,
+    feature: "mockups",
+    isMockup: true,
+    source_image_path: task.sourceRel,
+    style_image_path: task.garmentRel,
+    artwork_name: task.artworkName || null,
+    artworkIndex: task.artworkIndex,
+    account_id: account?.id || null,
+    account_email: account?.email || null,
+    slotIndex: taskIndex,
+    generation_time: formatDuration(elapsed),
+    generation_time_ms: elapsed,
+  };
+}
+
 // POST /api/generate/mockup-creator
-// multipart: garment (file(s), required), artwork (file, optional), productType, garmentColor, scenePrompt, variationsPerGarment/count, aspectRatio
+// multipart: garment (file(s), required), artwork (file(s), optional batch), productType, garmentColor, scenePrompt, variationsPerGarment/count, aspectRatio
 router.post("/mockup-creator", upload.any(), async (req, res) => {
   const uploadedFiles = Array.isArray(req.files) ? req.files : [];
 
-  // Separate artwork file from garment files
-  let artworkFile = null;
+  // Separate artwork files from garment reference files
+  const artworkFiles = [];
   const garmentFiles = [];
 
   for (const f of uploadedFiles) {
     const field = (f.fieldname || "").toLowerCase();
     if (field.startsWith("artwork") || field === "design" || field === "art") {
-      if (!artworkFile) artworkFile = f;
-      else removeFileSafe(f.path);
+      artworkFiles.push(f);
     } else {
       garmentFiles.push(f);
     }
@@ -67,37 +143,17 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
 
   try {
     if (garmentFiles.length === 0) {
-      if (artworkFile) removeFileSafe(artworkFile.path);
+      for (const af of artworkFiles) removeFileSafe(af.path);
       return res.status(400).json({ error: "At least one apparel or mockup reference image is required." });
     }
 
     if (!hasReadyAccount()) {
-      for (const f of uploadedFiles) {
-        removeFileSafe(f.path);
-      }
+      for (const f of uploadedFiles) removeFileSafe(f.path);
       return res.status(503).json({ error: "No Gemini account is ready — open the Accounts tab and sign in." });
     }
 
-    // Persist all garment references into /library & optimize for fast Gemini upload
-    const storedGarments = [];
-    for (let i = 0; i < garmentFiles.length; i++) {
-      const gf = garmentFiles[i];
-      const garmentExt = path.extname(gf.originalname || gf.path || ".png") || ".png";
-      const garmentStored = storeInLibrary(gf.path, `${uuidv4()}-mockup-garment-${i}${garmentExt}`);
-      removeFileSafe(gf.path);
-      const garmentOptPath = await optimizeReferenceForGemini(garmentStored.abs);
-      storedGarments.push({ stored: garmentStored, optPath: garmentOptPath });
-    }
-
-    // Persist artwork (if supplied) into /library & optimize
-    let artworkStored = null;
-    let artworkOptPath = null;
-    if (artworkFile && artworkFile.path) {
-      const artExt = path.extname(artworkFile.originalname || artworkFile.path || ".png") || ".png";
-      artworkStored = storeInLibrary(artworkFile.path, `${uuidv4()}-mockup-artwork${artExt}`);
-      removeFileSafe(artworkFile.path);
-      artworkOptPath = await optimizeReferenceForGemini(artworkStored.abs);
-    }
+    const storedGarments = await persistAndOptimizeAssets(garmentFiles, "mockup-garment");
+    const storedArtworks = await persistAndOptimizeAssets(artworkFiles, "mockup-artwork");
 
     const productType = String(req.body.productType || req.body.product || "Unisex T-Shirt").trim();
     const rawColor = String(req.body.garmentColor || req.body.color || "").trim();
@@ -105,41 +161,49 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
     const scenePrompt = String(req.body.scenePrompt || req.body.scene || "").trim();
     const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "1:1").trim();
 
-    // Variations per garment
-    const vPerGarment = Math.min(20, Math.max(1, parseInt(req.body.variationsPerGarment || req.body.count || 1, 10) || 1));
+    // Variations per (garment, artwork) combo
+    const vPerCombo = Math.min(20, Math.max(1, parseInt(req.body.variationsPerGarment || req.body.count || 1, 10) || 1));
 
-    // Build tasks across all garments and variations
+    // Build tasks across all garments, artworks, and variations
     const tasks = [];
     let globalTaskIdx = 0;
+    const artworkLoopCount = Math.max(1, storedArtworks.length);
+
     for (let g = 0; g < storedGarments.length; g++) {
       const currentGarment = storedGarments[g];
-      const imagePaths = artworkOptPath
-        ? [currentGarment.optPath, artworkOptPath]
-        : [currentGarment.optPath];
+      for (let a = 0; a < artworkLoopCount; a++) {
+        const currentArtwork = storedArtworks[a] || null;
+        const imagePaths = currentArtwork
+          ? [currentGarment.optPath, currentArtwork.optPath]
+          : [currentGarment.optPath];
 
-      for (let v = 0; v < vPerGarment; v++) {
-        tasks.push({
-          prompt: buildPrompt({
-            hasArtwork: Boolean(artworkStored),
+        for (let v = 0; v < vPerCombo; v++) {
+          tasks.push({
+            prompt: buildPrompt({
+              hasArtwork: Boolean(currentArtwork),
+              productType,
+              garmentColor,
+              sceneDirection: scenePrompt,
+              aspectRatio,
+              variant: v,
+            }),
+            imagePaths,
             productType,
             garmentColor,
-            sceneDirection: scenePrompt,
+            scenePrompt,
             aspectRatio,
-            variant: v,
-          }),
-          imagePaths,
-          productType,
-          garmentColor,
-          scenePrompt,
-          aspectRatio,
-          variantIndex: v,
-          garmentIndex: g,
-          totalGarments: storedGarments.length,
-          sourceRel: artworkStored ? artworkStored.rel : currentGarment.stored.rel,
-          garmentRel: currentGarment.stored.rel,
-          artworkRel: artworkStored ? artworkStored.rel : null,
-          slotIndex: globalTaskIdx++,
-        });
+            variantIndex: v,
+            garmentIndex: g,
+            totalGarments: storedGarments.length,
+            artworkIndex: a,
+            totalArtworks: storedArtworks.length,
+            artworkName: currentArtwork ? currentArtwork.originalName : null,
+            sourceRel: currentArtwork ? currentArtwork.stored.rel : currentGarment.stored.rel,
+            garmentRel: currentGarment.stored.rel,
+            artworkRel: currentArtwork ? currentArtwork.stored.rel : null,
+            slotIndex: globalTaskIdx++,
+          });
+        }
       }
     }
 
@@ -174,34 +238,9 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
           tasks,
           async ({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) => {
             if (routeAbort.signal.aborted) return null;
-            const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio);
-            const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
-
-            const labelParts = [task.productType || "Mockup"];
-            if (task.garmentColor) labelParts.push(task.garmentColor);
-            if (task.scenePrompt) labelParts.push(task.scenePrompt.slice(0, 40));
-
-            const mockup = insertMockup({
-              id: uuidv4(),
-              feature: "mockups",
-              source_image_path: task.sourceRel,
-              style_image_path: task.garmentRel,
-              output_image_path: out.rel,
-              prompt_used: task.prompt,
-              user_input: labelParts.join(" · "),
+            const decorated = await finalizeGeneratedMockup({
+              buffer, taskIndex, task, account, durationMs, totalDurationMs, retried,
             });
-
-            const decorated = {
-              ...mockup, feature: "mockups", isMockup: true,
-              source_image_path: task.sourceRel,
-              style_image_path: task.garmentRel,
-              account_id: account?.id || null,
-              account_email: account?.email || null,
-              slotIndex: taskIndex,
-              generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),
-              generation_time_ms: retried ? (totalDurationMs || durationMs) : durationMs,
-            };
-
             streamedCount++;
             res.write(JSON.stringify({ event: "design", slotIndex: taskIndex, design: decorated }) + "\n");
             return decorated;
@@ -236,10 +275,7 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
         res.write(JSON.stringify({ event: "done", count: streamedCount }) + "\n");
       } finally {
         clearInterval(heartbeatInterval);
-        for (const item of storedGarments) {
-          if (item.optPath && item.optPath !== item.stored.abs) removeFileSafe(item.optPath);
-        }
-        if (artworkOptPath && artworkStored && artworkOptPath !== artworkStored.abs) removeFileSafe(artworkOptPath);
+        cleanupOptimizedAssets(storedGarments, storedArtworks);
       }
       res.end();
     } else {
@@ -250,44 +286,16 @@ router.post("/mockup-creator", upload.any(), async (req, res) => {
           tasks,
           async ({ buffer, taskIndex, task, account, durationMs, totalDurationMs, retried }) => {
             if (routeAbort.signal.aborted) return null;
-            const finalBuffer = await formatImageToAspectRatio(buffer, task.aspectRatio);
-            const out = storeInLibrary(finalBuffer, `${uuidv4()}.png`);
-
-            const labelParts = [task.productType || "Mockup"];
-            if (task.garmentColor) labelParts.push(task.garmentColor);
-            if (task.scenePrompt) labelParts.push(task.scenePrompt.slice(0, 40));
-
-            const mockup = insertMockup({
-              id: uuidv4(),
-              feature: "mockups",
-              source_image_path: task.sourceRel,
-              style_image_path: task.garmentRel,
-              output_image_path: out.rel,
-              prompt_used: task.prompt,
-              user_input: labelParts.join(" · "),
+            const decorated = await finalizeGeneratedMockup({
+              buffer, taskIndex, task, account, durationMs, totalDurationMs, retried,
             });
-
-            const decorated = {
-              ...mockup, feature: "mockups", isMockup: true,
-              source_image_path: task.sourceRel,
-              style_image_path: task.garmentRel,
-              account_id: account?.id || null,
-              account_email: account?.email || null,
-              slotIndex: taskIndex,
-              generation_time: formatDuration(retried ? (totalDurationMs || durationMs) : durationMs),
-              generation_time_ms: retried ? (totalDurationMs || durationMs) : durationMs,
-            };
-
             savedDesigns[taskIndex] = decorated;
             return decorated;
           },
           { signal: routeAbort.signal }
         );
       } finally {
-        for (const item of storedGarments) {
-          if (item.optPath && item.optPath !== item.stored.abs) removeFileSafe(item.optPath);
-        }
-        if (artworkOptPath && artworkStored && artworkOptPath !== artworkStored.abs) removeFileSafe(artworkOptPath);
+        cleanupOptimizedAssets(storedGarments, storedArtworks);
       }
 
       res.json({

@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.27";
+const APP_VERSION = "1.0.28";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -6578,34 +6578,53 @@ function renderMockupCreator() {
             </div>
           </div>
 
-          <!-- Artwork Design Dropzone (Optional) -->
+          <!-- Artwork Design Dropzone (Optional, Multi-Design Batch Support) -->
           <div>
-            <div class="mockup-section-label-row">
-              <span class="mockup-section-label">Artwork to Place</span>
+            <div class="mockup-section-label-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="mockup-section-label">Artwork to Place</span>
+                <span class="mockup-ref-count-badge hidden" id="mockupArtworkCountBadge" style="font-size:10px;font-weight:700;color:#10b981;background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:9999px;">0 designs</span>
+              </div>
               <span style="font-size:10px;font-weight:700;color:#10b981;background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:9999px;">FROZEN PIXELS • ZERO REDRAW</span>
             </div>
-            <div class="mockup-dropzone" id="mockupArtworkDrop" tabindex="0" role="button" aria-label="Upload Artwork Graphic">
-              <input type="file" id="mockupArtworkInput" accept="image/*" style="display:none;" />
+
+            <!-- Empty Artwork Dropzone -->
+            <div class="mockup-dropzone" id="mockupArtworkDrop" tabindex="0" role="button" aria-label="Upload Artwork Graphics">
+              <input type="file" id="mockupArtworkInput" accept="image/*" multiple style="display:none;" />
               <div class="mockup-drop-empty" id="mockupArtworkEmpty">
                 <div class="mockup-drop-icon" style="background:rgba(16,185,129,0.14);border-color:rgba(16,185,129,0.3);color:#10b981;"><i data-lucide="sparkles"></i></div>
                 <div class="mockup-drop-texts">
-                  <div class="mockup-drop-title">Upload Artwork Graphic (Optional)</div>
-                  <div class="mockup-drop-sub">PNG with transparency • 100% frozen onto fabric</div>
+                  <div class="mockup-drop-title">Upload Artwork Designs (Optional)</div>
+                  <div class="mockup-drop-sub">PNG, JPG · Drop 1 or multiple designs (e.g. 10+), or paste (Ctrl+V)</div>
+                </div>
+                <div style="margin-top:8px;">
+                  <button type="button" class="btn secondary btn-xs" id="mockupArtworkFromLibBtn" style="border-radius:9999px;font-size:11px;padding:3px 10px;" title="Import 1 or multiple saved designs from My Library">
+                    <i data-lucide="library" style="width:12px;height:12px;"></i> From My Library
+                  </button>
                 </div>
               </div>
-              <div class="mockup-preview hidden" id="mockupArtworkPreview">
-                <div class="mockup-thumb-wrap">
-                  <img id="mockupArtworkThumb" alt="Artwork Preview" />
+            </div>
+
+            <!-- Active Multi-Artwork Container -->
+            <div class="mockup-ref-active-container hidden" id="mockupArtworkActive" tabindex="0" style="border-color:rgba(16,185,129,0.35);">
+              <div class="mockup-ref-header">
+                <span class="mockup-ref-status-tag" id="mockupArtworkStatusTag" style="color:#10b981;">
+                  <i data-lucide="shield-check"></i> <span id="mockupArtworkStatusText">1 design frozen</span>
+                </span>
+                <div class="mockup-ref-actions">
+                  <button type="button" class="btn secondary btn-xs" id="mockupArtworkFromLibActiveBtn" title="Add more saved designs from My Library">
+                    <i data-lucide="library"></i> Library
+                  </button>
+                  <button type="button" class="btn secondary btn-xs" id="mockupArtworkAddMoreBtn" title="Add more artwork designs">
+                    <i data-lucide="plus"></i> Add more
+                  </button>
+                  <button type="button" class="btn secondary btn-xs danger" id="mockupArtworkClearBtn" title="Remove all artwork designs">
+                    <i data-lucide="trash-2"></i> Delete all
+                  </button>
                 </div>
-                <div class="mockup-meta">
-                  <div class="mockup-filename" id="mockupArtworkName">artwork.png</div>
-                  <div class="mockup-filesize" id="mockupArtworkSize">540 KB</div>
-                  <div class="mockup-status-tag" style="color:#10b981;"><i data-lucide="shield-check"></i> Frozen Immutable Asset</div>
-                </div>
-                <div class="mockup-actions">
-                  <button type="button" class="btn secondary btn-sm" id="mockupArtworkReplaceBtn" title="Replace Artwork">Replace</button>
-                  <button type="button" class="icon-btn danger btn-sm" id="mockupArtworkRemoveBtn" title="Remove Artwork"><i data-lucide="trash-2"></i></button>
-                </div>
+              </div>
+              <div class="mockup-ref-thumbs-strip" id="mockupArtworkThumbsStrip">
+                <!-- Dynamically populated artwork thumbnails and add button -->
               </div>
             </div>
           </div>
@@ -6710,12 +6729,17 @@ function renderMockupCreator() {
 
         <!-- Output Canvas Column -->
         <div class="mockup-output-panel">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:10px;">
               <span style="font-weight:700;font-size:14px;color:var(--color-ink,#f1f5f9);">Output Canvas</span>
               <span class="results-count" id="mockupOutCount">0 generated</span>
             </div>
-            <a href="#" id="mockupOpenLibLink" style="font-size:12px;color:#38bdf8;text-decoration:none;font-weight:500;">Open My Mockups →</a>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <button type="button" class="btn secondary btn-xs hidden" id="mockupDownloadAllZipBtn" title="Download all generated mockups as a single ZIP file">
+                <i data-lucide="archive"></i> Download All (.zip)
+              </button>
+              <a href="#" id="mockupOpenLibLink" style="font-size:12px;color:#38bdf8;text-decoration:none;font-weight:500;">Open My Mockups →</a>
+            </div>
           </div>
 
           <div class="canvas-empty" id="mockupEmpty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center;color:var(--color-ink-60,#94a3b8);">
@@ -6732,7 +6756,8 @@ function renderMockupCreator() {
   renderIcons();
 
   let garmentFiles = []; // Array of { file, previewUrl, name, size }
-  let artworkFile = null;
+  let artworkFiles = []; // Array of { file, previewUrl, name, size }
+  let userEditedMockupCount = false;
   let selectedGarmentColor = "White (#FFFFFF)";
   let abortController = null;
   let generatedResults = [];
@@ -6750,14 +6775,18 @@ function renderMockupCreator() {
 
   const artworkDrop = $("#mockupArtworkDrop");
   const artworkInput = $("#mockupArtworkInput");
-  const artworkEmpty = $("#mockupArtworkEmpty");
-  const artworkPreview = $("#mockupArtworkPreview");
-  const artworkThumb = $("#mockupArtworkThumb");
-  const artworkName = $("#mockupArtworkName");
-  const artworkSize = $("#mockupArtworkSize");
+  const artworkActiveContainer = $("#mockupArtworkActive");
+  const artworkCountBadge = $("#mockupArtworkCountBadge");
+  const artworkStatusText = $("#mockupArtworkStatusText");
+  const artworkThumbsStrip = $("#mockupArtworkThumbsStrip");
+  const artworkFromLibBtn = $("#mockupArtworkFromLibBtn");
+  const artworkFromLibActiveBtn = $("#mockupArtworkFromLibActiveBtn");
+  const artworkAddMoreBtn = $("#mockupArtworkAddMoreBtn");
+  const artworkClearBtn = $("#mockupArtworkClearBtn");
 
   const generateBtn = $("#mockupGenerateBtn");
   const stopBtn = $("#mockupStopBtn");
+  const downloadAllZipBtn = $("#mockupDownloadAllZipBtn");
   const statusCard = $("#mockupStatusCard");
   const progressFill = $("#mockupProgressFill");
   const progressText = $("#mockupProgressText");
@@ -6807,9 +6836,9 @@ function renderMockupCreator() {
     if (abortController) {
       try { abortController.abort(); } catch (_) {}
     }
-    for (const g of garmentFiles) {
-      if (g && g.previewUrl) {
-        try { URL.revokeObjectURL(g.previewUrl); } catch (_) {}
+    for (const item of [...garmentFiles, ...artworkFiles]) {
+      if (item && item.previewUrl) {
+        try { URL.revokeObjectURL(item.previewUrl); } catch (_) {}
       }
     }
   };
@@ -6823,39 +6852,94 @@ function renderMockupCreator() {
   }
 
   function updateVariationsUI() {
-    const vPerGarment = Math.min(20, Math.max(1, parseInt($("#mockupCount").value, 10) || 1));
-    const count = garmentFiles.length;
-    const totalTasks = count > 0 ? count * vPerGarment : vPerGarment;
+    const countInput = $("#mockupCount");
+    const vPerCombo = Math.min(20, Math.max(1, parseInt(countInput?.value, 10) || 1));
+    const gCount = garmentFiles.length;
+    const aCount = artworkFiles.length;
+    const effectiveGarments = gCount > 0 ? gCount : 1;
+    const effectiveArtworks = Math.max(1, aCount);
+    const totalTasks = effectiveGarments * effectiveArtworks * vPerCombo;
+
     const labelEl = $("#mockupVariationsLabel");
     const previewEl = $("#mockupTotalTasksPreview");
     if (labelEl) {
-      labelEl.textContent = count > 1 ? "Variations per mockup" : "Variations";
+      if (aCount > 1 && gCount <= 1) {
+        labelEl.textContent = "Variations per design";
+      } else if (gCount > 1 || aCount > 1) {
+        labelEl.textContent = "Variations per combo";
+      } else {
+        labelEl.textContent = "Variations";
+      }
     }
     if (previewEl) {
-      if (count > 1) {
-        previewEl.textContent = `${count} mockups × ${vPerGarment} = ${totalTasks} total generated`;
+      if (gCount > 0 && aCount > 1) {
+        previewEl.textContent = `${gCount} mockup${gCount === 1 ? "" : "s"} × ${aCount} designs × ${vPerCombo} = ${totalTasks} mockups`;
+      } else if (aCount > 1) {
+        previewEl.textContent = `${aCount} designs × ${vPerCombo} = ${totalTasks} mockups to generate`;
+      } else if (gCount > 1) {
+        previewEl.textContent = `${gCount} mockups × ${vPerCombo} = ${totalTasks} total generated`;
       } else {
         previewEl.textContent = `${totalTasks} mockup${totalTasks === 1 ? "" : "s"} to generate`;
       }
     }
   }
 
-  $("#mockupCount")?.addEventListener("input", updateVariationsUI);
+  $("#mockupCount")?.addEventListener("input", () => {
+    userEditedMockupCount = true;
+    updateVariationsUI();
+  });
+
+  function renderThumbsStrip({ stripEl, items, variantClass = "", delAttr, onRemove, addBtnId, onAddClick, defaultName }) {
+    if (!stripEl) return;
+    const cardClass = variantClass ? `mockup-ref-thumb-card ${variantClass}` : "mockup-ref-thumb-card";
+    const idxClass = variantClass ? `mockup-ref-thumb-idx ${variantClass}` : "mockup-ref-thumb-idx";
+    const addClass = variantClass ? `mockup-ref-add-card ${variantClass}` : "mockup-ref-add-card";
+
+    stripEl.innerHTML = items.map((r, idx) => `
+      <div class="${cardClass}" data-idx="${idx}" title="${esc(r.name || defaultName)} (${formatRefSize(r.size)})">
+        <img src="${r.previewUrl}" alt="${esc(defaultName)} ${idx + 1}" />
+        <button type="button" class="mockup-ref-thumb-del" ${delAttr}="${idx}" title="Remove this item">
+          <i data-lucide="x"></i>
+        </button>
+        <span class="${idxClass}">${idx + 1}</span>
+      </div>
+    `).join("") + `
+      <button type="button" class="${addClass}" id="${addBtnId}" title="Add more (+)">
+        <i data-lucide="plus"></i>
+        <span>Add</span>
+      </button>
+    `;
+
+    stripEl.querySelectorAll(".mockup-ref-thumb-del").forEach((delBtn) => {
+      delBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const delIdx = parseInt(delBtn.getAttribute(delAttr), 10);
+        onRemove(delIdx);
+      });
+    });
+
+    stripEl.querySelector(`#${addBtnId}`)?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onAddClick();
+    });
+  }
 
   function renderGarmentState() {
     const count = garmentFiles.length;
     if (count === 0) {
-      if (garmentDrop) garmentDrop.classList.remove("hidden");
-      if (garmentActiveContainer) garmentActiveContainer.classList.add("hidden");
-      if (garmentCountBadge) garmentCountBadge.classList.add("hidden");
+      garmentDrop?.classList.remove("hidden");
+      garmentActiveContainer?.classList.add("hidden");
+      garmentCountBadge?.classList.add("hidden");
       if (garmentReqBadge) {
         garmentReqBadge.textContent = "REQUIRED";
         garmentReqBadge.style.color = "#38bdf8";
       }
       if (garmentThumbsStrip) garmentThumbsStrip.innerHTML = "";
     } else {
-      if (garmentDrop) garmentDrop.classList.add("hidden");
-      if (garmentActiveContainer) garmentActiveContainer.classList.remove("hidden");
+      garmentDrop?.classList.add("hidden");
+      garmentActiveContainer?.classList.remove("hidden");
       if (garmentCountBadge) {
         garmentCountBadge.textContent = `${count} mockup${count === 1 ? "" : "s"}`;
         garmentCountBadge.classList.remove("hidden");
@@ -6867,64 +6951,95 @@ function renderMockupCreator() {
       if (garmentStatusText) {
         garmentStatusText.textContent = count > 1 ? `${count} mockups ready for generation` : "1 mockup attached";
       }
-
-      if (garmentThumbsStrip) {
-        garmentThumbsStrip.innerHTML = garmentFiles.map((r, idx) => `
-          <div class="mockup-ref-thumb-card" data-idx="${idx}" title="${esc(r.name || "mockup.png")} (${formatRefSize(r.size)})">
-            <img src="${r.previewUrl}" alt="Mockup ${idx + 1}" />
-            <button type="button" class="mockup-ref-thumb-del" data-del-garment="${idx}" title="Remove this mockup reference">
-              <i data-lucide="x"></i>
-            </button>
-            <span class="mockup-ref-thumb-idx">${idx + 1}</span>
-          </div>
-        `).join("") + `
-          <button type="button" class="mockup-ref-add-card" id="mockupGarmentStripAddBtn" title="Add another mockup reference (+)">
-            <i data-lucide="plus"></i>
-            <span>Add</span>
-          </button>
-        `;
-
-        garmentThumbsStrip.querySelectorAll(".mockup-ref-thumb-del").forEach((delBtn) => {
-          delBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const delIdx = parseInt(delBtn.dataset.delGarment, 10);
-            removeGarmentFile(delIdx);
-          });
-        });
-
-        const stripAddBtn = garmentThumbsStrip.querySelector("#mockupGarmentStripAddBtn");
-        stripAddBtn?.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          garmentInput?.click();
-        });
-      }
+      renderThumbsStrip({
+        stripEl: garmentThumbsStrip,
+        items: garmentFiles,
+        variantClass: "",
+        delAttr: "data-del-garment",
+        onRemove: removeGarmentFile,
+        addBtnId: "mockupGarmentStripAddBtn",
+        onAddClick: () => garmentInput?.click(),
+        defaultName: "mockup.png",
+      });
     }
     updateVariationsUI();
     renderIcons();
   }
 
-  function addGarmentFiles(newFiles) {
-    if (!newFiles || newFiles.length === 0) return;
-    const incoming = Array.isArray(newFiles) ? newFiles : Array.from(newFiles);
-    for (const f of incoming) {
-      if (f && f.type?.startsWith("image/")) {
-        garmentFiles.push({
-          file: f,
-          previewUrl: URL.createObjectURL(f),
-          name: f.name || "mockup.png",
-          size: f.size || 0,
-        });
+  function renderArtworkState() {
+    const count = artworkFiles.length;
+    if (count === 0) {
+      artworkDrop?.classList.remove("hidden");
+      artworkActiveContainer?.classList.add("hidden");
+      artworkCountBadge?.classList.add("hidden");
+      if (artworkThumbsStrip) artworkThumbsStrip.innerHTML = "";
+    } else {
+      artworkDrop?.classList.add("hidden");
+      artworkActiveContainer?.classList.remove("hidden");
+      if (artworkCountBadge) {
+        artworkCountBadge.textContent = `${count} design${count === 1 ? "" : "s"}`;
+        artworkCountBadge.classList.remove("hidden");
+      }
+      if (artworkStatusText) {
+        artworkStatusText.textContent = count > 1
+          ? `${count} designs queued • 100% Frozen`
+          : `${artworkFiles[0]?.name ? esc(artworkFiles[0].name.slice(0, 24)) : "1 design"} • Frozen`;
+      }
+      renderThumbsStrip({
+        stripEl: artworkThumbsStrip,
+        items: artworkFiles,
+        variantClass: "artwork",
+        delAttr: "data-del-artwork",
+        onRemove: removeArtworkFile,
+        addBtnId: "mockupArtworkStripAddBtn",
+        onAddClick: () => artworkInput?.click(),
+        defaultName: "design.png",
+      });
+    }
+
+    // Smart default: when batching 2+ designs onto a mockup, default to 1 variation per design unless user explicitly customized it
+    if (!userEditedMockupCount) {
+      const countEl = $("#mockupCount");
+      if (countEl) {
+        countEl.value = count > 1 ? "1" : "3";
       }
     }
-    renderGarmentState();
+
+    updateVariationsUI();
+    renderIcons();
+  }
+
+  function appendImageFiles(targetArr, newFiles, maxItems = 100) {
+    if (!newFiles || newFiles.length === 0) return false;
+    const incoming = Array.isArray(newFiles) ? newFiles : Array.from(newFiles);
+    let added = false;
+    for (const f of incoming) {
+      if (targetArr.length >= maxItems) break;
+      const isImg = f && (f.type?.startsWith("image/") || /.(png|jpe?g|webp|gif|svg|avif)$/i.test(f.name || ""));
+      if (isImg) {
+        targetArr.push({
+          file: f,
+          previewUrl: URL.createObjectURL(f),
+          name: f.name || "asset.png",
+          size: f.size || 0,
+        });
+        added = true;
+      }
+    }
+    return added;
+  }
+
+  function addGarmentFiles(newFiles) {
+    if (appendImageFiles(garmentFiles, newFiles, 50)) {
+      renderGarmentState();
+    }
+    if (garmentInput) garmentInput.value = "";
   }
 
   function removeGarmentFile(index) {
     if (index >= 0 && index < garmentFiles.length) {
       const removed = garmentFiles.splice(index, 1)[0];
-      if (removed && removed.previewUrl) {
+      if (removed?.previewUrl) {
         try { URL.revokeObjectURL(removed.previewUrl); } catch (_) {}
       }
       renderGarmentState();
@@ -6933,7 +7048,7 @@ function renderMockupCreator() {
 
   function clearAllGarments() {
     for (const g of garmentFiles) {
-      if (g && g.previewUrl) {
+      if (g?.previewUrl) {
         try { URL.revokeObjectURL(g.previewUrl); } catch (_) {}
       }
     }
@@ -6942,27 +7057,35 @@ function renderMockupCreator() {
     renderGarmentState();
   }
 
-  function setArtwork(file) {
-    if (!file) return;
-    artworkFile = file;
-    artworkEmpty.classList.add("hidden");
-    artworkPreview.classList.remove("hidden");
-    artworkDrop.classList.add("has-file");
-    artworkThumb.src = URL.createObjectURL(file);
-    artworkName.textContent = file.name || "artwork.png";
-    artworkSize.textContent = formatRefSize(file.size);
-    renderIcons();
+  function addArtworkFiles(newFiles) {
+    if (appendImageFiles(artworkFiles, newFiles, 100)) {
+      renderArtworkState();
+    }
+    if (artworkInput) artworkInput.value = "";
   }
 
-  function clearArtwork() {
-    artworkFile = null;
-    artworkInput.value = "";
-    artworkEmpty.classList.remove("hidden");
-    artworkPreview.classList.add("hidden");
-    artworkDrop.classList.remove("has-file");
+  function removeArtworkFile(index) {
+    if (index >= 0 && index < artworkFiles.length) {
+      const removed = artworkFiles.splice(index, 1)[0];
+      if (removed?.previewUrl) {
+        try { URL.revokeObjectURL(removed.previewUrl); } catch (_) {}
+      }
+      renderArtworkState();
+    }
   }
 
-  // Bind Drop and Paste Support for Garment & Artwork
+  function clearAllArtworks() {
+    for (const a of artworkFiles) {
+      if (a?.previewUrl) {
+        try { URL.revokeObjectURL(a.previewUrl); } catch (_) {}
+      }
+    }
+    artworkFiles = [];
+    if (artworkInput) artworkInput.value = "";
+    renderArtworkState();
+  }
+
+  // Bind Drop and Paste Support for Garments & Artworks
   if (garmentDrop) {
     bindDropAndPasteZone({
       dropzoneEl: garmentDrop,
@@ -6983,9 +7106,15 @@ function renderMockupCreator() {
     bindDropAndPasteZone({
       dropzoneEl: artworkDrop,
       inputEl: artworkInput,
-      onFileReceived: (files) => {
-        if (files && files.length) setArtwork(files[0]);
-      },
+      onFileReceived: addArtworkFiles,
+    });
+  }
+
+  if (artworkActiveContainer) {
+    bindDropAndPasteZone({
+      dropzoneEl: artworkActiveContainer,
+      inputEl: null,
+      onFileReceived: addArtworkFiles,
     });
   }
 
@@ -7001,19 +7130,28 @@ function renderMockupCreator() {
     clearAllGarments();
   });
 
-  artworkDrop?.addEventListener("click", (e) => {
-    if (e.target.closest("#mockupArtworkReplaceBtn")) {
-      e.preventDefault();
-      e.stopPropagation();
-      artworkInput?.click();
-      return;
-    }
-    if (e.target.closest("#mockupArtworkRemoveBtn")) {
-      e.preventDefault();
-      e.stopPropagation();
-      clearArtwork();
-      return;
-    }
+  function launchArtworkLibraryPicker(e) {
+    e?.preventDefault();
+    e?.stopPropagation();
+    openLibraryPicker({
+      currentCount: artworkFiles.length,
+      onConfirm: (files) => addArtworkFiles(files),
+    });
+  }
+
+  artworkFromLibBtn?.addEventListener("click", launchArtworkLibraryPicker);
+  artworkFromLibActiveBtn?.addEventListener("click", launchArtworkLibraryPicker);
+
+  artworkAddMoreBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    artworkInput?.click();
+  });
+
+  artworkClearBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearAllArtworks();
   });
 
   // Color Swatches
@@ -7089,6 +7227,39 @@ function renderMockupCreator() {
     showView("designs");
   });
 
+  // Batch ZIP download handler for generated mockups
+  downloadAllZipBtn?.addEventListener("click", async () => {
+    const ids = generatedResults.map((m) => m.id).filter(Boolean);
+    if (!ids.length) return;
+    const origHtml = downloadAllZipBtn.innerHTML;
+    downloadAllZipBtn.disabled = true;
+    downloadAllZipBtn.innerHTML = `<i data-lucide="loader-2" class="spin"></i> Zipping ${ids.length}...`;
+    renderIcons();
+    try {
+      const res = await fetch("/api/mockups/export-zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error("Failed to bundle mockup zip");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mockups_batch_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Zip download failed: " + (err.message || err));
+    } finally {
+      downloadAllZipBtn.disabled = false;
+      downloadAllZipBtn.innerHTML = origHtml;
+      renderIcons();
+    }
+  });
+
   // Generate Mockups Handler
   generateBtn?.addEventListener("click", async () => {
     if (garmentFiles.length === 0) {
@@ -7096,12 +7267,13 @@ function renderMockupCreator() {
       return;
     }
 
-    const vPerGarment = Math.min(20, Math.max(1, parseInt($("#mockupCount").value, 10) || 1));
-    const totalTasks = garmentFiles.length * vPerGarment;
+    const vPerCombo = Math.min(20, Math.max(1, parseInt($("#mockupCount").value, 10) || 1));
+    const totalTasks = garmentFiles.length * Math.max(1, artworkFiles.length) * vPerCombo;
     const shape = getMockupShape();
 
     generateBtn.disabled = true;
     stopBtn.disabled = false;
+    downloadAllZipBtn?.classList.add("hidden");
     abortController = new AbortController();
 
     emptyState.classList.add("hidden");
@@ -7109,7 +7281,23 @@ function renderMockupCreator() {
     generatedResults = [];
     outCounter.textContent = "0 generated";
 
-    renderPlaceholders(resultsGrid, totalTasks, "mockup-slot");
+    renderPlaceholders(resultsGrid, totalTasks, "mockup-slot", "Generating mockup…");
+
+    // Tag placeholders with each design name when batching multiple artworks
+    if (artworkFiles.length > 1) {
+      let slotCursor = 0;
+      for (let g = 0; g < garmentFiles.length; g++) {
+        for (let a = 0; a < artworkFiles.length; a++) {
+          const cleanName = (artworkFiles[a].name || `Design ${a + 1}`).replace(/\.[^/.]+$/, "");
+          for (let v = 0; v < vPerCombo; v++) {
+            const ph = document.getElementById(`mockup-slot-${slotCursor}`);
+            const lbl = ph?.querySelector(".placeholder-label");
+            if (lbl) lbl.textContent = `Placing "${cleanName.slice(0, 22)}"…`;
+            slotCursor++;
+          }
+        }
+      }
+    }
 
     if (statusCard) statusCard.style.display = "flex";
     if (progressText) progressText.textContent = "Starting parallel fleet mockup generation…";
@@ -7128,12 +7316,14 @@ function renderMockupCreator() {
     garmentFiles.forEach((gf) => {
       fd.append("garment", gf.file);
     });
-    if (artworkFile) fd.append("artwork", artworkFile);
+    artworkFiles.forEach((af) => {
+      fd.append("artwork", af.file);
+    });
     fd.append("productType", $("#mockupProductType").value);
     fd.append("garmentColor", selectedGarmentColor);
     fd.append("scenePrompt", $("#mockupScenePrompt").value.trim());
-    fd.append("variationsPerGarment", vPerGarment);
-    fd.append("count", vPerGarment);
+    fd.append("variationsPerGarment", vPerCombo);
+    fd.append("count", vPerCombo);
     fd.append("aspectRatio", shape);
 
     try {
@@ -7146,6 +7336,9 @@ function renderMockupCreator() {
             resolvePlaceholder(slotId, payload.design);
             generatedResults.push(payload.design);
             outCounter.textContent = `${generatedResults.length} generated`;
+            if (generatedResults.length > 0) {
+              downloadAllZipBtn?.classList.remove("hidden");
+            }
             if (tracker && typeof tracker.finishItem === "function") {
               tracker.finishItem(payload.slotIndex || 0);
             }
