@@ -70,14 +70,14 @@ router.post("/", (req, res) => {
       platform: plat,
       thumbnail_path: thumbRel,
       title: isSocial
-        ? (l.pinterest?.pin_title || l.facebook?.post_title || l.instagram?.hook || l.summary || "Social Media Listing")
+        ? (l.pod_title || l.title || l.pinterest?.pin_title || l.facebook?.post_title || l.instagram?.hook || l.tiktok?.video_title || l.summary || "Social Media Listing")
         : (l.title || null),
-      brand: isSocial ? (l.target_audience || "POD Social Brand") : (l.brand || l.brand_name || l.brandName || null),
+      brand: isSocial ? (l.target_audience || "Social Media") : (l.brand || l.brand_name || l.brandName || null),
       category: isSocial ? "Social Media > Multi-Platform" : (l.category || null),
       bullet1: isSocial ? (l.instagram?.hook || null) : (l.bullet1 || l.bullet_1 || null),
       bullet2: isSocial ? (l.facebook?.post_title || null) : (l.bullet2 || l.bullet_2 || null),
       description: isSocial ? (l.summary || l.instagram?.caption || l.pinterest?.pin_description || null) : (l.description || l.desc || null),
-      main_tag: isSocial ? (l.pinterest?.recommended_board || "Social Media") : (l.mainTag || l.main_tag || null),
+      main_tag: isSocial ? (l.pinterest?.board_name || l.pinterest?.board || l.pinterest?.recommended_board || "Social Media") : (l.mainTag || l.main_tag || null),
       tags: isSocial
         ? [
             ...(Array.isArray(l.instagram?.hashtags) ? l.instagram.hashtags : []),

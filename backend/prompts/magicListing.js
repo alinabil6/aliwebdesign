@@ -243,4 +243,3 @@ ${visBlock}`.trim();
 }
 
 export { buildEtsyPrompt } from "./listingEtsy.js";
-export { buildSocialListingPrompt } from "./listingSocial.js";

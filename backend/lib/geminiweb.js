@@ -840,6 +840,17 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
               const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
               text = (content.innerText || "").trim();
               hasCopyBtn = Boolean(last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]'));
+            } else if (turns.length > 0) {
+              // Fallback: If turn count did not strictly exceed prevCount (e.g. baseline counted stale DOM or reset occurred),
+              // inspect the last turn if it has active completion markers or content
+              const last = turns[turns.length - 1];
+              const copyBtn = last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]');
+              const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
+              const candidate = (content.innerText || "").trim();
+              if (copyBtn || isGenerating || candidate.length > 30) {
+                text = candidate;
+                hasCopyBtn = Boolean(copyBtn);
+              }
             }
 
             return { toastMsg, isGenerating, hasCopyBtn, text };
@@ -856,20 +867,25 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
 
           const trimmed = probe.text;
           if (trimmed.length > 0) {
-            // Early JSON return: As soon as complete braces appear, parse and validate
+            // Early JSON return: As soon as braces appear, parse and validate
             if (trimmed.includes("{") && trimmed.includes("}")) {
               const parsed = extractJSON(trimmed);
               if (parsed && typeof parsed === "object") {
-                if (parsed.title || parsed.main_tag || parsed.bullet1 || parsed.description || parsed.instagram || parsed.facebook || parsed.pinterest || parsed.tiktok || parsed.summary) {
+                if (parsed.title || parsed.main_tag || parsed.bullet1 || parsed.description) {
                   console.log(`[geminiweb] Valid listing JSON detected early (${trimmed.length} chars), returning IMMEDIATELY.`);
                   return trimmed;
                 }
               }
             }
 
-            // Complete generation: Copy button rendered AND generation definitely not active
-            if (probe.hasCopyBtn && !probe.isGenerating && trimmed.length > 20) {
-              console.log(`[geminiweb] Text captured via Copy button + generation complete (${trimmed.length} chars).`);
+            // Fast-path A: Copy button rendered = generation definitely complete (any non-empty text)
+            if (probe.hasCopyBtn && !probe.isGenerating) {
+              console.log(`[geminiweb] Text captured via Copy button + not-generating (${trimmed.length} chars).`);
+              return trimmed;
+            }
+            // Fast-path B: Copy button present even while still in streaming (text is already final for this turn)
+            if (probe.hasCopyBtn && trimmed.length > 5) {
+              console.log(`[geminiweb] Text captured via Copy button detection (${trimmed.length} chars).`);
               return trimmed;
             }
             if (!probe.isGenerating) {
