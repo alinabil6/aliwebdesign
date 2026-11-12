@@ -452,6 +452,11 @@ async function submitPrompt(page, editor) {
       return;
     }
   }
+
+  const dispatched = await checkDispatched();
+  if (!dispatched) {
+    throw new Error("PROMPT_DISPATCH_FAILED: Failed to confirm prompt dispatch in Gemini composer within 20s");
+  }
   console.log("[geminiweb] Prompt submission loop finished.");
 }
 
@@ -611,40 +616,18 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
 
         const editor = await fillPrompt(page, prompt);
         if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+
+        // Double check: verify attachment is STILL mounted in composer after typing prompt
+        if (imagePaths?.length) {
+          const stillAttached = await isAttachmentMountedInComposer(page);
+          if (!stillAttached) {
+            throw new Error(`IMAGE_ATTACHMENT_FAILED: Reference image chip detached during prompt entry. Aborting prompt submission.`);
+          }
+        }
+
         await submitPrompt(page, editor);
 
-        try {
-          return await monitorAndExtractOutput(page, beforeCount, 65000, outputPath, signal);
-        } catch (err) {
-          if (signal?.aborted || err?.name === "AbortError" || (err?.message || "").includes("cancelled by user")) {
-            throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-          }
-
-          const isTextRefusal = (err?.message || "").includes("GEMINI_REFUSED_OR_TEXT");
-          const isHardQuota = /daily limit|reached your limit|quota exceeded|limit reached/i.test(err?.message || "");
-
-          // Single focused in-session nudge (25s) before failing over to alternate fleet account
-          if (isTextRefusal && !isHardQuota && !page.isClosed() && !signal?.aborted) {
-            console.log("[geminiweb] Gemini replied with text. Executing fast in-session nudge (25s)...");
-            const nudgePrompt = "Generate the image as requested above.";
-            try {
-              const countBeforeNudge = await page.locator("model-response img, .response-container img, [data-test-id*='response'] img").count().catch(() => 0);
-              const nudgeEditor = await fillPrompt(page, nudgePrompt);
-              if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-              await submitPrompt(page, nudgeEditor);
-              const result = await monitorAndExtractOutput(page, countBeforeNudge, 25000, outputPath, signal);
-              if (result) {
-                console.log("[geminiweb] In-session nudge succeeded! Image captured on the same account.");
-                return result;
-              }
-            } catch (nudgeErr) {
-              if (signal?.aborted || nudgeErr?.name === "AbortError") throw nudgeErr;
-              console.warn("[geminiweb] In-session nudge failed:", nudgeErr.message.slice(0, 80));
-            }
-            throw new Error("GEMINI_REFUSED_OR_TEXT: In-session nudge failed to generate an image");
-          }
-          throw err;
-        }
+        return await monitorAndExtractOutput(page, beforeCount, 65000, outputPath, signal);
       } finally {
         // Guarantees context detachment and cleans up references even on uncaught selector timeouts
         try {
@@ -686,13 +669,30 @@ export async function ensureGeminiApp(page) {
   }
 
   const isBaseAppUrl = currentUrl.endsWith("/app") || currentUrl.endsWith("/app/");
-  const existingTurns = await page.locator("model-response, user-query").count().catch(() => 0);
+  let existingTurns = await page.locator("model-response, user-query").count().catch(() => 0);
 
-  // If not on base /app or if existing conversation has turns, navigate directly to /app to reset context completely
-  if (!currentUrl.includes("gemini.google.com/app") || !isBaseAppUrl || existingTurns > 0) {
+  // If not on base /app or if existing conversation has turns, reset context cleanly
+  if (!currentUrl.includes("gemini.google.com/app")) {
     await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
     if ((page.url() || "").includes("accounts.google.com")) {
       throw new Error("SESSION_EXPIRED: Account redirected to Google login");
+    }
+  } else if (!isBaseAppUrl || existingTurns > 0) {
+    // 1. Fast reset: Click the official "New chat" button in Gemini UI
+    const newChatBtn = page.locator(
+      'a[href="/app"], a[href="/app/"], button[aria-label*="New chat" i], button[aria-label*="Nouvelle discussion" i], [data-test-id*="new-chat" i]'
+    ).first();
+    if (await newChatBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await newChatBtn.click({ force: true }).catch(() => {});
+      await page.waitForTimeout(400);
+    }
+    existingTurns = await page.locator("model-response, user-query").count().catch(() => 0);
+    // 2. If turns are still present, hard navigate to base GEMINI_URL
+    if (existingTurns > 0 || !(page.url() || "").endsWith("/app")) {
+      await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+      if ((page.url() || "").includes("accounts.google.com")) {
+        throw new Error("SESSION_EXPIRED: Account redirected to Google login");
+      }
     }
   }
 
