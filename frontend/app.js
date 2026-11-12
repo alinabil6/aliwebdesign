@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.34";
+const APP_VERSION = "1.0.26";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -107,6 +107,26 @@ if (typeof window !== "undefined" && window.desktopAPI) {
       <i data-lucide="alert-circle" style="color:#f87171;width:18px;height:18px;"></i>
       <span>Update check: ${esc(err.error || "Unable to check updates")}</span>
     `, 5000);
+    renderIcons();
+  });
+
+  window.desktopAPI.onUpdateDownloaded?.((info) => {
+    showToast(`
+      <i data-lucide="sparkles" style="color:#22c55e;width:18px;height:18px;"></i>
+      <span><strong>Update v${esc(info.version || "")} ready!</strong> Click here to restart & install now.</span>
+    `, 0, () => {
+      window.desktopAPI.restartAndInstall?.();
+    });
+    renderIcons();
+  });
+}
+// End desktop updater listeners
+if (typeof window !== "undefined" && window.desktopAPI) {
+  window.desktopAPI.onUpdateAvailable?.((info) => {
+    showToast(`
+      <i data-lucide="download-cloud" style="color:#38bdf8;width:18px;height:18px;"></i>
+      <span>Downloading <strong>v${esc(info.version || "")}</strong> in background…</span>
+    `, 8000);
     renderIcons();
   });
 
@@ -2483,7 +2503,7 @@ function openLibraryPicker({ currentCount = 0, onConfirm = null } = {}) {
       const cleanTitle = d.user_input && d.user_input !== d.feature ? d.user_input : label;
       return `
         <div class="prep-lib-item ${checked ? "selected" : ""} ${disabled ? "disabled" : ""}" data-id="${esc(d.id)}">
-          <img src="${esc(designImageUrl(d))}" alt="" loading="lazy" />
+          <img src="/library/${esc(d.output_image_path)}" alt="" loading="lazy" />
           <div class="prep-lib-check"><i data-lucide="check"></i></div>
           <div class="prep-lib-caption" title="${esc(cleanTitle)}">${esc(cleanTitle)}</div>
           <div class="prep-lib-meta">${esc(label)}</div>
@@ -4125,10 +4145,7 @@ function renderVariations() {
     }
     generateBtn.disabled = false;
 
-    stopAccountPoll();
-    const progressLabel = $("#mlProgressText") || progressLine?.querySelector("span");
-    const accountText = $("#mlAccountText");
-    if (accountText) accountText.textContent = "Fleet idle";
+    const progressLabel = progressLine.querySelector("span");
     if (progressLabel) {
       progressLabel.textContent = "Generation stopped";
     }
@@ -4142,11 +4159,6 @@ function renderVariations() {
         }
       });
   });
-}
-
-function getPlatformIconSvg(platform, size = 18) {
-  if (window.SocialListing) return window.SocialListing.getPlatformIconSvg(platform, size);
-  return `<i data-lucide="share-2" style="width:${size}px;height:${size}px;"></i>`;
 }
 
 /* ── Magic Listing View ──────────────────────────────────── */
@@ -4166,7 +4178,6 @@ function renderMagicListing() {
     amazon: "Vision-powered Amazon Merch on Demand listings — Brand, Title, Bullets, and Description.",
     teepublic: "Vision-powered TeePublic listings — Title, Description, Main Tag, and Supporting Tags.",
     etsy: "Vision-powered Etsy listings — Title (140 chars), Category, Attributes, 13 Tags, and Description.",
-    social: "Vision-powered Social Media listings & SEO — Instagram, Facebook, Pinterest & TikTok.",
   };
 
   viewMount("magicListing").innerHTML = `
@@ -4180,7 +4191,6 @@ function renderMagicListing() {
           <button type="button" class="platform-toggle-btn active" data-platform="amazon">Amazon Merch</button>
           <button type="button" class="platform-toggle-btn" data-platform="teepublic">TeePublic</button>
           <button type="button" class="platform-toggle-btn" data-platform="etsy">Etsy</button>
-          <button type="button" class="platform-toggle-btn" data-platform="social"><i data-lucide="share-2" style="width:13px;height:13px;vertical-align:-1px;margin-right:4px;"></i>Social Media</button>
         </div>
       </header>
 
@@ -4241,21 +4251,12 @@ function renderMagicListing() {
             <button class="btn secondary" id="mlStop" disabled><i data-lucide="square"></i> Stop</button>
           </div>
 
-          <!-- Integrated Stable Status Card -->
-          <div class="mockup-status-card" id="mlStatusCard" style="display:none; margin-top:12px;">
-            <div class="progress-bar"><div class="progress-fill" id="mlProgressFill" style="width:0%;"></div></div>
-            <div class="mockup-status-row">
-              <span class="mockup-status-label" id="mlProgressText">Crafting listings & keywords… (0%) • ⏱ 00:00</span>
-            </div>
-            <div class="mockup-fleet-row">
-              <span class="mockup-fleet-indicator"></span>
-              <span class="mockup-fleet-text" id="mlAccountText">Fleet active: Connecting accounts…</span>
-            </div>
+          <div class="progress-area hidden" id="mlProgressArea">
+            <p class="progress-line" id="mlProgress"><i data-lucide="refresh-cw"></i> <span>Generating listings…</span></p>
+            <div class="progress-bar"><span class="progress-fill" id="mlProgressFill" style="width:0%"></span></div>
           </div>
         </section>
       </div>
-
-      ${window.SocialListing ? window.SocialListing.renderChannelBarHTML(false) : ""}
 
       <section class="ml-results-section hidden" id="mlResultsSection">
         <div class="results-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem;">
@@ -4263,17 +4264,9 @@ function renderMagicListing() {
             <span>Saved to your library. <a class="text-link" id="mlOpenLibrary" href="#">Open library</a></span>
             <span class="results-count" id="mlOutCount" style="margin-left:0.75rem;">0 listings</span>
           </div>
-          <div class="results-export-actions" style="display:flex;gap:0.5rem;align-items:center;">
-            <button type="button" id="btn-download-social-sheets" class="btn btn-primary btn-sm hidden" title="Download spreadsheet with dedicated sub-sheets for Instagram, Facebook, Pinterest & TikTok (opens in Google Sheets & Excel)">
-              <i data-lucide="file-spreadsheet"></i> Download Multi-Sheet Spreadsheet (Google Sheets)
-            </button>
-            <button type="button" id="btn-download-social-csv" class="btn btn-secondary btn-sm hidden" title="Download standard CSV file">
-              <i data-lucide="download"></i> Download CSV (.csv)
-            </button>
-            <button type="button" id="btn-download-listings-csv" class="btn btn-secondary btn-sm hidden">
-              <i data-lucide="download"></i> Download CSV
-            </button>
-          </div>
+          <button type="button" id="btn-download-listings-csv" class="btn btn-secondary btn-sm hidden">
+            <i data-lucide="download"></i> Download CSV
+          </button>
         </div>
         <div class="ml-results-grid" id="mlResults"></div>
       </section>
@@ -4303,17 +4296,6 @@ function renderMagicListing() {
   // rides along in the generate payload so the backend picks the right prompt.
   const platformToggle = $("#mlPlatformToggle");
   const subtitle = $("#mlSubtitle");
-
-  window.SocialListing?.initChannelBarEvents();
-  const syncMagicListingExportButtons = () => {
-    const hasListings = allListings.length > 0;
-    const resultsAreSocial =
-      hasListings && allListings.every((it) => (it.platform || "").toLowerCase() === "social");
-    $("#btn-download-social-sheets")?.classList.toggle("hidden", !hasListings || !resultsAreSocial);
-    $("#btn-download-social-csv")?.classList.toggle("hidden", !hasListings || !resultsAreSocial);
-    $("#btn-download-listings-csv")?.classList.toggle("hidden", !hasListings || resultsAreSocial);
-  };
-
   platformToggle?.addEventListener("click", (e) => {
     const btn = e.target.closest(".platform-toggle-btn");
     if (!btn || btn.dataset.platform === currentPlatform) return;
@@ -4322,52 +4304,7 @@ function renderMagicListing() {
       b.classList.toggle("active", b === btn)
     );
     if (subtitle) subtitle.textContent = PLATFORM_SUBTITLES[currentPlatform] || "";
-
-    const socialRow = $("#mlSocialPlatformsRow");
-    if (socialRow) {
-      socialRow.classList.toggle("hidden", currentPlatform !== "social");
-    }
-    syncMagicListingExportButtons();
-    renderIcons();
   });
-
-  // Fleet account polling for live tracker
-  let accountPoll = null;
-  async function refreshAccountLine() {
-    try {
-      const data = await api("/api/accounts");
-      const busy = (data.accounts || []).filter((a) => a.status === "generating" || a.status === "running");
-      const accountText = $("#mlAccountText");
-      if (accountText) {
-        if (busy.length > 0) {
-          const names = busy.map((a) => (a.email || "").trim() || "Google account");
-          accountText.textContent = names.length === 1
-            ? `Fleet active: Generating on ${names[0]}`
-            : `Fleet active: Generating on ${names[0]} +${names.length - 1} more`;
-        } else {
-          accountText.textContent = "Fleet active: Finalizing output…";
-        }
-      }
-      refreshTopBar();
-    } catch {
-      // Keep steady
-    }
-  }
-
-  function startAccountPoll() {
-    refreshAccountLine();
-    if (!accountPoll) {
-      accountPoll = setInterval(refreshAccountLine, 2000);
-    }
-  }
-
-  function stopAccountPoll() {
-    if (accountPoll) {
-      clearInterval(accountPoll);
-      accountPoll = null;
-    }
-    refreshTopBar();
-  }
 
   // ── Reference data: drag-and-drop + file upload + undo ──────
   // Accepts .txt / .csv / .json / .tsv (and any text-ish file). The file is
@@ -4579,36 +4516,10 @@ function renderMagicListing() {
   });
 
   const downloadCsvBtn = $("#btn-download-listings-csv");
-  downloadCsvBtn?.addEventListener("click", () => {
-    const resultsAreSocial =
-      allListings.length > 0 &&
-      allListings.every((it) => (it.platform || "").toLowerCase() === "social");
-    if (resultsAreSocial) {
-      exportSocialToCSV(allListings);
-    } else {
-      exportListingsToCSV(allListings);
-    }
-  });
+  downloadCsvBtn?.addEventListener("click", () => exportListingsToCSV(allListings));
 
-  const downloadSocialSheetsBtn = $("#btn-download-social-sheets");
-  downloadSocialSheetsBtn?.addEventListener("click", () => exportSocialToXLSX(allListings));
-
-  const downloadSocialCsvBtn = $("#btn-download-social-csv");
-  downloadSocialCsvBtn?.addEventListener("click", () => exportSocialToCSV(allListings));
-
-  // Tab switching and copy buttons inside listing cards
+  // Copy buttons inside listing cards — reuse the studio's clipboard helper.
   $("#mlResults").addEventListener("click", (e) => {
-    const tabBtn = e.target.closest(".social-tab-btn");
-    if (tabBtn) {
-      const card = tabBtn.closest(".ml-card");
-      if (card) {
-        const targetTab = tabBtn.dataset.tab;
-        card.querySelectorAll(".social-tab-btn").forEach((b) => b.classList.toggle("active", b === tabBtn));
-        card.querySelectorAll(".social-tab-pane").forEach((p) => p.classList.toggle("active", p.dataset.pane === targetTab));
-      }
-      return;
-    }
-
     const btn = e.target.closest(".ml-copy");
     if (!btn) return;
     copyWithFeedback(btn, btn.dataset.copy, btn.title.replace("Copy ", ""));
@@ -4617,36 +4528,14 @@ function renderMagicListing() {
   generateBtn.addEventListener("click", async () => {
     if (listingFiles.length === 0) return alert("Upload at least one design to generate listings for.");
 
-    const isSocialMode = currentPlatform === "social";
-    if (isSocialMode && window.SocialListing) {
-      try {
-        window.SocialListing.getRequestConfig([], refData.value.trim());
-      } catch (err) {
-        return alert(err.message);
-      }
-    }
-
     abortController = new AbortController();
     generateBtn.disabled = true;
     stopBtn.disabled = false;
     downloadCsvBtn?.classList.add("hidden");
-    downloadSocialSheetsBtn?.classList.add("hidden");
-    downloadSocialCsvBtn?.classList.add("hidden");
-
-    const statusCard = $("#mlStatusCard");
-    const progressFill = $("#mlProgressFill");
-    const progressText = $("#mlProgressText");
-    const accountText = $("#mlAccountText");
-    const labelEl = progressText || progressLine?.querySelector("span") || { textContent: "", style: {} };
-
-    if (statusCard) statusCard.style.display = "flex";
-    if (progressFill) progressFill.style.width = "0%";
-    if (progressText) {
-      progressText.textContent = "Preparing designs… (0%) • ⏱ 00:00";
-      progressText.style.color = "";
-    }
-    if (accountText) accountText.textContent = "Fleet active: Connecting accounts…";
-
+    progressArea.classList.remove("hidden");
+    const labelEl = progressLine.querySelector("span");
+    labelEl.textContent = "Preparing designs…";
+    labelEl.style.color = "";
     $("#mlResultsSection").classList.remove("hidden");
     $("#mlResults").innerHTML = "";
     $("#mlOutCount").textContent = "0 listings";
@@ -4684,31 +4573,23 @@ function renderMagicListing() {
 
       tracker = new GenerationProgressTracker({
         barEl: $("#mlProgressFill"),
-        labelEl: $("#mlProgressText"),
+        labelEl,
         totalItems: designs.length,
-        isTextMode: true,
       });
+      // Start tracker for each design
       designs.forEach((_, idx) => tracker.startItem(idx));
-      startAccountPoll();
-
-      const reqConfig = isSocialMode && window.SocialListing
-        ? window.SocialListing.getRequestConfig(designs, referenceData)
-        : {
-            endpoint: "/api/magic-listing/batch",
-            body: {
-              designs,
-              referenceData,
-              platform: currentPlatform,
-            },
-          };
 
       // Stream each finished listing back as it completes on the fleet
       await fetchStreamNDJSON(
-        reqConfig.endpoint,
+        "/api/magic-listing/batch",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(reqConfig.body),
+          body: JSON.stringify({
+            designs,
+            referenceData,
+            platform: currentPlatform,
+          }),
           signal: abortController.signal,
         },
         (payload) => {
@@ -4748,7 +4629,7 @@ function renderMagicListing() {
             }
             renderIcons();
             $("#mlOutCount").textContent = `${allListings.length} listing${allListings.length === 1 ? "" : "s"}`;
-            syncMagicListingExportButtons();
+            if (downloadCsvBtn) downloadCsvBtn.classList.remove("hidden");
           } else if (payload.event === "listing_retrying") {
             const slotIdx = (payload.designIndex ?? 1) - 1;
             const slotId = `ml-slot-${slotIdx}`;
@@ -4785,9 +4666,6 @@ function renderMagicListing() {
         labelEl.style.color = "#f59e0b";
       }
     } finally {
-      stopAccountPoll();
-      const accountText = $("#mlAccountText");
-      if (accountText) accountText.textContent = "Fleet ready: All operations complete";
       generateBtn.disabled = false;
       stopBtn.disabled = true;
       abortController = null;
@@ -4833,29 +4711,15 @@ function renderMagicListing() {
   });
 }
 
-
-/** Trigger a client-side file download with safe deferred ObjectURL cleanup */
-function triggerBlobDownload(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
-/** Escape a single cell for RFC-4180 CSV output */
-function escapeCSVCell(val) {
-  if (val === null || val === undefined) return '""';
-  const str = String(val).replace(/\r\n/g, " ").replace(/[\r\n]/g, " ");
-  return `"${str.replace(/"/g, '""')}"`;
-}
-
-/** Export generated POD / marketplace listings (Amazon Merch, TeePublic, Etsy, or mixed) to CSV */
+/** Export structured listing data to an RFC-4180 compliant CSV file. */
 function exportListingsToCSV(listingsData) {
-  if (!listingsData || !listingsData.length) return alert("No listings to export.");
+  if (!listingsData || !listingsData.length) return;
+
+  const escapeCSV = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val);
+    return `"${str.replace(/"/g, '""')}"`;
+  };
 
   const headers = [
     "Design ID",
@@ -4872,97 +4736,85 @@ function exportListingsToCSV(listingsData) {
     "Generated At",
   ];
 
-  const rows = listingsData.map((it) => {
-    const d = it.listing || {};
-    const platform = (it.platform || d.platform || "").toLowerCase();
+  const rows = listingsData.map((item) => {
+    const d = item.listing || {};
+    const platform = (item.platform || "amazon").toLowerCase();
+    const id = item.designIndex ?? "";
+    const fileName = item.fileName || `Design #${id}`;
+    const generatedAt = new Date().toISOString();
 
-    const rawTags = [];
-    if (d.mainTag) rawTags.push(d.mainTag);
-    if (d.main_tag) rawTags.push(d.main_tag);
-    if (Array.isArray(d.supportingTags)) rawTags.push(...d.supportingTags);
-    if (Array.isArray(d.supporting_tags)) rawTags.push(...d.supporting_tags);
-    if (Array.isArray(d.tags)) rawTags.push(...d.tags);
-    else if (typeof d.tags === "string" && d.tags.trim()) rawTags.push(d.tags.trim());
-    if (typeof d.hashtags === "string" && d.hashtags.trim()) rawTags.push(d.hashtags.trim());
-    else if (Array.isArray(d.hashtags)) rawTags.push(...d.hashtags);
-    if (typeof d.pin_tags === "string" && d.pin_tags.trim()) rawTags.push(d.pin_tags.trim());
-    else if (Array.isArray(d.pin_tags)) rawTags.push(...d.pin_tags);
+    let title = d.title || "";
+    let brand = "";
+    let category = "";
+    let bullet1 = "";
+    let bullet2 = "";
+    let tagsKeywords = "";
+    let attributesStr = "";
+    let description = d.description || d.desc || "";
 
-    const seenTags = new Set();
-    const dedupedTags = [];
-    for (const t of rawTags) {
-      const cleaned = String(t || "").trim();
-      if (!cleaned) continue;
-      const key = cleaned.toLowerCase();
-      if (!seenTags.has(key)) {
-        seenTags.add(key);
-        dedupedTags.push(cleaned);
+    if (platform === "amazon") {
+      brand = d.brand || d.brand_name || d.brandName || "";
+      bullet1 = d.bullet1 || d.bullet_1 || "";
+      bullet2 = d.bullet2 || d.bullet_2 || "";
+    } else if (platform === "teepublic") {
+      const mainTag = d.mainTag || d.main_tag || "";
+      const supporting = Array.isArray(d.supportingTags)
+        ? d.supportingTags
+        : Array.isArray(d.supporting_tags)
+          ? d.supporting_tags
+          : [];
+      tagsKeywords = [mainTag, ...supporting].filter(Boolean).join(", ");
+    } else if (platform === "etsy") {
+      category = d.category || "Clothing > Unisex Adult Clothing > Tops & Tees > T-shirts";
+      const tags = Array.isArray(d.tags)
+        ? d.tags
+        : Array.isArray(d.supporting_tags)
+          ? d.supporting_tags
+          : [];
+      tagsKeywords = tags.join(", ");
+      if (d.attributes && typeof d.attributes === "object") {
+        attributesStr = Object.entries(d.attributes)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(" | ");
       }
     }
 
-    let attrText = "";
-    if (d.attributes && typeof d.attributes === "object" && !Array.isArray(d.attributes)) {
-      attrText = Object.entries(d.attributes)
-        .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "")
-        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
-        .join(" | ");
-    } else if (typeof d.attributes === "string") {
-      attrText = d.attributes;
-    }
-
-    const title = d.title || d.pod_title || "";
-    const brand = d.brand || "";
-    const category = d.category || d.board_name || "";
-    const bullet1 = d.bullet1 || d.bullet_1 || "";
-    const bullet2 = d.bullet2 || d.bullet_2 || "";
-    const description =
-      d.description ||
-      d.pin_description ||
-      d.ig_caption ||
-      d.fb_caption ||
-      d.tt_caption ||
-      "";
-    const generatedAt = it.generatedAt || it.created_at || new Date().toISOString();
-
     return [
-      it.designIndex || "",
-      it.fileName || d.file_name || "",
-      platform,
-      title,
-      brand,
-      category,
-      bullet1,
-      bullet2,
-      dedupedTags.join(", "),
-      attrText,
-      description,
-      generatedAt,
-    ]
-      .map(escapeCSVCell)
-      .join(",");
+      escapeCSV(id),
+      escapeCSV(fileName),
+      escapeCSV(platform),
+      escapeCSV(title),
+      escapeCSV(brand),
+      escapeCSV(category),
+      escapeCSV(bullet1),
+      escapeCSV(bullet2),
+      escapeCSV(tagsKeywords),
+      escapeCSV(attributesStr),
+      escapeCSV(description),
+      escapeCSV(generatedAt),
+    ].join(",");
   });
 
-  const csvContent = "\uFEFF" + [headers.map(escapeCSVCell).join(","), ...rows].join("\r\n");
+  const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
   const dateStr = new Date().toISOString().slice(0, 10);
-  triggerBlobDownload(blob, `magic_listings_export_${dateStr}.csv`);
+  a.href = url;
+  a.download = `magic_listings_export_${dateStr}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-/** Export Social Media multi-sheet spreadsheet (.xlsx) via dedicated SocialListing module */
-async function exportSocialToXLSX(listingsData) {
-  if (window.SocialListing) return window.SocialListing.exportXLSX(listingsData);
-  return alert("Social Media export module not loaded.");
-}
-
-/** Export Social Media CSV file via dedicated SocialListing module */
-function exportSocialToCSV(listingsData) {
-  if (window.SocialListing) return window.SocialListing.exportCSV(listingsData);
-  return alert("Social Media export module not loaded.");
-}
-
+/** Render one Magic Listing result card with copy-to-clipboard affordances.
+ *  `item` = { designIndex, fileName, thumbnailUrl, platform, listing }.
+ *  Amazon renders Brand/Title/Bullets/Description; TeePublic renders
+ *  Title/Description/Main Tag/Supporting Tags with a "Copy All Tags" button;
+ *  Etsy renders Title (140 chars), Category, Attributes, 13 Tags, and Description. */
 function magicListingCard(item) {
   const data = item.listing || {};
-  const isSocial = item.platform === "social";
   const isTeePublic = item.platform === "teepublic";
   const isEtsy = item.platform === "etsy";
 
@@ -4975,10 +4827,6 @@ function magicListingCard(item) {
     <button type="button" class="btn secondary btn-sm ml-copy" data-copy="${esc(text)}" title="Copy ${label}">
       <i data-lucide="copy"></i> ${label}
     </button>`;
-
-  if (isSocial && window.SocialListing) {
-    return window.SocialListing.renderCard(item, { copyBtn, timeBadge });
-  }
 
   // ── Etsy card ──────────────────────────────────────────────
   if (isEtsy) {
@@ -6144,53 +5992,34 @@ function renderMockupCreator() {
             </div>
           </div>
 
-          <!-- Artwork Design Dropzone (Optional, Multi-Design Batch Support) -->
+          <!-- Artwork Design Dropzone (Optional) -->
           <div>
-            <div class="mockup-section-label-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span class="mockup-section-label">Artwork to Place</span>
-                <span class="mockup-ref-count-badge hidden" id="mockupArtworkCountBadge" style="font-size:10px;font-weight:700;color:#10b981;background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:9999px;">0 designs</span>
-              </div>
+            <div class="mockup-section-label-row">
+              <span class="mockup-section-label">Artwork to Place</span>
               <span style="font-size:10px;font-weight:700;color:#10b981;background:rgba(16,185,129,0.12);padding:2px 8px;border-radius:9999px;">FROZEN PIXELS • ZERO REDRAW</span>
             </div>
-
-            <!-- Empty Artwork Dropzone -->
-            <div class="mockup-dropzone" id="mockupArtworkDrop" tabindex="0" role="button" aria-label="Upload Artwork Graphics">
-              <input type="file" id="mockupArtworkInput" accept="image/*" multiple style="display:none;" />
+            <div class="mockup-dropzone" id="mockupArtworkDrop" tabindex="0" role="button" aria-label="Upload Artwork Graphic">
+              <input type="file" id="mockupArtworkInput" accept="image/*" style="display:none;" />
               <div class="mockup-drop-empty" id="mockupArtworkEmpty">
                 <div class="mockup-drop-icon" style="background:rgba(16,185,129,0.14);border-color:rgba(16,185,129,0.3);color:#10b981;"><i data-lucide="sparkles"></i></div>
                 <div class="mockup-drop-texts">
-                  <div class="mockup-drop-title">Upload Artwork Designs (Optional)</div>
-                  <div class="mockup-drop-sub">PNG, JPG · Drop 1 or multiple designs (e.g. 10+), or paste (Ctrl+V)</div>
-                </div>
-                <div style="margin-top:8px;">
-                  <button type="button" class="btn secondary btn-xs" id="mockupArtworkFromLibBtn" style="border-radius:9999px;font-size:11px;padding:3px 10px;" title="Import 1 or multiple saved designs from My Library">
-                    <i data-lucide="library" style="width:12px;height:12px;"></i> From My Library
-                  </button>
+                  <div class="mockup-drop-title">Upload Artwork Graphic (Optional)</div>
+                  <div class="mockup-drop-sub">PNG with transparency • 100% frozen onto fabric</div>
                 </div>
               </div>
-            </div>
-
-            <!-- Active Multi-Artwork Container -->
-            <div class="mockup-ref-active-container hidden" id="mockupArtworkActive" tabindex="0" style="border-color:rgba(16,185,129,0.35);">
-              <div class="mockup-ref-header">
-                <span class="mockup-ref-status-tag" id="mockupArtworkStatusTag" style="color:#10b981;">
-                  <i data-lucide="shield-check"></i> <span id="mockupArtworkStatusText">1 design frozen</span>
-                </span>
-                <div class="mockup-ref-actions">
-                  <button type="button" class="btn secondary btn-xs" id="mockupArtworkFromLibActiveBtn" title="Add more saved designs from My Library">
-                    <i data-lucide="library"></i> Library
-                  </button>
-                  <button type="button" class="btn secondary btn-xs" id="mockupArtworkAddMoreBtn" title="Add more artwork designs">
-                    <i data-lucide="plus"></i> Add more
-                  </button>
-                  <button type="button" class="btn secondary btn-xs danger" id="mockupArtworkClearBtn" title="Remove all artwork designs">
-                    <i data-lucide="trash-2"></i> Delete all
-                  </button>
+              <div class="mockup-preview hidden" id="mockupArtworkPreview">
+                <div class="mockup-thumb-wrap">
+                  <img id="mockupArtworkThumb" alt="Artwork Preview" />
                 </div>
-              </div>
-              <div class="mockup-ref-thumbs-strip" id="mockupArtworkThumbsStrip">
-                <!-- Dynamically populated artwork thumbnails and add button -->
+                <div class="mockup-meta">
+                  <div class="mockup-filename" id="mockupArtworkName">artwork.png</div>
+                  <div class="mockup-filesize" id="mockupArtworkSize">540 KB</div>
+                  <div class="mockup-status-tag" style="color:#10b981;"><i data-lucide="shield-check"></i> Frozen Immutable Asset</div>
+                </div>
+                <div class="mockup-actions">
+                  <button type="button" class="btn secondary btn-sm" id="mockupArtworkReplaceBtn" title="Replace Artwork">Replace</button>
+                  <button type="button" class="icon-btn danger btn-sm" id="mockupArtworkRemoveBtn" title="Remove Artwork"><i data-lucide="trash-2"></i></button>
+                </div>
               </div>
             </div>
           </div>
@@ -6295,17 +6124,12 @@ function renderMockupCreator() {
 
         <!-- Output Canvas Column -->
         <div class="mockup-output-panel">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:10px;">
               <span style="font-weight:700;font-size:14px;color:var(--color-ink,#f1f5f9);">Output Canvas</span>
               <span class="results-count" id="mockupOutCount">0 generated</span>
             </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <button type="button" class="btn secondary btn-xs hidden" id="mockupDownloadAllZipBtn" title="Download all generated mockups as a single ZIP file">
-                <i data-lucide="archive"></i> Download All (.zip)
-              </button>
-              <a href="#" id="mockupOpenLibLink" style="font-size:12px;color:#38bdf8;text-decoration:none;font-weight:500;">Open My Mockups →</a>
-            </div>
+            <a href="#" id="mockupOpenLibLink" style="font-size:12px;color:#38bdf8;text-decoration:none;font-weight:500;">Open My Mockups →</a>
           </div>
 
           <div class="canvas-empty" id="mockupEmpty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center;color:var(--color-ink-60,#94a3b8);">
@@ -6322,8 +6146,7 @@ function renderMockupCreator() {
   renderIcons();
 
   let garmentFiles = []; // Array of { file, previewUrl, name, size }
-  let artworkFiles = []; // Array of { file, previewUrl, name, size }
-  let userEditedMockupCount = false;
+  let artworkFile = null;
   let selectedGarmentColor = "White (#FFFFFF)";
   let abortController = null;
   let generatedResults = [];
@@ -6341,18 +6164,14 @@ function renderMockupCreator() {
 
   const artworkDrop = $("#mockupArtworkDrop");
   const artworkInput = $("#mockupArtworkInput");
-  const artworkActiveContainer = $("#mockupArtworkActive");
-  const artworkCountBadge = $("#mockupArtworkCountBadge");
-  const artworkStatusText = $("#mockupArtworkStatusText");
-  const artworkThumbsStrip = $("#mockupArtworkThumbsStrip");
-  const artworkFromLibBtn = $("#mockupArtworkFromLibBtn");
-  const artworkFromLibActiveBtn = $("#mockupArtworkFromLibActiveBtn");
-  const artworkAddMoreBtn = $("#mockupArtworkAddMoreBtn");
-  const artworkClearBtn = $("#mockupArtworkClearBtn");
+  const artworkEmpty = $("#mockupArtworkEmpty");
+  const artworkPreview = $("#mockupArtworkPreview");
+  const artworkThumb = $("#mockupArtworkThumb");
+  const artworkName = $("#mockupArtworkName");
+  const artworkSize = $("#mockupArtworkSize");
 
   const generateBtn = $("#mockupGenerateBtn");
   const stopBtn = $("#mockupStopBtn");
-  const downloadAllZipBtn = $("#mockupDownloadAllZipBtn");
   const statusCard = $("#mockupStatusCard");
   const progressFill = $("#mockupProgressFill");
   const progressText = $("#mockupProgressText");
@@ -6402,9 +6221,9 @@ function renderMockupCreator() {
     if (abortController) {
       try { abortController.abort(); } catch (_) {}
     }
-    for (const item of [...garmentFiles, ...artworkFiles]) {
-      if (item && item.previewUrl) {
-        try { URL.revokeObjectURL(item.previewUrl); } catch (_) {}
+    for (const g of garmentFiles) {
+      if (g && g.previewUrl) {
+        try { URL.revokeObjectURL(g.previewUrl); } catch (_) {}
       }
     }
   };
@@ -6418,94 +6237,39 @@ function renderMockupCreator() {
   }
 
   function updateVariationsUI() {
-    const countInput = $("#mockupCount");
-    const vPerCombo = Math.min(20, Math.max(1, parseInt(countInput?.value, 10) || 1));
-    const gCount = garmentFiles.length;
-    const aCount = artworkFiles.length;
-    const effectiveGarments = gCount > 0 ? gCount : 1;
-    const effectiveArtworks = Math.max(1, aCount);
-    const totalTasks = effectiveGarments * effectiveArtworks * vPerCombo;
-
+    const vPerGarment = Math.min(20, Math.max(1, parseInt($("#mockupCount").value, 10) || 1));
+    const count = garmentFiles.length;
+    const totalTasks = count > 0 ? count * vPerGarment : vPerGarment;
     const labelEl = $("#mockupVariationsLabel");
     const previewEl = $("#mockupTotalTasksPreview");
     if (labelEl) {
-      if (aCount > 1 && gCount <= 1) {
-        labelEl.textContent = "Variations per design";
-      } else if (gCount > 1 || aCount > 1) {
-        labelEl.textContent = "Variations per combo";
-      } else {
-        labelEl.textContent = "Variations";
-      }
+      labelEl.textContent = count > 1 ? "Variations per mockup" : "Variations";
     }
     if (previewEl) {
-      if (gCount > 0 && aCount > 1) {
-        previewEl.textContent = `${gCount} mockup${gCount === 1 ? "" : "s"} × ${aCount} designs × ${vPerCombo} = ${totalTasks} mockups`;
-      } else if (aCount > 1) {
-        previewEl.textContent = `${aCount} designs × ${vPerCombo} = ${totalTasks} mockups to generate`;
-      } else if (gCount > 1) {
-        previewEl.textContent = `${gCount} mockups × ${vPerCombo} = ${totalTasks} total generated`;
+      if (count > 1) {
+        previewEl.textContent = `${count} mockups × ${vPerGarment} = ${totalTasks} total generated`;
       } else {
         previewEl.textContent = `${totalTasks} mockup${totalTasks === 1 ? "" : "s"} to generate`;
       }
     }
   }
 
-  $("#mockupCount")?.addEventListener("input", () => {
-    userEditedMockupCount = true;
-    updateVariationsUI();
-  });
-
-  function renderThumbsStrip({ stripEl, items, variantClass = "", delAttr, onRemove, addBtnId, onAddClick, defaultName }) {
-    if (!stripEl) return;
-    const cardClass = variantClass ? `mockup-ref-thumb-card ${variantClass}` : "mockup-ref-thumb-card";
-    const idxClass = variantClass ? `mockup-ref-thumb-idx ${variantClass}` : "mockup-ref-thumb-idx";
-    const addClass = variantClass ? `mockup-ref-add-card ${variantClass}` : "mockup-ref-add-card";
-
-    stripEl.innerHTML = items.map((r, idx) => `
-      <div class="${cardClass}" data-idx="${idx}" title="${esc(r.name || defaultName)} (${formatRefSize(r.size)})">
-        <img src="${r.previewUrl}" alt="${esc(defaultName)} ${idx + 1}" />
-        <button type="button" class="mockup-ref-thumb-del" ${delAttr}="${idx}" title="Remove this item">
-          <i data-lucide="x"></i>
-        </button>
-        <span class="${idxClass}">${idx + 1}</span>
-      </div>
-    `).join("") + `
-      <button type="button" class="${addClass}" id="${addBtnId}" title="Add more (+)">
-        <i data-lucide="plus"></i>
-        <span>Add</span>
-      </button>
-    `;
-
-    stripEl.querySelectorAll(".mockup-ref-thumb-del").forEach((delBtn) => {
-      delBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const delIdx = parseInt(delBtn.getAttribute(delAttr), 10);
-        onRemove(delIdx);
-      });
-    });
-
-    stripEl.querySelector(`#${addBtnId}`)?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      onAddClick();
-    });
-  }
+  $("#mockupCount")?.addEventListener("input", updateVariationsUI);
 
   function renderGarmentState() {
     const count = garmentFiles.length;
     if (count === 0) {
-      garmentDrop?.classList.remove("hidden");
-      garmentActiveContainer?.classList.add("hidden");
-      garmentCountBadge?.classList.add("hidden");
+      if (garmentDrop) garmentDrop.classList.remove("hidden");
+      if (garmentActiveContainer) garmentActiveContainer.classList.add("hidden");
+      if (garmentCountBadge) garmentCountBadge.classList.add("hidden");
       if (garmentReqBadge) {
         garmentReqBadge.textContent = "REQUIRED";
         garmentReqBadge.style.color = "#38bdf8";
       }
       if (garmentThumbsStrip) garmentThumbsStrip.innerHTML = "";
     } else {
-      garmentDrop?.classList.add("hidden");
-      garmentActiveContainer?.classList.remove("hidden");
+      if (garmentDrop) garmentDrop.classList.add("hidden");
+      if (garmentActiveContainer) garmentActiveContainer.classList.remove("hidden");
       if (garmentCountBadge) {
         garmentCountBadge.textContent = `${count} mockup${count === 1 ? "" : "s"}`;
         garmentCountBadge.classList.remove("hidden");
@@ -6517,95 +6281,64 @@ function renderMockupCreator() {
       if (garmentStatusText) {
         garmentStatusText.textContent = count > 1 ? `${count} mockups ready for generation` : "1 mockup attached";
       }
-      renderThumbsStrip({
-        stripEl: garmentThumbsStrip,
-        items: garmentFiles,
-        variantClass: "",
-        delAttr: "data-del-garment",
-        onRemove: removeGarmentFile,
-        addBtnId: "mockupGarmentStripAddBtn",
-        onAddClick: () => garmentInput?.click(),
-        defaultName: "mockup.png",
-      });
-    }
-    updateVariationsUI();
-    renderIcons();
-  }
 
-  function renderArtworkState() {
-    const count = artworkFiles.length;
-    if (count === 0) {
-      artworkDrop?.classList.remove("hidden");
-      artworkActiveContainer?.classList.add("hidden");
-      artworkCountBadge?.classList.add("hidden");
-      if (artworkThumbsStrip) artworkThumbsStrip.innerHTML = "";
-    } else {
-      artworkDrop?.classList.add("hidden");
-      artworkActiveContainer?.classList.remove("hidden");
-      if (artworkCountBadge) {
-        artworkCountBadge.textContent = `${count} design${count === 1 ? "" : "s"}`;
-        artworkCountBadge.classList.remove("hidden");
-      }
-      if (artworkStatusText) {
-        artworkStatusText.textContent = count > 1
-          ? `${count} designs queued • 100% Frozen`
-          : `${artworkFiles[0]?.name ? esc(artworkFiles[0].name.slice(0, 24)) : "1 design"} • Frozen`;
-      }
-      renderThumbsStrip({
-        stripEl: artworkThumbsStrip,
-        items: artworkFiles,
-        variantClass: "artwork",
-        delAttr: "data-del-artwork",
-        onRemove: removeArtworkFile,
-        addBtnId: "mockupArtworkStripAddBtn",
-        onAddClick: () => artworkInput?.click(),
-        defaultName: "design.png",
-      });
-    }
+      if (garmentThumbsStrip) {
+        garmentThumbsStrip.innerHTML = garmentFiles.map((r, idx) => `
+          <div class="mockup-ref-thumb-card" data-idx="${idx}" title="${esc(r.name || "mockup.png")} (${formatRefSize(r.size)})">
+            <img src="${r.previewUrl}" alt="Mockup ${idx + 1}" />
+            <button type="button" class="mockup-ref-thumb-del" data-del-garment="${idx}" title="Remove this mockup reference">
+              <i data-lucide="x"></i>
+            </button>
+            <span class="mockup-ref-thumb-idx">${idx + 1}</span>
+          </div>
+        `).join("") + `
+          <button type="button" class="mockup-ref-add-card" id="mockupGarmentStripAddBtn" title="Add another mockup reference (+)">
+            <i data-lucide="plus"></i>
+            <span>Add</span>
+          </button>
+        `;
 
-    // Smart default: when batching 2+ designs onto a mockup, default to 1 variation per design unless user explicitly customized it
-    if (!userEditedMockupCount) {
-      const countEl = $("#mockupCount");
-      if (countEl) {
-        countEl.value = count > 1 ? "1" : "3";
-      }
-    }
-
-    updateVariationsUI();
-    renderIcons();
-  }
-
-  function appendImageFiles(targetArr, newFiles, maxItems = 100) {
-    if (!newFiles || newFiles.length === 0) return false;
-    const incoming = Array.isArray(newFiles) ? newFiles : Array.from(newFiles);
-    let added = false;
-    for (const f of incoming) {
-      if (targetArr.length >= maxItems) break;
-      const isImg = f && (f.type?.startsWith("image/") || /.(png|jpe?g|webp|gif|svg|avif)$/i.test(f.name || ""));
-      if (isImg) {
-        targetArr.push({
-          file: f,
-          previewUrl: URL.createObjectURL(f),
-          name: f.name || "asset.png",
-          size: f.size || 0,
+        garmentThumbsStrip.querySelectorAll(".mockup-ref-thumb-del").forEach((delBtn) => {
+          delBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const delIdx = parseInt(delBtn.dataset.delGarment, 10);
+            removeGarmentFile(delIdx);
+          });
         });
-        added = true;
+
+        const stripAddBtn = garmentThumbsStrip.querySelector("#mockupGarmentStripAddBtn");
+        stripAddBtn?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          garmentInput?.click();
+        });
       }
     }
-    return added;
+    updateVariationsUI();
+    renderIcons();
   }
 
   function addGarmentFiles(newFiles) {
-    if (appendImageFiles(garmentFiles, newFiles, 50)) {
-      renderGarmentState();
+    if (!newFiles || newFiles.length === 0) return;
+    const incoming = Array.isArray(newFiles) ? newFiles : Array.from(newFiles);
+    for (const f of incoming) {
+      if (f && f.type?.startsWith("image/")) {
+        garmentFiles.push({
+          file: f,
+          previewUrl: URL.createObjectURL(f),
+          name: f.name || "mockup.png",
+          size: f.size || 0,
+        });
+      }
     }
-    if (garmentInput) garmentInput.value = "";
+    renderGarmentState();
   }
 
   function removeGarmentFile(index) {
     if (index >= 0 && index < garmentFiles.length) {
       const removed = garmentFiles.splice(index, 1)[0];
-      if (removed?.previewUrl) {
+      if (removed && removed.previewUrl) {
         try { URL.revokeObjectURL(removed.previewUrl); } catch (_) {}
       }
       renderGarmentState();
@@ -6614,7 +6347,7 @@ function renderMockupCreator() {
 
   function clearAllGarments() {
     for (const g of garmentFiles) {
-      if (g?.previewUrl) {
+      if (g && g.previewUrl) {
         try { URL.revokeObjectURL(g.previewUrl); } catch (_) {}
       }
     }
@@ -6623,35 +6356,27 @@ function renderMockupCreator() {
     renderGarmentState();
   }
 
-  function addArtworkFiles(newFiles) {
-    if (appendImageFiles(artworkFiles, newFiles, 100)) {
-      renderArtworkState();
-    }
-    if (artworkInput) artworkInput.value = "";
+  function setArtwork(file) {
+    if (!file) return;
+    artworkFile = file;
+    artworkEmpty.classList.add("hidden");
+    artworkPreview.classList.remove("hidden");
+    artworkDrop.classList.add("has-file");
+    artworkThumb.src = URL.createObjectURL(file);
+    artworkName.textContent = file.name || "artwork.png";
+    artworkSize.textContent = formatRefSize(file.size);
+    renderIcons();
   }
 
-  function removeArtworkFile(index) {
-    if (index >= 0 && index < artworkFiles.length) {
-      const removed = artworkFiles.splice(index, 1)[0];
-      if (removed?.previewUrl) {
-        try { URL.revokeObjectURL(removed.previewUrl); } catch (_) {}
-      }
-      renderArtworkState();
-    }
+  function clearArtwork() {
+    artworkFile = null;
+    artworkInput.value = "";
+    artworkEmpty.classList.remove("hidden");
+    artworkPreview.classList.add("hidden");
+    artworkDrop.classList.remove("has-file");
   }
 
-  function clearAllArtworks() {
-    for (const a of artworkFiles) {
-      if (a?.previewUrl) {
-        try { URL.revokeObjectURL(a.previewUrl); } catch (_) {}
-      }
-    }
-    artworkFiles = [];
-    if (artworkInput) artworkInput.value = "";
-    renderArtworkState();
-  }
-
-  // Bind Drop and Paste Support for Garments & Artworks
+  // Bind Drop and Paste Support for Garment & Artwork
   if (garmentDrop) {
     bindDropAndPasteZone({
       dropzoneEl: garmentDrop,
@@ -6672,15 +6397,9 @@ function renderMockupCreator() {
     bindDropAndPasteZone({
       dropzoneEl: artworkDrop,
       inputEl: artworkInput,
-      onFileReceived: addArtworkFiles,
-    });
-  }
-
-  if (artworkActiveContainer) {
-    bindDropAndPasteZone({
-      dropzoneEl: artworkActiveContainer,
-      inputEl: null,
-      onFileReceived: addArtworkFiles,
+      onFileReceived: (files) => {
+        if (files && files.length) setArtwork(files[0]);
+      },
     });
   }
 
@@ -6696,28 +6415,19 @@ function renderMockupCreator() {
     clearAllGarments();
   });
 
-  function launchArtworkLibraryPicker(e) {
-    e?.preventDefault();
-    e?.stopPropagation();
-    openLibraryPicker({
-      currentCount: artworkFiles.length,
-      onConfirm: (files) => addArtworkFiles(files),
-    });
-  }
-
-  artworkFromLibBtn?.addEventListener("click", launchArtworkLibraryPicker);
-  artworkFromLibActiveBtn?.addEventListener("click", launchArtworkLibraryPicker);
-
-  artworkAddMoreBtn?.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    artworkInput?.click();
-  });
-
-  artworkClearBtn?.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    clearAllArtworks();
+  artworkDrop?.addEventListener("click", (e) => {
+    if (e.target.closest("#mockupArtworkReplaceBtn")) {
+      e.preventDefault();
+      e.stopPropagation();
+      artworkInput?.click();
+      return;
+    }
+    if (e.target.closest("#mockupArtworkRemoveBtn")) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearArtwork();
+      return;
+    }
   });
 
   // Color Swatches
@@ -6793,39 +6503,6 @@ function renderMockupCreator() {
     showView("designs");
   });
 
-  // Batch ZIP download handler for generated mockups
-  downloadAllZipBtn?.addEventListener("click", async () => {
-    const ids = generatedResults.map((m) => m.id).filter(Boolean);
-    if (!ids.length) return;
-    const origHtml = downloadAllZipBtn.innerHTML;
-    downloadAllZipBtn.disabled = true;
-    downloadAllZipBtn.innerHTML = `<i data-lucide="loader-2" class="spin"></i> Zipping ${ids.length}...`;
-    renderIcons();
-    try {
-      const res = await fetch("/api/mockups/export-zip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      if (!res.ok) throw new Error("Failed to bundle mockup zip");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `mockups_batch_${new Date().toISOString().slice(0, 10)}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("Zip download failed: " + (err.message || err));
-    } finally {
-      downloadAllZipBtn.disabled = false;
-      downloadAllZipBtn.innerHTML = origHtml;
-      renderIcons();
-    }
-  });
-
   // Generate Mockups Handler
   generateBtn?.addEventListener("click", async () => {
     if (garmentFiles.length === 0) {
@@ -6833,13 +6510,12 @@ function renderMockupCreator() {
       return;
     }
 
-    const vPerCombo = Math.min(20, Math.max(1, parseInt($("#mockupCount").value, 10) || 1));
-    const totalTasks = garmentFiles.length * Math.max(1, artworkFiles.length) * vPerCombo;
+    const vPerGarment = Math.min(20, Math.max(1, parseInt($("#mockupCount").value, 10) || 1));
+    const totalTasks = garmentFiles.length * vPerGarment;
     const shape = getMockupShape();
 
     generateBtn.disabled = true;
     stopBtn.disabled = false;
-    downloadAllZipBtn?.classList.add("hidden");
     abortController = new AbortController();
 
     emptyState.classList.add("hidden");
@@ -6847,23 +6523,7 @@ function renderMockupCreator() {
     generatedResults = [];
     outCounter.textContent = "0 generated";
 
-    renderPlaceholders(resultsGrid, totalTasks, "mockup-slot", "Generating mockup…");
-
-    // Tag placeholders with each design name when batching multiple artworks
-    if (artworkFiles.length > 1) {
-      let slotCursor = 0;
-      for (let g = 0; g < garmentFiles.length; g++) {
-        for (let a = 0; a < artworkFiles.length; a++) {
-          const cleanName = (artworkFiles[a].name || `Design ${a + 1}`).replace(/\.[^/.]+$/, "");
-          for (let v = 0; v < vPerCombo; v++) {
-            const ph = document.getElementById(`mockup-slot-${slotCursor}`);
-            const lbl = ph?.querySelector(".placeholder-label");
-            if (lbl) lbl.textContent = `Placing "${cleanName.slice(0, 22)}"…`;
-            slotCursor++;
-          }
-        }
-      }
-    }
+    renderPlaceholders(resultsGrid, totalTasks, "mockup-slot");
 
     if (statusCard) statusCard.style.display = "flex";
     if (progressText) progressText.textContent = "Starting parallel fleet mockup generation…";
@@ -6882,14 +6542,12 @@ function renderMockupCreator() {
     garmentFiles.forEach((gf) => {
       fd.append("garment", gf.file);
     });
-    artworkFiles.forEach((af) => {
-      fd.append("artwork", af.file);
-    });
+    if (artworkFile) fd.append("artwork", artworkFile);
     fd.append("productType", $("#mockupProductType").value);
     fd.append("garmentColor", selectedGarmentColor);
     fd.append("scenePrompt", $("#mockupScenePrompt").value.trim());
-    fd.append("variationsPerGarment", vPerCombo);
-    fd.append("count", vPerCombo);
+    fd.append("variationsPerGarment", vPerGarment);
+    fd.append("count", vPerGarment);
     fd.append("aspectRatio", shape);
 
     try {
@@ -6902,9 +6560,6 @@ function renderMockupCreator() {
             resolvePlaceholder(slotId, payload.design);
             generatedResults.push(payload.design);
             outCounter.textContent = `${generatedResults.length} generated`;
-            if (generatedResults.length > 0) {
-              downloadAllZipBtn?.classList.remove("hidden");
-            }
             if (tracker && typeof tracker.finishItem === "function") {
               tracker.finishItem(payload.slotIndex || 0);
             }
@@ -7413,7 +7068,6 @@ async function startAddAccount(browser) {
 /* ── My Designs Library View (UI-UX Pro Max) ─────────────── */
 
 let libraryActiveTab = "designs";
-let libraryRenderToken = 0;
 const libraryState = { folder: "", feature: "", page: 1, total: 0 };
 const listingsLibraryState = { platform: "", search: "", page: 1, total: 0 };
 const mockupsLibraryState = { folder: "", page: 1, total: 0 };
@@ -7426,33 +7080,6 @@ let isSelectMode = false;
 let isListingSelectMode = false;
 const selectedDesignIds = new Set();
 const selectedListingIds = new Set();
-
-function getLibraryTabConfig(mode = libraryActiveTab) {
-  if (mode === "mockups") {
-    return {
-      mode: "mockups",
-      noun: "mockups",
-      prefix: "mockups_export",
-      endpoint: "/api/mockups/export-zip",
-      selectedIds: selectedMockupIds,
-      itemsById: mockupById,
-    };
-  }
-  return {
-    mode: "designs",
-    noun: "designs",
-    prefix: "designs_export",
-    endpoint: "/api/designs/export-zip",
-    selectedIds: selectedDesignIds,
-    itemsById: designById,
-  };
-}
-
-function pruneSelectedIds(selectedIds, itemsById) {
-  for (const id of [...selectedIds]) {
-    if (!itemsById.has(id)) selectedIds.delete(id);
-  }
-}
 
 function designCard(d) {
   const isMockup = d.isMockup || d.feature === "mockups" || libraryActiveTab === "mockups";
@@ -7467,7 +7094,7 @@ function designCard(d) {
   return `
     <div class="result-card panel design-card ${isSelected ? 'selected' : ''}" data-id="${esc(d.id)}">
       <div class="image-mount design-mount">
-        <img src="${esc(designImageUrl(d))}" alt="" loading="lazy" />
+        <img src="/library/${esc(d.output_image_path)}" alt="" loading="lazy" />
         <span class="folder-chip">${esc(d.folder || "Unsorted")}</span>
         <div class="select-indicator"><i data-lucide="check"></i></div>
         <div class="hover-actions">
@@ -7481,7 +7108,7 @@ function designCard(d) {
       <div class="result-caption" title="${esc(cleanTitle)}">${esc(cleanTitle)}</div>
       <div class="result-meta">${esc(label)} · ${esc(dateStr)}</div>
       <div class="result-actions-row">
-        <a class="save-toggle" href="${esc(designImageUrl(d))}" download="${esc(fileBase)}.${ext}">
+        <a class="save-toggle" href="/library/${esc(d.output_image_path)}" download="${esc(fileBase)}.${ext}">
           <i data-lucide="download"></i> Save
         </a>
       </div>
@@ -7494,23 +7121,21 @@ function designCard(d) {
    Explorer / macOS Finder); browsers without it fall back to one sequential
    download per design. */
 
-// Keeps the button's label in sync with the active tab's batch selection:
-// with nothing checked, exports everything loaded in that tab only.
-function updateBatchSaveLabel(mode = libraryActiveTab) {
+// Keeps the button's label in sync with the current batch selection: with
+// nothing checked, the button exports everything loaded in the view.
+function updateBatchSaveLabel() {
   const label = $("#batchSaveLabel");
   if (!label) return;
-  const n = getLibraryTabConfig(mode).selectedIds.size;
+  const n = libraryActiveTab === "mockups" ? selectedMockupIds.size : selectedDesignIds.size;
   label.textContent = n > 0 ? `Save selected (${n})` : "Save all";
 }
 
 // "design name_abc123.png" — slug from the prompt/feature, plus the id so two
-// items with the same title never collide. Strict charset keeps it safe on
+// designs with the same title never collide. Strict charset keeps it safe on
 // Windows and macOS.
 function designFileName(d) {
-  const isMockup = d.isMockup || d.feature === "mockups" || libraryActiveTab === "mockups";
-  const fallback = isMockup ? (d.product_type || "mockup") : (d.feature || "design");
-  const raw = (d.user_input && d.user_input !== d.feature ? d.user_input : fallback) || (isMockup ? "mockup" : "design");
-  const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || (isMockup ? "mockup" : "design");
+  const raw = (d.user_input && d.user_input !== d.feature ? d.user_input : d.feature) || "design";
+  const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "design";
   const id = String(d.id).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "img";
   const ext = (String(d.output_image_path).match(/\.(\w{2,5})$/) || [null, "png"])[1].toLowerCase();
   return `${slug}_${id}.${ext}`;
@@ -7526,50 +7151,47 @@ async function fetchDesignBlob(d) {
   return await res.blob();
 }
 
-async function saveLibraryBatch(btn, mode = libraryActiveTab) {
-  const cfg = getLibraryTabConfig(mode);
-  // Checked items win; with none checked, export everything loaded in the ACTIVE tab only.
-  const targets = cfg.selectedIds.size > 0
-    ? [...cfg.itemsById.values()].filter((item) => cfg.selectedIds.has(item.id))
-    : [...cfg.itemsById.values()];
+async function saveDesignsBatch(btn) {
+  // Checked designs win; with none checked, export everything in the view.
+  const targets = selectedDesignIds.size > 0
+    ? [...designById.values()].filter((d) => selectedDesignIds.has(d.id))
+    : [...designById.values()];
 
   if (targets.length === 0) {
-    alert(`No ${cfg.noun} to save.`);
+    alert("No designs to save.");
     return;
   }
 
   const setLabel = (text) => {
-    if (!btn.isConnected || libraryActiveTab !== cfg.mode) return;
     const label = $("#batchSaveLabel");
     if (label) label.textContent = text;
   };
   const finish = () => {
-    if (!btn.isConnected || libraryActiveTab !== cfg.mode) return;
     btn.disabled = false;
-    updateBatchSaveLabel(cfg.mode);
+    updateBatchSaveLabel();
   };
 
-  // Bundle strictly the active tab's checked items into ONE zip on the server
-  // (archiver streams it straight to the browser), then trigger a single download.
+  // Bundle every checked design into ONE zip on the server (archiver streams
+  // it straight to the browser), then trigger a single download link so the
+  // OS save dialog opens exactly once.
   btn.disabled = true;
   setLabel("Zipping...");
   try {
-    const stamp = new Date().toISOString().slice(0, 10);
-    const filename = `${cfg.prefix}_${stamp}.zip`;
-    const res = await fetch(cfg.endpoint, {
+    const res = await fetch("/api/designs/export-zip", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: targets.map((item) => item.id), filename }),
+      body: JSON.stringify({ ids: targets.map((d) => d.id) }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || `HTTP ${res.status}`);
     }
     const blob = await res.blob();
+    const stamp = new Date().toISOString().slice(0, 10);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = `designs_export_${stamp}.zip`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -7583,8 +7205,6 @@ async function saveLibraryBatch(btn, mode = libraryActiveTab) {
   }
 }
 
-const saveDesignsBatch = (btn) => saveLibraryBatch(btn, libraryActiveTab);
-
 function getListingThumbUrl(l) {
   if (!l.thumbnail_path) return "";
   if (l.thumbnail_path.startsWith("http") || l.thumbnail_path.startsWith("/")) return l.thumbnail_path;
@@ -7593,7 +7213,6 @@ function getListingThumbUrl(l) {
 
 function listingLibraryCard(l) {
   const isSelected = selectedListingIds.has(l.id);
-  const isSocial = l.platform === "social";
   const isTeePublic = l.platform === "teepublic";
   const isEtsy = l.platform === "etsy";
 
@@ -7626,7 +7245,7 @@ function listingLibraryCard(l) {
       <i data-lucide="copy"></i> ${label}
     </button>`;
 
-  const platLabel = isSocial ? "Social Media" : isEtsy ? "Etsy" : isTeePublic ? "TeePublic" : "Amazon Merch";
+  const platLabel = isEtsy ? "Etsy" : isTeePublic ? "TeePublic" : "Amazon Merch";
   const isSafe = l.trademark_safe === 1 || l.trademark_safe === true;
 
   const selectOverlay = `
@@ -7650,24 +7269,6 @@ function listingLibraryCard(l) {
         <i data-lucide="shield-check"></i> ${isSafe ? "Trademark safe" : "Check IP"}
       </span>
     </div>`;
-
-  // ── Social Media card ──
-  if (isSocial) {
-    let socialData = {};
-    try {
-      socialData = typeof l.raw_listing === "string" ? JSON.parse(l.raw_listing || "{}") : (l.raw_listing || {});
-    } catch (_) {
-      socialData = {};
-    }
-    if (window.SocialListing && typeof window.SocialListing.renderLibrarySocialCard === "function") {
-      return window.SocialListing.renderLibrarySocialCard(l, socialData, {
-        selectOverlay,
-        headerHtml,
-        isSelected,
-        copyBtn,
-      });
-    }
-  }
 
   // ── Etsy card ──
   if (isEtsy) {
@@ -7773,13 +7374,12 @@ const renderDesigns = (...args) => renderLibrary(...args);
 
 async function renderLibrary() {
   const mount = viewMount("designs");
-  const renderToken = ++libraryRenderToken;
 
   if (libraryActiveTab === "mockups") {
     const query = new URLSearchParams({
       ...(mockupsLibraryState.folder ? { folder: mockupsLibraryState.folder } : {}),
       page: mockupsLibraryState.page || 1,
-      pageSize: 10000,
+      pageSize: 1000,
     });
 
     let data = { rows: [], total: 0, page: 1 };
@@ -7788,19 +7388,16 @@ async function renderLibrary() {
     } catch (err) {
       console.error("Failed to load mockups:", err);
     }
-    if (renderToken !== libraryRenderToken) return;
 
     mockupsLibraryState.total = data.total || 0;
     mockupsLibraryState.page = data.page || 1;
     mockupById.clear();
     (data.rows || []).forEach((d) => mockupById.set(d.id, d));
-    pruneSelectedIds(selectedMockupIds, mockupById);
 
     let folderData = { folders: [] };
     try {
       folderData = await api("/api/mockups/folders");
     } catch (_) {}
-    if (renderToken !== libraryRenderToken) return;
     const mockupFolders = folderData.folders || [];
     if (!mockupFolders.includes("Unsorted")) mockupFolders.unshift("Unsorted");
 
@@ -7869,11 +7466,10 @@ async function renderLibrary() {
       </div>`;
 
     renderIcons();
-    updateBatchSaveLabel("mockups");
+    updateBatchSaveLabel();
 
     $("#libMockupFolderFilter")?.addEventListener("change", (e) => {
       mockupsLibraryState.folder = e.target.value;
-      mockupsLibraryState.page = 1;
       renderLibrary();
     });
 
@@ -7911,7 +7507,7 @@ async function renderLibrary() {
     $("#batchSaveBtn")?.addEventListener("click", (e) => {
       const btn = e.currentTarget;
       if (btn.disabled) return;
-      saveLibraryBatch(btn, "mockups");
+      saveDesignsBatch(btn);
     });
 
     $("#batchDeleteBtn")?.addEventListener("click", async () => {
@@ -7933,7 +7529,6 @@ async function renderLibrary() {
       const mockup = mockupById.get(id);
 
       if (isMockupSelectMode) {
-        if (e.target.closest("a.save-toggle")) e.preventDefault();
         if (selectedMockupIds.has(id)) {
           selectedMockupIds.delete(id);
           card.classList.remove("selected");
@@ -7945,7 +7540,7 @@ async function renderLibrary() {
         if (countEl) countEl.textContent = selectedMockupIds.size;
         const delBtn = $("#batchDeleteBtn");
         if (delBtn) delBtn.disabled = selectedMockupIds.size === 0;
-        updateBatchSaveLabel("mockups");
+        updateBatchSaveLabel();
         return;
       }
 
@@ -7958,11 +7553,10 @@ async function renderLibrary() {
       } else if (act === "move") {
         openMoveModal(mockup);
       } else if (act === "open") {
-        window.open(designImageUrl(mockup), "_blank");
+        window.open(`/library/${mockup.output_image_path}`, "_blank");
       } else if (act === "delete") {
         if (confirm("Delete this mockup?")) {
           await api(`/api/mockups/${id}`, { method: "DELETE" });
-          selectedMockupIds.delete(id);
           renderLibrary();
         }
       }
@@ -7985,13 +7579,11 @@ async function renderLibrary() {
     } catch (err) {
       console.error("Failed to load listings:", err);
     }
-    if (renderToken !== libraryRenderToken) return;
 
     listingsLibraryState.total = data.total || 0;
     listingsLibraryState.page = data.page || 1;
     listingById.clear();
     (data.rows || []).forEach((l) => listingById.set(l.id, l));
-    pruneSelectedIds(selectedListingIds, listingById);
 
     const hasItems = (data.rows || []).length > 0;
 
@@ -8024,14 +7616,10 @@ async function renderLibrary() {
               <option value="amazon" ${listingsLibraryState.platform === 'amazon' ? 'selected' : ''}>Amazon Merch</option>
               <option value="teepublic" ${listingsLibraryState.platform === 'teepublic' ? 'selected' : ''}>TeePublic</option>
               <option value="etsy" ${listingsLibraryState.platform === 'etsy' ? 'selected' : ''}>Etsy</option>
-              <option value="social" ${listingsLibraryState.platform === 'social' ? 'selected' : ''}>Social Media</option>
             </select>
 
             <button class="btn secondary btn-sm" id="libListingCsvBtn" title="Export to CSV">
               <i data-lucide="download"></i> Download CSV
-            </button>
-            <button class="btn secondary btn-sm ${listingsLibraryState.platform === 'social' ? '' : 'hidden'}" id="libListingXlsxBtn" title="Export to Multi-Sheet Excel (.xlsx)">
-              <i data-lucide="file-spreadsheet"></i> Download .xlsx
             </button>
 
             <button class="btn secondary btn-sm" id="libListingSelectBtn">
@@ -8048,7 +7636,6 @@ async function renderLibrary() {
             <button class="btn secondary btn-sm" id="listingBatchSelectAll"><i data-lucide="check-check"></i> Select all</button>
             <button class="btn secondary btn-sm" id="listingBatchDeselectAll">Deselect all</button>
             <button class="btn secondary btn-sm" id="listingBatchExportCsv"><i data-lucide="download"></i> Download selected CSV</button>
-            <button class="btn secondary btn-sm ${!listingsLibraryState.platform || listingsLibraryState.platform === 'social' ? '' : 'hidden'}" id="listingBatchExportXlsx"><i data-lucide="file-spreadsheet"></i> Download selected .xlsx</button>
             <button class="btn primary btn-sm danger" id="listingBatchDeleteBtn" style="background:#EF4444;" ${selectedListingIds.size === 0 ? 'disabled' : ''}>
               <i data-lucide="trash-2"></i> Delete selected
             </button>
@@ -8125,59 +7712,25 @@ async function renderLibrary() {
       renderLibrary();
     });
 
-    const safeParseJson = (val, fallback) => {
-      if (typeof val !== "string") return val ?? fallback;
-      try {
-        return JSON.parse(val || JSON.stringify(fallback));
-      } catch (_) {
-        return fallback;
-      }
-    };
-
-    const formatItemsForExport = (items) => {
-      return items.map((l) => {
-        const raw = safeParseJson(l.raw_listing, {});
-        const parsedTags = safeParseJson(l.tags, []);
-        const parsedAttrs = safeParseJson(l.attributes, {});
-        const platform = (l.platform || "").toLowerCase();
-        return {
-          designIndex: (l.id || "").slice(0, 8),
-          fileName: l.file_name,
-          platform,
-          generatedAt: l.created_at || "",
-          listing: platform === "social" ? raw : {
-            title: l.title,
-            brand: l.brand,
-            category: l.category,
-            bullet1: l.bullet1,
-            bullet2: l.bullet2,
-            description: l.description,
-            mainTag: l.main_tag,
-            supportingTags: parsedTags,
-            tags: parsedTags,
-            attributes: parsedAttrs,
-          },
-        };
-      });
-    };
-
     const exportItemsToCsv = (items) => {
-      const formatted = formatItemsForExport(items);
-      const allSocial = items.every((it) => (it.platform || "").toLowerCase() === "social");
-      if (allSocial) {
-        exportSocialToCSV(formatted);
-      } else {
-        exportListingsToCSV(formatted);
-      }
-    };
-
-    const exportItemsToXlsx = (items) => {
-      const socialItems = items.filter((it) => (it.platform || "").toLowerCase() === "social");
-      if (!socialItems.length) {
-        return alert("Multi-sheet Excel (.xlsx) export is available for Social Media listings. Use Download CSV for Amazon Merch, TeePublic, or Etsy listings.");
-      }
-      const formatted = formatItemsForExport(socialItems);
-      exportSocialToXLSX(formatted);
+      const formatted = items.map((l) => ({
+        designIndex: (l.id || "").slice(0, 8),
+        fileName: l.file_name,
+        platform: l.platform,
+        listing: {
+          title: l.title,
+          brand: l.brand,
+          category: l.category,
+          bullet1: l.bullet1,
+          bullet2: l.bullet2,
+          description: l.description,
+          mainTag: l.main_tag,
+          supportingTags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
+          tags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
+          attributes: typeof l.attributes === "string" ? JSON.parse(l.attributes || "{}") : (l.attributes || {}),
+        },
+      }));
+      exportListingsToCSV(formatted);
     };
 
     $("#libListingCsvBtn")?.addEventListener("click", () => {
@@ -8186,26 +7739,12 @@ async function renderLibrary() {
       exportItemsToCsv(allItems);
     });
 
-    $("#libListingXlsxBtn")?.addEventListener("click", () => {
-      const allItems = [...listingById.values()];
-      if (allItems.length === 0) return alert("No listings to export.");
-      exportItemsToXlsx(allItems);
-    });
-
     $("#listingBatchExportCsv")?.addEventListener("click", () => {
       const targets = selectedListingIds.size > 0
         ? [...listingById.values()].filter((l) => selectedListingIds.has(l.id))
         : [...listingById.values()];
       if (targets.length === 0) return alert("No listings selected.");
       exportItemsToCsv(targets);
-    });
-
-    $("#listingBatchExportXlsx")?.addEventListener("click", () => {
-      const targets = selectedListingIds.size > 0
-        ? [...listingById.values()].filter((l) => selectedListingIds.has(l.id))
-        : [...listingById.values()];
-      if (targets.length === 0) return alert("No listings selected.");
-      exportItemsToXlsx(targets);
     });
 
     $("#listingBatchDeleteBtn")?.addEventListener("click", async () => {
@@ -8226,17 +7765,6 @@ async function renderLibrary() {
     });
 
     $("#listingsGrid")?.addEventListener("click", async (e) => {
-      const tabBtn = e.target.closest(".social-tab-btn");
-      if (tabBtn) {
-        const card = tabBtn.closest(".ml-card");
-        if (card) {
-          const targetTab = tabBtn.dataset.tab;
-          card.querySelectorAll(".social-tab-btn").forEach((b) => b.classList.toggle("active", b === tabBtn));
-          card.querySelectorAll(".social-tab-pane").forEach((p) => p.classList.toggle("active", p.dataset.pane === targetTab));
-        }
-        return;
-      }
-
       const card = e.target.closest(".listing-card");
       if (!card) return;
       const id = card.dataset.id;
@@ -8266,7 +7794,6 @@ async function renderLibrary() {
       if (delActionBtn && listing) {
         if (confirm(`Permanently delete listing "${listing.file_name || 'Untitled'}"?`)) {
           await api(`/api/listings/${id}`, { method: "DELETE" }).catch(() => {});
-          selectedListingIds.delete(id);
           await renderLibrary();
         }
       }
@@ -8280,7 +7807,7 @@ async function renderLibrary() {
     ...(libraryState.folder ? { folder: libraryState.folder } : {}),
     ...(libraryState.feature ? { feature: libraryState.feature } : {}),
     page: libraryState.page,
-    pageSize: 10000,
+    pageSize: 1000,
   });
 
   let data = { rows: [], total: 0, page: 1 };
@@ -8289,13 +7816,11 @@ async function renderLibrary() {
   } catch (err) {
     console.error("Failed to load designs:", err);
   }
-  if (renderToken !== libraryRenderToken) return;
 
   libraryState.total = data.total || 0;
   libraryState.page = data.page || 1;
   designById.clear();
   (data.rows || []).forEach((d) => designById.set(d.id, d));
-  pruneSelectedIds(selectedDesignIds, designById);
 
   const allFolders = [...new Set((data.rows || []).map((r) => r.folder).filter(Boolean))];
 
@@ -8361,7 +7886,7 @@ async function renderLibrary() {
     </div>`;
 
   renderIcons();
-  updateBatchSaveLabel("designs");
+  updateBatchSaveLabel();
 
   $("#libTabDesigns")?.addEventListener("click", () => {
     libraryActiveTab = "designs";
@@ -8378,13 +7903,11 @@ async function renderLibrary() {
 
   $("#libFolderFilter").addEventListener("change", (e) => {
     libraryState.folder = e.target.value;
-    libraryState.page = 1;
     renderLibrary();
   });
 
   $("#libFeatureFilter").addEventListener("change", (e) => {
     libraryState.feature = e.target.value;
-    libraryState.page = 1;
     renderLibrary();
   });
 
@@ -8409,7 +7932,7 @@ async function renderLibrary() {
   $("#batchSaveBtn")?.addEventListener("click", (e) => {
     const btn = e.currentTarget;
     if (btn.disabled) return;
-    saveLibraryBatch(btn, "designs");
+    saveDesignsBatch(btn);
   });
 
   $("#batchDeleteBtn")?.addEventListener("click", async () => {
@@ -8431,7 +7954,6 @@ async function renderLibrary() {
     const design = designById.get(id);
 
     if (isSelectMode) {
-      if (e.target.closest("a.save-toggle")) e.preventDefault();
       if (selectedDesignIds.has(id)) {
         selectedDesignIds.delete(id);
       } else {
@@ -8442,7 +7964,7 @@ async function renderLibrary() {
       if (badge) badge.textContent = selectedDesignIds.size;
       const delBtn = $("#batchDeleteBtn");
       if (delBtn) delBtn.disabled = selectedDesignIds.size === 0;
-      updateBatchSaveLabel("designs");
+      updateBatchSaveLabel();
       return;
     }
 
@@ -8457,11 +7979,10 @@ async function renderLibrary() {
     } else if (act === "move") {
       openMoveModal(design);
     } else if (act === "open") {
-      window.open(designImageUrl(design), "_blank");
+      window.open(`/library/${design.output_image_path}`, "_blank");
     } else if (act === "delete") {
       if (confirm("Delete this design from library?")) {
         await api(`/api/designs/${id}`, { method: "DELETE" });
-        selectedDesignIds.delete(id);
         await renderLibrary();
       }
     }

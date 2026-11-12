@@ -128,10 +128,7 @@ router.post("/export-zip", async (req, res) => {
         .slice(0, 60) || "mockup";
 
     const rows = [];
-    const seenIds = new Set();
     for (const id of ids) {
-      if (seenIds.has(id)) continue;
-      seenIds.add(id);
       const m = getMockupById(id);
       if (m) rows.push(m);
     }
@@ -140,22 +137,14 @@ router.post("/export-zip", async (req, res) => {
     }
 
     const filesToZip = [];
-    const addedAbs = new Set();
-    const usedNames = new Set();
-    for (const m of rows) {
+    rows.forEach((m, i) => {
       const abs = resolveLibraryPath(m.output_image_path);
-      if (!abs || !fs.existsSync(abs) || addedAbs.has(abs)) continue;
-      addedAbs.add(abs);
+      if (!abs || !fs.existsSync(abs)) return;
       const title = m.user_input || m.product_type || "mockup";
-      const ext = (String(m.output_image_path).match(/\.([a-zA-Z0-9]{2,5})$/) || [null, "png"])[1].toLowerCase();
-      let name = `mockup_${String(filesToZip.length + 1).padStart(2, "0")}_${slug(title)}.${ext}`;
-      if (usedNames.has(name)) {
-        const shortId = String(m.id || filesToZip.length + 1).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 8);
-        name = `mockup_${String(filesToZip.length + 1).padStart(2, "0")}_${slug(title)}_${shortId}.${ext}`;
-      }
-      usedNames.add(name);
+      const ext = (String(m.output_image_path).match(/\.(\w{2,5})$/) || [null, "png"])[1].toLowerCase();
+      const name = `mockup_${String(i + 1).padStart(2, "0")}_${slug(title)}.${ext}`;
       filesToZip.push({ abs, name });
-    }
+    });
 
     if (filesToZip.length === 0) {
       return res.status(404).json({ error: "Selected mockup image files were not found on disk" });

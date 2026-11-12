@@ -5,17 +5,6 @@ import { createRequire } from "module";
 // from inside the ESM Electron main process context.
 const require = createRequire(import.meta.url);
 
-function formatUpdaterError(err) {
-  const raw = String(err?.message || err || "Unable to check for updates");
-  if (/cannot find latest(?:-mac)?\.yml|status(?:Code)?[: ]*404|HttpError:\s*404/i.test(raw)) {
-    return "Update files are still syncing on GitHub — please try again in a minute.";
-  }
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ERR_INTERNET_DISCONNECTED|net::/i.test(raw)) {
-    return "Could not reach GitHub — check your internet connection.";
-  }
-  return raw.split(/\r?\n/)[0].trim().slice(0, 140) || "Unable to check for updates";
-}
-
 /**
  * Initializes automatic background updates via GitHub Releases.
  * Only activates in the packaged production build — never in local development.
@@ -47,23 +36,6 @@ export function initAutoUpdater(mainWindow) {
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowPrerelease = false;
 
-  let isChecking = false;
-  let isManualCheck = false;
-
-  const runUpdateCheck = async (manual = false) => {
-    if (isChecking) return;
-    isChecking = true;
-    isManualCheck = manual;
-    try {
-      await autoUpdater.checkForUpdatesAndNotify();
-    } catch (err) {
-      console.warn("[updater] Check failed:", formatUpdaterError(err));
-    } finally {
-      isChecking = false;
-      isManualCheck = false;
-    }
-  };
-
   autoUpdater.on("checking-for-update", () => {
     console.log("[updater] Checking GitHub Releases for updates...");
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -91,12 +63,11 @@ export function initAutoUpdater(mainWindow) {
   });
 
   autoUpdater.on("error", (err) => {
-    const friendly = formatUpdaterError(err);
-    console.error("[updater] Update check error:", friendly);
-    // Only surface updater errors on explicit manual checks; background checks
-    // retry quietly every 4 hours so transient GitHub release sync delays never nag.
-    if (isManualCheck && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("update-error", { error: friendly });
+    console.error("[updater] Update check error:", err?.message || err);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("update-error", {
+        error: err?.message || "Failed to check for updates",
+      });
     }
   });
 
@@ -129,7 +100,12 @@ export function initAutoUpdater(mainWindow) {
 
   ipcMain.on("check-for-updates", () => {
     console.log("[updater] User requested manual update check.");
-    runUpdateCheck(true);
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.warn("[updater] Check failed:", err.message);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("update-error", { error: err.message });
+      }
+    });
   });
 
   ipcMain.on("restart-and-install", () => {
@@ -137,7 +113,13 @@ export function initAutoUpdater(mainWindow) {
   });
 
   // Check on launch (after a short delay to let the UI settle), then every 4 hours
-  setTimeout(() => runUpdateCheck(false), 4000);
+  setTimeout(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.warn("[updater] Initial check failed:", err.message);
+    });
+  }, 4000);
 
-  setInterval(() => runUpdateCheck(false), 4 * 60 * 60 * 1000);
+  setInterval(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  }, 4 * 60 * 60 * 1000);
 }
