@@ -453,6 +453,10 @@ async function submitPrompt(page, editor) {
     }
   }
   console.log("[geminiweb] Prompt submission loop finished.");
+  // FIX D — Throw on dispatch failure instead of silently returning.
+  // A silent return here caused monitorAndExtractOutput() to run against an empty/stale page,
+  // eventually triggering the blind nudge and producing hallucinated outputs.
+  throw new Error("PROMPT_DISPATCH_FAILED: Send button never confirmed after 20s. Failing to trigger fleet retry on a clean account.");
 }
 
 async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outputPath = null, signal = null) {
@@ -611,6 +615,15 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
 
         const editor = await fillPrompt(page, prompt);
         if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+
+        // FIX A — Second attachment gate: verify image chip survived fillPrompt()'s innerHTML clear
+        if (imagePaths?.length) {
+          const stillAttached = await isAttachmentMountedInComposer(page);
+          if (!stillAttached) {
+            throw new Error("IMAGE_ATTACHMENT_FAILED: Attachment chip was lost during prompt fill. Aborting to prevent out-of-context generation.");
+          }
+        }
+
         await submitPrompt(page, editor);
 
         try {
@@ -623,25 +636,12 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
           const isTextRefusal = (err?.message || "").includes("GEMINI_REFUSED_OR_TEXT");
           const isHardQuota = /daily limit|reached your limit|quota exceeded|limit reached/i.test(err?.message || "");
 
-          // Single focused in-session nudge (25s) before failing over to alternate fleet account
-          if (isTextRefusal && !isHardQuota && !page.isClosed() && !signal?.aborted) {
-            console.log("[geminiweb] Gemini replied with text. Executing fast in-session nudge (25s)...");
-            const nudgePrompt = "Generate the image as requested above.";
-            try {
-              const countBeforeNudge = await page.locator("model-response img, .response-container img, [data-test-id*='response'] img").count().catch(() => 0);
-              const nudgeEditor = await fillPrompt(page, nudgePrompt);
-              if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
-              await submitPrompt(page, nudgeEditor);
-              const result = await monitorAndExtractOutput(page, countBeforeNudge, 25000, outputPath, signal);
-              if (result) {
-                console.log("[geminiweb] In-session nudge succeeded! Image captured on the same account.");
-                return result;
-              }
-            } catch (nudgeErr) {
-              if (signal?.aborted || nudgeErr?.name === "AbortError") throw nudgeErr;
-              console.warn("[geminiweb] In-session nudge failed:", nudgeErr.message.slice(0, 80));
-            }
-            throw new Error("GEMINI_REFUSED_OR_TEXT: In-session nudge failed to generate an image");
+          // FIX B — Remove blind nudge: escalate text refusals directly to fleet retry on a clean account.
+          // The old nudge ("Generate the image as requested above.") fired into an unknown/dirty chat context
+          // and caused Gemini to generate hallucinated images unrelated to the user's design.
+          if (isTextRefusal && !isHardQuota) {
+            console.warn("[geminiweb] Gemini replied with text instead of image. Escalating to fleet retry on a fresh account (no blind nudge).");
+            throw new Error("GEMINI_REFUSED_OR_TEXT: Gemini replied with text. Escalating to fleet retry on clean account.");
           }
           throw err;
         }
@@ -693,6 +693,23 @@ export async function ensureGeminiApp(page) {
     await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
     if ((page.url() || "").includes("accounts.google.com")) {
       throw new Error("SESSION_EXPIRED: Account redirected to Google login");
+    }
+
+    // FIX C — Post-navigation verification: ensure the page is actually clean (0 turns).
+    // page.goto() can silently fail or Gemini's SPA can rehydrate old state without resetting the DOM.
+    // If old turns are still present, force a "New chat" click or a second navigation attempt.
+    const turnsAfterNav = await page.locator("model-response, user-query").count().catch(() => 0);
+    if (turnsAfterNav > 0) {
+      console.warn(`[geminiweb] Page still has ${turnsAfterNav} turn(s) after navigation. Forcing new chat reset...`);
+      const newChatBtn = page.locator('a[href="/app"], a[href*="gemini.google.com/app"], button:has-text("New chat"), [aria-label*="New chat" i]').first();
+      if (await newChatBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await newChatBtn.click({ timeout: 2000 }).catch(() => {});
+        await page.waitForTimeout(600);
+      } else {
+        // Last resort: second goto
+        await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => {});
+        await page.waitForTimeout(500);
+      }
     }
   }
 
@@ -784,6 +801,15 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
 
         const editor = await fillPrompt(page, prompt);
         if (signal?.aborted) throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
+
+        // FIX A — Second attachment gate: verify image chip survived fillPrompt()'s innerHTML clear
+        if (imagePaths?.length) {
+          const stillAttached = await isAttachmentMountedInComposer(page);
+          if (!stillAttached) {
+            throw new Error("IMAGE_ATTACHMENT_FAILED: Attachment chip was lost during prompt fill. Aborting to prevent out-of-context generation.");
+          }
+        }
+
         await submitPrompt(page, editor);
 
         console.log(`[geminiweb] Monitoring Gemini text response (baseline turns: ${countBefore})...`);
