@@ -152,7 +152,11 @@ function normalizeListing(raw) {
 
 function extractJSON(rawText, fieldKeys = {}) {
   if (!rawText) return null;
-  let clean = String(rawText).replace(/```json\s*/gi, "").replace(/```\s*$/gi, "").trim();
+  let clean = String(rawText)
+    .replace(/^[\s\S]*?(?=\{)/, "")
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*$/gi, "")
+    .trim();
   const match = clean.match(/\{[\s\S]*\}/);
   if (match) clean = match[0];
   try {
@@ -235,10 +239,17 @@ function normalizeTeePublicListing(raw) {
   tags = tags.filter((t) => t.toLowerCase() !== mainTag.toLowerCase());
   tags = [...new Set(tags)];
   if (tags.length < 6) {
-    const fallbacks = ["funny", "cute", "retro", "vintage", "minimalist", "trendy", "apparel"];
-    for (const f of fallbacks) {
-      if (tags.length >= 6) break;
-      if (!tags.includes(f)) tags.push(f);
+    // Derive relevant tags from title and description keywords instead of generic buzzwords
+    const textPool = `${title} ${description}`.toLowerCase();
+    const candidateWords = textPool
+      .replace(/[^a-z0-9 ]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !/^(the|and|for|with|this|that|from|are|was|you|your|featuring|text|quote|design|artwork|clean|bold|vintage|retro|graphic|apparel|shirt|tshirt|tee)$/i.test(w));
+    for (const word of candidateWords) {
+      if (tags.length >= 8) break;
+      if (!tags.includes(word) && word !== mainTag.toLowerCase()) {
+        tags.push(word);
+      }
     }
   }
   tags = tags.slice(0, 15);
@@ -446,11 +457,17 @@ async function processListingOnAccount(account, design, referenceData, platform,
 
     const parsed = extractJSON(reply, isEtsy ? { title: "title", description: "description", category: "category" } : isTeePublic ? { mainTag: "main_tag", supportingTags: "supporting_tags" } : {});
 
+    // Enforce strict quality: never save a synthetic fallback as a successful generation.
+    // If Gemini failed to return a parseable listing, throw to escalate to fleet retry on a clean account.
+    if (!parsed || (!parsed.title && !parsed.main_tag && !parsed.bullet1)) {
+      throw new Error(`MAGIC_LISTING_PARSE_FAILED: Gemini returned invalid or incomplete listing output (length: ${reply?.length || 0}). Escalating to fleet retry on clean account.`);
+    }
+
     const normalizedListing = isEtsy
-      ? normalizeEtsyListing(parsed || buildFallbackEtsyListing(fileName, referenceData))
+      ? normalizeEtsyListing(parsed)
       : isTeePublic
-        ? normalizeTeePublicListing(parsed || buildFallbackTeePublicListing(fileName, referenceData))
-        : normalizeListing(parsed || buildFallbackAmazonListing(fileName, referenceData));
+        ? normalizeTeePublicListing(parsed)
+        : normalizeListing(parsed);
 
     const persisted = persistListingToLibrary({
       fileName,

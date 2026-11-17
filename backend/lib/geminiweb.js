@@ -861,22 +861,13 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
             const turns = document.querySelectorAll("model-response");
             let text = "";
             let hasCopyBtn = false;
+            // Only inspect the response if a NEW turn has appeared strictly after submission.
+            // Never inspect stale prior turns, which leaks previous design metadata.
             if (turns.length > prevCount) {
               const last = turns[turns.length - 1];
               const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
               text = (content.innerText || "").trim();
               hasCopyBtn = Boolean(last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]'));
-            } else if (turns.length > 0) {
-              // Fallback: If turn count did not strictly exceed prevCount (e.g. baseline counted stale DOM or reset occurred),
-              // inspect the last turn if it has active completion markers or content
-              const last = turns[turns.length - 1];
-              const copyBtn = last.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i]');
-              const content = last.querySelector("message-content, structured-content-container, .model-response-text") || last;
-              const candidate = (content.innerText || "").trim();
-              if (copyBtn || isGenerating || candidate.length > 30) {
-                text = candidate;
-                hasCopyBtn = Boolean(copyBtn);
-              }
             }
 
             return { toastMsg, isGenerating, hasCopyBtn, text };
@@ -886,32 +877,28 @@ export async function generateText({ prompt, imagePaths = [], page, signal = nul
             throw new Error(`GEMINI_ERROR: ${probe.toastMsg.slice(0, 120)}`);
           }
 
-          // Fast-fail if generation never started after 16s and prompt nudge already dispatched
+          // Fast-fail if generation never started after 35s and prompt nudge already dispatched
           if (Date.now() - start > 35000 && !probe.isGenerating && !probe.text && retriggered) {
             throw new Error("GEMINI_STALLED: Generation failed to start after 35s");
           }
 
           const trimmed = probe.text;
           if (trimmed.length > 0) {
-            // Early JSON return: As soon as braces appear, parse and validate
-            if (trimmed.includes("{") && trimmed.includes("}")) {
+            // Early JSON return: ONLY return once Gemini has stopped generating AND has valid closed JSON.
+            // Never return mid-stream while isGenerating is true, as that truncates tags and fields.
+            if (!probe.isGenerating && trimmed.includes("{") && trimmed.includes("}")) {
               const parsed = extractJSON(trimmed);
               if (parsed && typeof parsed === "object") {
                 if (parsed.title || parsed.main_tag || parsed.bullet1 || parsed.description) {
-                  console.log(`[geminiweb] Valid listing JSON detected early (${trimmed.length} chars), returning IMMEDIATELY.`);
+                  console.log(`[geminiweb] Valid complete listing JSON detected (${trimmed.length} chars), returning.`);
                   return trimmed;
                 }
               }
             }
 
-            // Fast-path A: Copy button rendered = generation definitely complete (any non-empty text)
+            // Fast-path: Copy button rendered AND generation complete (streaming stopped)
             if (probe.hasCopyBtn && !probe.isGenerating) {
               console.log(`[geminiweb] Text captured via Copy button + not-generating (${trimmed.length} chars).`);
-              return trimmed;
-            }
-            // Fast-path B: Copy button present even while still in streaming (text is already final for this turn)
-            if (probe.hasCopyBtn && trimmed.length > 5) {
-              console.log(`[geminiweb] Text captured via Copy button detection (${trimmed.length} chars).`);
               return trimmed;
             }
             if (!probe.isGenerating) {

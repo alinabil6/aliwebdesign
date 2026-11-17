@@ -26,7 +26,32 @@ Use a strict 4:5 portrait canvas with a uniform solid pitch-black background (#0
 
 The finished design should clearly express the same core idea as the reference, while looking like a different, carefully composed artwork. Generate the image directly and return only the finished image.`;
 
+export const TEXT_ONLY_PROMPT = `Redesign the attached text-based shirt graphic into a new typographic layout.
+
+This design is typography only. The words are the entire design. The humor comes from the wording, not from any imagery.
+
+**Text**
+Reproduce every word exactly as written, once, with the same spelling and punctuation. Do not add, remove, reorder, rephrase, or repeat any words.
+
+**What you may change**
+- The line breaks and the arrangement of the lines
+- The size hierarchy: emphasize the punchline or key words with bigger or bolder lettering
+- The letterforms, within the same type family and mood as the reference (hand-drawn stays hand-drawn, clean sans stays clean sans, distressed stays distressed)
+- The alignment, such as stacked, staggered, or left-aligned, as long as it stays simple and balanced
+
+**What you must NOT add**
+No illustrations, icons, symbols, characters, people, objects, or scenes. No borders, frames, banners, badges, ribbons, circles, ropes, stars, or dividers. No textures, shadows, glows, gradients, or decorative flourishes. No new colors. If the reference has one small graphic element (such as a power icon replacing a letter), keep only that element and nothing else.
+
+**Color and style**
+Use only the colors in the reference. For a white-on-black design, that means pure white text only. If the canvas background is different from the reference's background and the reference's text color would not be clearly readable on it, switch the text to a single high-contrast color (black on light backgrounds, white on dark backgrounds). Never introduce any other color. Keep the same tone, whether it is sassy, minimal, or bold.
+
+**Canvas**
+Use a strict 4:5 canvas with a uniform solid #000000 background. Center the text block with generous margins. No mockup, model, garment, or fabric.
+
+The result should look like the same shirt, typeset a little differently. Simple, clean, and print-ready. Generate the image directly and return only the finished image.`;
+
 export function buildPrompt({
+  mode = "illustrated",
   bg_color = "#000000",
   style_directive = "",
   style_name = "",
@@ -35,6 +60,7 @@ export function buildPrompt({
 } = {}) {
   const normRatio = String(aspectRatio || "4:5").trim();
   const normBg = String(bg_color || "#000000").trim();
+  const isTextOnly = mode === "text_only";
 
   // If user kept the exact default 4:5 and #000000 black canvas without style override:
   if (
@@ -42,7 +68,7 @@ export function buildPrompt({
     normRatio === "4:5" &&
     normBg.toLowerCase() === "#000000"
   ) {
-    return DEFAULT_DESIGN_TO_DESIGN_PROMPT;
+    return isTextOnly ? TEXT_ONLY_PROMPT : DEFAULT_DESIGN_TO_DESIGN_PROMPT;
   }
 
   // If the user customized the background, aspect ratio, or applied a style override in the UI,
@@ -51,7 +77,25 @@ export function buildPrompt({
   const arDirective = normRatio && normRatio !== "4:5" ? buildAspectRatioDirective(normRatio, { hasReferenceImage: true }) : "";
   const styleClause = style_directive ? `Style specification: ${style_name || "custom style"}. ${style_directive}.` : "";
 
-  const canvasBlock = `**Canvas**\nUse a strict ${normRatio} canvas${normBg && normBg !== "transparent" ? ` with a uniform solid ${normBg} background` : (normBg === "transparent" ? " with clean isolated background" : " with a uniform solid pitch-black background (#000000)")}. Center the complete design, adapt its composition to the frame, and keep the artwork sharply separated from the background. No mockup, model, garment, or fabric.`;
+  const canvasBlock = isTextOnly
+    ? `**Canvas**\nUse a strict ${normRatio} canvas${normBg && normBg !== "transparent" ? ` with a uniform solid ${normBg} background` : (normBg === "transparent" ? " with clean isolated background" : " with a uniform solid pitch-black background (#000000)")}. Center the text block with generous margins. No mockup, model, garment, or fabric.`
+    : `**Canvas**\nUse a strict ${normRatio} canvas${normBg && normBg !== "transparent" ? ` with a uniform solid ${normBg} background` : (normBg === "transparent" ? " with clean isolated background" : " with a uniform solid pitch-black background (#000000)")}. Center the complete design, adapt its composition to the frame, and keep the artwork sharply separated from the background. No mockup, model, garment, or fabric.`;
+
+  if (isTextOnly) {
+    return [
+      "Redesign the attached text-based shirt graphic into a new typographic layout.",
+      "This design is typography only. The words are the entire design. The humor comes from the wording, not from any imagery.",
+      "**Text**\nReproduce every word exactly as written, once, with the same spelling and punctuation. Do not add, remove, reorder, rephrase, or repeat any words.",
+      "**What you may change**\n- The line breaks and the arrangement of the lines\n- The size hierarchy: emphasize the punchline or key words with bigger or bolder lettering\n- The letterforms, within the same type family and mood as the reference (hand-drawn stays hand-drawn, clean sans stays clean sans, distressed stays distressed)\n- The alignment, such as stacked, staggered, or left-aligned, as long as it stays simple and balanced",
+      "**What you must NOT add**\nNo illustrations, icons, symbols, characters, people, objects, or scenes. No borders, frames, banners, badges, ribbons, circles, ropes, stars, or dividers. No textures, shadows, glows, gradients, or decorative flourishes. No new colors. If the reference has one small graphic element (such as a power icon replacing a letter), keep only that element and nothing else.",
+      "**Color and style**\nUse only the colors in the reference. For a white-on-black design, that means pure white text only. If the canvas background is different from the reference's background and the reference's text color would not be clearly readable on it, switch the text to a single high-contrast color (black on light backgrounds, white on dark backgrounds). Never introduce any other color. Keep the same tone, whether it is sassy, minimal, or bold.",
+      canvasBlock,
+      "The result should look like the same shirt, typeset a little differently. Simple, clean, and print-ready. Generate the image directly and return only the finished image.",
+      styleClause,
+      arDirective,
+      bgDirective
+    ].filter(Boolean).join("\n\n").trim();
+  }
 
   return [
     "Redesign the attached reference into a fresh apparel graphic.",

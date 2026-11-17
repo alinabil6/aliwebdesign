@@ -41,6 +41,7 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
     const bgColor = rawBg === "transparent" || /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawBg) ? rawBg : "#000000";
     const style = resolveStyle(req);
     const aspectRatio = String(req.body.aspectRatio || req.body.aspect_ratio || "4:5").trim();
+    const mode = String(req.body.mode || "").trim() === "text_only" ? "text_only" : "illustrated";
 
     // Redraw versions per design — same 1–100 clamp as Niche Variations.
     const count = Math.min(100, Math.max(1, parseInt(req.body.count, 10) || 1));
@@ -49,6 +50,7 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
     // ready fleet in parallel (each account runs its own profile browser).
     const tasks = Array.from({ length: count }, (_, v) => ({
       prompt: buildPrompt({
+        mode,
         bg_color: bgColor,
         style_directive: style.style_directive,
         style_name: style.style_name,

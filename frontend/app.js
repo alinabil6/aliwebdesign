@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.27";
+const APP_VERSION = "1.0.28";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -5638,6 +5638,16 @@ function renderDesignToDesign() {
               <input type="number" id="d2dVariations" min="1" max="100" value="1" />
             </label>
           </div>
+
+          <div class="field" style="margin-top: 1rem;">
+            <label class="d2d-text-only-toggle" for="d2dTextOnlyToggle" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08)); border-radius: 8px; cursor: pointer; user-select: none;">
+              <span style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 500;">
+                <i data-lucide="type" style="width: 16px; height: 16px; color: #94a3b8;"></i>
+                <span>Text-only mode</span>
+              </span>
+              <input type="checkbox" id="d2dTextOnlyToggle" style="width: 1.15rem; height: 1.15rem; accent-color: #3b82f6; cursor: pointer;" />
+            </label>
+          </div>
         </section>
       </div>
 
@@ -5842,6 +5852,8 @@ function renderDesignToDesign() {
           fd.append("count", vCount);
           appendMagicStyle(fd, magicStyle.get());
           fd.append("manualStyle", ($("#d2dManualStyle")?.value || "").trim());
+          const isTextOnly = Boolean($("#d2dTextOnlyToggle")?.checked);
+          fd.append("mode", isTextOnly ? "text_only" : "illustrated");
 
           try {
             // Stream each finished design back as it completes on the fleet.
