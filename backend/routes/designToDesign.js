@@ -109,6 +109,7 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
               output_image_path: out.rel,
               prompt_used: task.prompt,
               user_input: style.style_id,
+              mode,
             });
             const decorated = {
               ...design,
@@ -178,6 +179,7 @@ router.post("/design-to-design", upload.single("source"), async (req, res) => {
             output_image_path: out.rel,
             prompt_used: task.prompt,
             user_input: style.style_id,
+            mode,
           });
           const decorated = {
             ...design,

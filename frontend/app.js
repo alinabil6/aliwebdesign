@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.28";
+const APP_VERSION = "1.0.29";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -5640,7 +5640,7 @@ function renderDesignToDesign() {
           </div>
 
           <div class="field" style="margin-top: 1rem;">
-            <label class="d2d-text-only-toggle" for="d2dTextOnlyToggle" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08)); border-radius: 8px; cursor: pointer; user-select: none;">
+            <label class="d2d-text-only-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-glass, rgba(255, 255, 255, 0.08)); border-radius: 8px; cursor: pointer; user-select: none;">
               <span style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 500;">
                 <i data-lucide="type" style="width: 16px; height: 16px; color: #94a3b8;"></i>
                 <span>Text-only mode</span>
@@ -8419,6 +8419,7 @@ document.addEventListener("DOMContentLoaded", () => {
           (s) =>
             (s.name || "").toLowerCase().includes(q) ||
             (s.category || "").toLowerCase().includes(q) ||
+            (s.description || "").toLowerCase().includes(q) ||
             (s.keywords || []).some((k) => String(k).toLowerCase().includes(q))
         )
         : catalogStyles;

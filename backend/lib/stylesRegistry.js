@@ -687,6 +687,34 @@ export const STYLES = [
         "directive": "A moody, elevated apparel style combining historical or candid lifestyle photography with warm metallic-tone typographic overlays. Pairs gritty, desaturated candid film photography with high-end editorial champagne and mustard serif typography. Monochromatic or sepia photographic prints; luxury high-contrast serif typography; optimal on washed-black, pepper, or espresso blanks."
     },
     {
+        "id": "vintage-distressed-typography",
+        "name": "Vintage Distressed Typography",
+        "category": "retro_typography",
+        "description": "Worn, faded typographic layouts with cracked-ink texture, as if screen-printed and washed many times.",
+        "keywords": [
+            "vintage",
+            "distressed",
+            "typography",
+            "worn",
+            "faded",
+            "typographic",
+            "layouts",
+            "cracked-ink",
+            "cracked",
+            "ink",
+            "texture",
+            "screen-printed",
+            "washed",
+            "band",
+            "tee",
+            "thrifted",
+            "workwear",
+            "letterforms",
+            "lettering"
+        ],
+        "directive": "Vintage distressed typography: bold lettering that looks screen-printed and washed many times, like an old band tee or thrifted workwear. Apply a worn, cracked-ink texture only to the letterforms: fine speckled erosion, scratches, small chips and uneven ink coverage, heavier near edges and corners and lighter at the center so every word stays fully readable. Use slightly rough, imperfect letter edges and subtle misregistration-free flat ink, with no smooth digital gloss. Keep the background perfectly clean, solid and untextured. No grunge splatters, smudges, borders, frames, stamps or added shapes. Use only the original text colors, with no gradients or glows."
+    },
+    {
         "id": "soft-touch-stitch-era",
         "name": "Soft Touch Stitch Era",
         "category": "aesthetic_lifestyle",
@@ -1433,6 +1461,7 @@ export const UNIVERSAL_NEGATIVE_PROMPT =
  */
 export const STYLE_CATEGORIES = {
     scientific_botanical: "Scientific & Botanical",
+    retro_typography: "Retro & Vintage Typography",
     retro_vintage_nostalgia: "Retro, Vintage & Nostalgia",
     outdoor_nature_americana: "Outdoor, Nature & Americana",
     modern_streetwear_urban: "Modern, Streetwear & Urban",

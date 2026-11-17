@@ -26,29 +26,40 @@ Use a strict 4:5 portrait canvas with a uniform solid pitch-black background (#0
 
 The finished design should clearly express the same core idea as the reference, while looking like a different, carefully composed artwork. Generate the image directly and return only the finished image.`;
 
-export const TEXT_ONLY_PROMPT = `Redesign the attached text-based shirt graphic into a new typographic layout.
+export const TEXT_ONLY_PROMPT = `STRICT TYPOGRAPHY-ONLY TASK. NO ILLUSTRATION OF ANY KIND.
 
-This design is typography only. The words are the entire design. The humor comes from the wording, not from any imagery.
+The attached image contains ONLY text. Recreate it as a clean, print-ready typographic graphic. The output MUST contain ONLY text.
 
-**Text**
-Reproduce every word exactly as written, once, with the same spelling and punctuation. Do not add, remove, reorder, rephrase, or repeat any words.
+**ABSOLUTE RULES (mandatory, no exceptions)**
+1. Every visible non-background pixel MUST belong to a character from the reference text. The output is letters only, plus punctuation and symbols exactly as in the reference.
+2. NEVER draw anything that is not a character: no objects, people, animals, props, icons, emblems, shapes, lines, bars, boxes, underlines, frames, borders, badges, ribbons, circles, rings, loops, arches, or dividers.
+3. NEVER illustrate, visualize, or represent the joke or its meaning. Never draw what the words describe.
+4. NEVER bend, curve, arc, warp, or place text on a path or shape. All lines stay straight and horizontal.
+5. NEVER add, remove, reorder, rephrase, repeat, translate, or correct any word, character, or punctuation. Symbols such as ( ) = ! ? are part of the text and MUST be kept.
+6. NEVER add textures, distress, shadows, glows, outlines, gradients, 3D effects, or backgrounds behind the text unless the reference already has them.
+7. Use ONLY the exact text color(s) of the reference. NEVER introduce a new color. If the reference text color would not be readable on the requested canvas background, use one single high-contrast color (black on light, white on dark) and nothing else.
 
-**What you may change**
-- The line breaks and the arrangement of the lines
-- The size hierarchy: emphasize the punchline or key words with bigger or bolder lettering
-- The letterforms, within the same type family and mood as the reference (hand-drawn stays hand-drawn, clean sans stays clean sans, distressed stays distressed)
-- The alignment, such as stacked, staggered, or left-aligned, as long as it stays simple and balanced
+**WHAT MUST STAY THE SAME**
+The exact words, spelling, punctuation, and capitalization. The text color(s). The overall letter mood (clean sans stays a clean sans family, hand-drawn stays hand-drawn, distressed stays distressed). The humor and tone.
 
-**What you must NOT add**
-No illustrations, icons, symbols, characters, people, objects, or scenes. No borders, frames, banners, badges, ribbons, circles, ropes, stars, or dividers. No textures, shadows, glows, gradients, or decorative flourishes. No new colors. If the reference has one small graphic element (such as a power icon replacing a letter), keep only that element and nothing else.
+**WHAT MUST BE VISIBLY DIFFERENT (mandatory)**
+The result must NOT look like the reference redrawn. A person comparing the two must immediately see a different typographic layout. Change at least FOUR of these:
+- Line breaks: group the words into different lines than the reference.
+- Size hierarchy: choose a different key word or punchline to be the largest, and make the supporting words clearly smaller.
+- Alignment: change it (for example centered becomes left-aligned, or a staggered/indented stack).
+- Typeface: use a different typeface within the same mood family (a different weight, width, or style of the same kind of lettering).
+- Weight contrast: mix bold and light, or condensed and wide, between lines.
+- Spacing: tracking and line spacing noticeably tighter or looser, with the text block shaped differently (tall and narrow, or wide and compact).
+- Word emphasis: one word or short phrase set much larger than the rest.
 
-**Color and style**
-Use only the colors in the reference. For a white-on-black design, that means pure white text only. If the canvas background is different from the reference's background and the reference's text color would not be clearly readable on it, switch the text to a single high-contrast color (black on light backgrounds, white on dark backgrounds). Never introduce any other color. Keep the same tone, whether it is sassy, minimal, or bold.
+All changes must stay inside the rules above: text only, straight horizontal lines, no shapes, no lines, no decoration, no new colors.
 
 **Canvas**
 Use a strict 4:5 canvas with a uniform solid #000000 background. Center the text block with generous margins. No mockup, model, garment, or fabric.
 
-The result should look like the same shirt, typeset a little differently. Simple, clean, and print-ready. Generate the image directly and return only the finished image.`;
+**FINAL CHECK before returning the image**
+Is the layout, line breaking, or hierarchy the same as the reference? If yes, redo it with a clearly different arrangement.
+Does the image contain anything other than the exact reference text? If yes, remove it. Is any text curved, boxed, or underlined? If yes, straighten it. Is any word changed, missing, or duplicated? If yes, fix it. Return only the finished image.`;
 
 export function buildPrompt({
   mode = "illustrated",
@@ -83,14 +94,13 @@ export function buildPrompt({
 
   if (isTextOnly) {
     return [
-      "Redesign the attached text-based shirt graphic into a new typographic layout.",
-      "This design is typography only. The words are the entire design. The humor comes from the wording, not from any imagery.",
-      "**Text**\nReproduce every word exactly as written, once, with the same spelling and punctuation. Do not add, remove, reorder, rephrase, or repeat any words.",
-      "**What you may change**\n- The line breaks and the arrangement of the lines\n- The size hierarchy: emphasize the punchline or key words with bigger or bolder lettering\n- The letterforms, within the same type family and mood as the reference (hand-drawn stays hand-drawn, clean sans stays clean sans, distressed stays distressed)\n- The alignment, such as stacked, staggered, or left-aligned, as long as it stays simple and balanced",
-      "**What you must NOT add**\nNo illustrations, icons, symbols, characters, people, objects, or scenes. No borders, frames, banners, badges, ribbons, circles, ropes, stars, or dividers. No textures, shadows, glows, gradients, or decorative flourishes. No new colors. If the reference has one small graphic element (such as a power icon replacing a letter), keep only that element and nothing else.",
-      "**Color and style**\nUse only the colors in the reference. For a white-on-black design, that means pure white text only. If the canvas background is different from the reference's background and the reference's text color would not be clearly readable on it, switch the text to a single high-contrast color (black on light backgrounds, white on dark backgrounds). Never introduce any other color. Keep the same tone, whether it is sassy, minimal, or bold.",
+      "STRICT TYPOGRAPHY-ONLY TASK. NO ILLUSTRATION OF ANY KIND.",
+      "The attached image contains ONLY text. Recreate it as a clean, print-ready typographic graphic. The output MUST contain ONLY text.",
+      "**ABSOLUTE RULES (mandatory, no exceptions)**\n1. Every visible non-background pixel MUST belong to a character from the reference text. The output is letters only, plus punctuation and symbols exactly as in the reference.\n2. NEVER draw anything that is not a character: no objects, people, animals, props, icons, emblems, shapes, lines, bars, boxes, underlines, frames, borders, badges, banners, ribbons, circles, rings, loops, arches, or dividers.\n3. NEVER illustrate, visualize, or represent the joke or its meaning. Never draw what the words describe.\n4. NEVER bend, curve, arc, warp, or place text on a path or shape. All lines stay straight and horizontal.\n5. NEVER add, remove, reorder, rephrase, repeat, translate, or correct any word, character, or punctuation. Symbols such as ( ) = ! ? are part of the text and MUST be kept.\n6. NEVER add textures, distress, shadows, glows, outlines, gradients, 3D effects, or backgrounds behind the text unless the reference already has them.\n7. Use ONLY the exact text color(s) of the reference. NEVER introduce a new color. If the reference text color would not be readable on the requested canvas background, use one single high-contrast color (black on light, white on dark) and nothing else.",
+      "**WHAT MUST STAY THE SAME**\nThe exact words, spelling, punctuation, and capitalization. The text color(s). The overall letter mood (clean sans stays a clean sans family, hand-drawn stays hand-drawn, distressed stays distressed). The humor and tone.",
+      "**WHAT MUST BE VISIBLY DIFFERENT (mandatory)**\nThe result must NOT look like the reference redrawn. A person comparing the two must immediately see a different typographic layout. Change at least FOUR of these:\n- Line breaks: group the words into different lines than the reference.\n- Size hierarchy: choose a different key word or punchline to be the largest, and make the supporting words clearly smaller.\n- Alignment: change it (for example centered becomes left-aligned, or a staggered/indented stack).\n- Typeface: use a different typeface within the same mood family (a different weight, width, or style of the same kind of lettering).\n- Weight contrast: mix bold and light, or condensed and wide, between lines.\n- Spacing: tracking and line spacing noticeably tighter or looser, with the text block shaped differently (tall and narrow, or wide and compact).\n- Word emphasis: one word or short phrase set much larger than the rest.\n\nAll changes must stay inside the rules above: text only, straight horizontal lines, no shapes, no lines, no decoration, no new colors.",
       canvasBlock,
-      "The result should look like the same shirt, typeset a little differently. Simple, clean, and print-ready. Generate the image directly and return only the finished image.",
+      "**FINAL CHECK before returning the image**\nIs the layout, line breaking, or hierarchy the same as the reference? If yes, redo it with a clearly different arrangement.\nDoes the image contain anything other than the exact reference text? If yes, remove it. Is any text curved, boxed, or underlined? If yes, straighten it. Is any word changed, missing, or duplicated? If yes, fix it. Return only the finished image.",
       styleClause,
       arDirective,
       bgDirective

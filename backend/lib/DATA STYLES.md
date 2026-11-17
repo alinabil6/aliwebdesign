@@ -210,6 +210,12 @@
 * **Unique Factor:** Pairs gritty, desaturated candid film photography with high-end editorial champagne and mustard serif typography.  
 * **Core Qualities:** Monochromatic or sepia photographic prints; luxury high-contrast serif typography; optimal on washed-black, pepper, or espresso blanks.
 
+### **35\. Vintage Distressed Typography**
+
+* **Definition:** Worn, faded typographic layouts with cracked-ink texture, as if screen-printed and washed many times.  
+* **Unique Factor:** Applies a worn, cracked-ink texture only to the letterforms (fine speckled erosion, scratches, chips, and uneven ink coverage) while keeping the background completely clean, solid, and untextured.  
+* **Core Qualities:** Bold lettering with slightly rough, imperfect letter edges; screen-printed washed texture heavier near edges and lighter at center; flat ink with no smooth digital gloss; zero grunge splatters, smudges, borders, or added shapes; original text colors preserved.
+
 ## **V. Aesthetic Movements, Subcultures & Lifestyle Niches**
 
 ### **35\. Soft Touch Stitch Era**

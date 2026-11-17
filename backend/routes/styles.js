@@ -30,12 +30,12 @@ router.get("/", (req, res) => {
     res.json({
         success: true,
         taxonomies: getTaxonomies(),
-        styles: STYLES.map(({ id, name, category, keywords, directive }) => ({
+        styles: STYLES.map(({ id, name, category, keywords, directive, description }) => ({
             id,
             name,
             category,
             keywords,
-            description: directive,
+            description: description || directive,
         })),
     });
 });
