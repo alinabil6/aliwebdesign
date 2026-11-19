@@ -273,9 +273,10 @@ export async function runFleetBatch(tasks, onCheckpoint = null, options = {}) {
           }
         }
 
-        if (!isHardPolicy && item.retries < 1 && !signal?.aborted) {
+        const maxRetries = allUsable.length > 2 ? 2 : 1;
+        if (!isHardPolicy && item.retries < maxRetries && !signal?.aborted) {
           item.retries++;
-          console.log(`[fleet] Re-routing item ${taskIndex} (attempt ${item.retries + 1}/2) to alternate account...`);
+          console.log(`[fleet] Re-routing item ${taskIndex} (attempt ${item.retries + 1}/${maxRetries + 1}) to alternate account...`);
           if (typeof options?.onItemRetry === "function") {
             try {
               options.onItemRetry({ taskIndex, task, attempt: item.retries + 1, account });

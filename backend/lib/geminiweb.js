@@ -10,7 +10,7 @@ export class GenerationTimeoutError extends Error {
   }
 }
 
-export const HARD_GENERATION_CEILING_MS = 75000; // 75s absolute per-account ceiling
+export const HARD_GENERATION_CEILING_MS = 105000; // 105s absolute per-account ceiling
 
 export async function withGenerationCeiling(fn, { page = null, accountId = null, ceilingMs = HARD_GENERATION_CEILING_MS, signal = null } = {}) {
   let timer = null;
@@ -459,7 +459,7 @@ async function submitPrompt(page, editor) {
   throw new Error("PROMPT_DISPATCH_FAILED: Send button never confirmed after 20s. Failing to trigger fleet retry on a clean account.");
 }
 
-async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outputPath = null, signal = null) {
+async function monitorAndExtractOutput(page, beforeCount, timeout = 90000, outputPath = null, signal = null) {
   const start = Date.now();
   const deadline = start + timeout;
   console.log("[geminiweb] Waiting for output image render...");
@@ -476,11 +476,38 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outpu
       const target = imgLoc.last();
       const isValid = await target.evaluate((img) => img.complete && img.naturalWidth >= 512).catch(() => false);
       if (isValid) {
+        let buf = null;
+
+        // Tier 1: In-page extraction (data URI, fetch blob, canvas)
         let base64Data = await page.evaluate(async () => {
           const imgs = Array.from(document.querySelectorAll("model-response img, .response-container img"));
           const valid = imgs.filter(i => i.complete && i.naturalWidth >= 512);
           if (valid.length === 0) return null;
           const img = valid[valid.length - 1];
+
+          // 1A. If already a data: URI, return raw base64 directly
+          if (img.src && img.src.startsWith("data:image/")) {
+            return img.src.split(",")[1];
+          }
+
+          // 1B. Try fetch() blob conversion in browser context
+          try {
+            const res = await fetch(img.src, { credentials: "include" });
+            if (res.ok) {
+              const blob = await res.blob();
+              const readerResult = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(blob);
+              });
+              if (typeof readerResult === "string" && readerResult.includes(",")) {
+                return readerResult.split(",")[1];
+              }
+            }
+          } catch (_) {}
+
+          // 1C. Canvas fallback
           try {
             const canvas = document.createElement("canvas");
             canvas.width = img.naturalWidth;
@@ -488,25 +515,58 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outpu
             const ctx = canvas.getContext("2d");
             ctx.drawImage(img, 0, 0);
             const dataUrl = canvas.toDataURL("image/png");
-            // Free canvas backing store in browser engine immediately
             canvas.width = 0;
             canvas.height = 0;
             canvas.remove();
             return dataUrl.split(",")[1];
-          } catch {
+          } catch (_) {
             return null;
           }
         }).catch(() => null);
 
         if (base64Data && base64Data.length > 5000) {
-          const buf = Buffer.from(base64Data, "base64");
-          base64Data = null; // Immediately nullify multi-megabyte string for V8 GC
+          buf = Buffer.from(base64Data, "base64");
+          base64Data = null; // Free string memory immediately
+        }
 
+        // Tier 2: Playwright direct network request (bypasses browser DOM canvas CORS limitations completely)
+        if (!buf || buf.length < 5000) {
+          try {
+            const imgSrc = await target.getAttribute("src").catch(() => null);
+            if (imgSrc && (imgSrc.startsWith("http://") || imgSrc.startsWith("https://"))) {
+              const netRes = await page.request.get(imgSrc, { timeout: 15000 }).catch(() => null);
+              if (netRes && netRes.ok()) {
+                const body = await netRes.body().catch(() => null);
+                if (body && body.length > 5000) {
+                  buf = body;
+                  console.log(`[geminiweb] captured ${buf.length} bytes via Playwright request`);
+                }
+              }
+            }
+          } catch (reqErr) {
+            console.warn("[geminiweb] Playwright direct request fetch fallback error:", reqErr?.message);
+          }
+        }
+
+        // Tier 3: Element screenshot fallback (100% immune to CORS, canvas tainting, or token issues)
+        if (!buf || buf.length < 5000) {
+          try {
+            const shot = await target.screenshot({ type: "png", timeout: 10000 }).catch(() => null);
+            if (shot && shot.length > 5000) {
+              buf = shot;
+              console.log(`[geminiweb] captured ${buf.length} bytes via element screenshot fallback`);
+            }
+          } catch (shotErr) {
+            console.warn("[geminiweb] Element screenshot fallback error:", shotErr?.message);
+          }
+        }
+
+        if (buf && buf.length > 5000) {
           if (outputPath) {
             await fs.promises.writeFile(outputPath, buf);
             console.log(`[geminiweb] evacuated ${buf.length} bytes directly to disk at ${outputPath}`);
           } else {
-            console.log(`[geminiweb] captured ${buf.length} bytes via clean in-memory canvas`);
+            console.log(`[geminiweb] captured ${buf.length} bytes successfully`);
           }
 
           if (typeof global.gc === "function") {
@@ -520,13 +580,14 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outpu
     // Check if Gemini is actively generating an image or displaying progress
     const isImageInProgress = await page.evaluate(() => {
       const spinners = document.querySelectorAll(
-        "model-response mat-spinner, model-response mat-progress-spinner, model-response .loading-indicator, model-response .shimmer, model-response [data-test-id*='image'], model-response [class*='image-loading'], model-response [class*='generating']"
+        "model-response mat-spinner, model-response mat-progress-spinner, model-response .loading-indicator, model-response .shimmer, model-response [data-test-id*='image'], model-response [class*='image-loading'], model-response [class*='generating'], model-response [class*='sparkle'], model-response [class*='placeholder'], model-response [class*='spark-icon'], model-response svg[class*='animate'], model-response [aria-busy='true'], glif-image-placeholder, loading-animation, gds-circular-progress, gds-loading"
       );
       if (spinners.length > 0) return true;
       const lastResp = document.querySelector("model-response:last-of-type, message-content:last-of-type");
       if (lastResp) {
+        if (lastResp.getAttribute("aria-busy") === "true") return true;
         const text = (lastResp.innerText || "").toLowerCase();
-        if (text.includes("generating image") || text.includes("creating image") || text.includes("drawing")) return true;
+        if (text.includes("generating image") || text.includes("creating image") || text.includes("drawing") || text.includes("image is being created")) return true;
       }
       return false;
     }).catch(() => false);
@@ -534,36 +595,39 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outpu
     const isStreamingDone = await page.evaluate(() => {
       const stopBtn = document.querySelector('button[aria-label*="Stop" i], button[aria-label*="Arrêter" i], [data-test-id*="stop"]');
       if (stopBtn && stopBtn.offsetWidth > 0 && window.getComputedStyle(stopBtn).display !== "none") return false;
-      const sendBtn = document.querySelector('button[aria-label*="Send" i], button[aria-label*="Envoyer" i], .send-button');
-      const micBtn = document.querySelector('button[aria-label*="microphone" i], button[aria-label*="Dictate" i], button[aria-label*="Micro" i]');
-      const editor = document.querySelector('rich-textarea div[contenteditable="true"], div[role="textbox"]');
-      const copyBtn = document.querySelector('model-response button[aria-label*="Copy" i]');
-      return Boolean(micBtn || copyBtn || (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") || (editor && editor.getAttribute("contenteditable") === "true"));
+      const lastResp = document.querySelector("model-response:last-of-type, message-content:last-of-type");
+      if (!lastResp) return false;
+      // When response completes, copy or feedback buttons become visible inside the model-response container
+      const copyBtn = lastResp.querySelector('button[aria-label*="Copy" i], button[aria-label*="Copier" i], [data-test-id*="copy"]');
+      const feedbackBtn = lastResp.querySelector('button[aria-label*="Good response" i], button[aria-label*="Bad response" i]');
+      return Boolean(copyBtn || feedbackBtn);
     }).catch(() => false);
 
-    // Only inspect for text refusal if streaming is done AND no image spinner is active
+    const toastMsg = await page.evaluate(() => {
+      const el = document.querySelector('mat-snack-bar-container, [role="alert"], .snack-bar, .toast');
+      return el ? el.innerText.trim() : null;
+    }).catch(() => null);
+
+    const responseText = await page.locator("model-response:last-of-type, message-content:last-of-type, [data-test-id='model-response-text']").last().innerText().catch(() => "");
+    
+    const isExplicitRefusal = /cannot generate|can't generate|cannot create images|not able to generate|policy prevents|safety guideline|against our policies|unable to fulfill|I am unable to create/i.test(responseText);
+
+    // If Gemini returned an explicit safety/policy refusal, fail fast
+    if (isExplicitRefusal) {
+      const finalError = toastMsg || responseText.slice(0, 140) || "Gemini refused image generation";
+      throw new Error(`GEMINI_REFUSED_OR_TEXT: ${finalError}`);
+    }
+
+    // Only inspect for text refusal if streaming is done AND no image spinner/progress is active
     if (isStreamingDone && !isImageInProgress) {
       if (!streamingDoneStart) streamingDoneStart = Date.now();
       const elapsedSinceDone = Date.now() - streamingDoneStart;
+      const totalElapsed = Date.now() - start;
 
-      const toastMsg = await page.evaluate(() => {
-        const el = document.querySelector('mat-snack-bar-container, [role="alert"], .snack-bar, .toast');
-        return el ? el.innerText.trim() : null;
-      }).catch(() => null);
-
-      const responseText = await page.locator("model-response, message-content, [data-test-id='model-response-text']").last().innerText().catch(() => "");
-      
-      const isExplicitRefusal = /cannot generate|can't generate|cannot create images|not able to generate|policy prevents|safety guideline|against our policies/i.test(responseText);
-
-      // If Gemini returned an explicit safety/policy refusal, fail fast
-      if (isExplicitRefusal) {
-        const finalError = toastMsg || responseText.slice(0, 140) || "Gemini refused image generation";
-        throw new Error(`GEMINI_REFUSED_OR_TEXT: ${finalError}`);
-      }
-
-      // If streaming has finished, no image spinner is active, and 4.5s has elapsed,
-      // Gemini produced text instead of an image. Fail fast to trigger in-session nudge / account retry.
-      if (elapsedSinceDone > 4500) {
+      // Ensure we NEVER prematurely declare text refusal while Imagen is rendering:
+      // Require at least 35s total elapsed time AND at least 15s since text completed,
+      // AND require that responseText actually contains non-empty text.
+      if (totalElapsed > 35000 && elapsedSinceDone > 15000 && responseText.trim().length > 30) {
         const finalCount = await imgLoc.count().catch(() => 0);
         if (finalCount <= beforeCount) {
           const finalError = toastMsg || responseText.slice(0, 140) || "Gemini replied with text instead of image";
@@ -576,7 +640,7 @@ async function monitorAndExtractOutput(page, beforeCount, timeout = 65000, outpu
 
     await page.waitForTimeout(400);
   }
-  throw new Error("timed out waiting for Gemini image render (65s)");
+  throw new Error("timed out waiting for Gemini image render (90s)");
 }
 
 export async function generateImage({ prompt, imagePaths, page, outputPath = null, signal = null, accountId = null }) {
@@ -627,7 +691,7 @@ export async function generateImage({ prompt, imagePaths, page, outputPath = nul
         await submitPrompt(page, editor);
 
         try {
-          return await monitorAndExtractOutput(page, beforeCount, 65000, outputPath, signal);
+          return await monitorAndExtractOutput(page, beforeCount, 90000, outputPath, signal);
         } catch (err) {
           if (signal?.aborted || err?.name === "AbortError" || (err?.message || "").includes("cancelled by user")) {
             throw Object.assign(new Error("Generation cancelled by user"), { name: "AbortError" });
