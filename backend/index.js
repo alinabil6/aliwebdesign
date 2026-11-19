@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import compression from "compression";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import accountsRouter from "./routes/accounts.js";
 import variationsRouter from "./routes/variations.js";
@@ -70,9 +71,15 @@ app.use((req, res, next) => {
   next();
 });
 
+let appVersion = "1.0.30";
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  if (pkg.version) appVersion = pkg.version;
+} catch (_) {}
+
 // Health check — confirms the server is alive
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, name: "aliwebdesign", time: new Date().toISOString() });
+  res.json({ ok: true, name: "aliwebdesign", version: appVersion, time: new Date().toISOString() });
 });
 
 // API routes

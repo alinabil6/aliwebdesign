@@ -2,7 +2,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
-const APP_VERSION = "1.0.29";
+let APP_VERSION = "1.0.30";
 
 function renderIcons() {
   if (window.lucide) lucide.createIcons();
@@ -8585,6 +8585,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initAccountsEventStream();
   $$(".doc-version-pill").forEach((el) => { el.textContent = `v${APP_VERSION}`; });
+  fetch("/api/health")
+    .then((r) => r.json())
+    .then((data) => {
+      if (data?.version) {
+        APP_VERSION = data.version;
+        $$(".doc-version-pill").forEach((el) => { el.textContent = `v${APP_VERSION}`; });
+      }
+    })
+    .catch(() => {});
   refreshTopBar();
   setInterval(refreshTopBar, 15000);
   let initialView = "home";
